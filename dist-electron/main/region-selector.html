@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  cursor: crosshair;
+  user-select: none;
+}
+#bg {
+  position: fixed; inset: 0;
+  z-index: 0;
+}
+#overlay {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1;
+}
+#rect {
+  position: fixed;
+  border: 2px solid #e94560;
+  background: rgba(233, 69, 96, 0.08);
+  z-index: 2;
+  display: none;
+  pointer-events: none;
+}
+#size {
+  position: fixed;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  font: 12px Consolas, monospace;
+  padding: 2px 8px;
+  border-radius: 3px;
+  z-index: 3;
+  pointer-events: none;
+  display: none;
+}
+#hint {
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  color: rgba(255, 255, 255, 0.5);
+  font: 16px "Segoe UI", system-ui, sans-serif;
+  z-index: 4;
+  pointer-events: none;
+}
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<div id="overlay"></div>
+<div id="rect"></div>
+<div id="size"></div>
+<div id="hint">点击并拖动选择录制区域 · ESC 取消</div>
+<script>
+const { ipcRenderer, desktopCapturer, screen: electronScreen } = require('electron')
+
+let startX = 0, startY = 0, dragging = false
+let screenSourceId = ''
+
+const rectEl = document.getElementById('rect')
+const sizeEl = document.getElementById('size')
+const hintEl = document.getElementById('hint')
+const bgCanvas = document.getElementById('bg')
+const bgCtx = bgCanvas.getContext('2d')
+
+async function init() {
+  const primaryDisplay = electronScreen.getPrimaryDisplay()
+  const { width, height } = primaryDisplay.bounds
+  bgCanvas.width = width
+  bgCanvas.height = height
+  bgCanvas.style.width = width + 'px'
+  bgCanvas.style.height = height + 'px'
+
+  try {
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width, height },
+    })
+    if (sources[0]) {
+      screenSourceId = sources[0].id
+      if (sources[0].thumbnail) {
+        bgCtx.drawImage(sources[0].thumbnail, 0, 0, width, height)
+      }
+    }
+  } catch (e) {
+    console.error('Failed to capture screen:', e)
+  }
+}
+
+init()
+
+document.addEventListener('mousedown', (e) => {
+  startX = e.screenX
+  startY = e.screenY
+  dragging = true
+  hintEl.style.display = 'none'
+})
+
+document.addEventListener('mousemove', (e) => {
+  if (!dragging) return
+  const x = Math.min(startX, e.screenX)
+  const y = Math.min(startY, e.screenY)
+  const w = Math.abs(e.screenX - startX)
+  const h = Math.abs(e.screenY - startY)
+
+  rectEl.style.left = x + 'px'
+  rectEl.style.top = y + 'px'
+  rectEl.style.width = w + 'px'
+  rectEl.style.height = h + 'px'
+  rectEl.style.display = 'block'
+
+  sizeEl.textContent = `${Math.round(w)} × ${Math.round(h)}`
+  sizeEl.style.left = (x + w / 2 - 30) + 'px'
+  sizeEl.style.top = (y + h + 8) + 'px'
+  sizeEl.style.display = 'block'
+})
+
+document.addEventListener('mouseup', (e) => {
+  if (!dragging) return
+  dragging = false
+
+  const x = Math.min(startX, e.screenX)
+  const y = Math.min(startY, e.screenY)
+  const w = Math.abs(e.screenX - startX)
+  const h = Math.abs(e.screenY - startY)
+
+  if (w > 10 && h > 10) {
+    ipcRenderer.send('region-selected', { x, y, width: w, height: h, sourceId: screenSourceId })
+  } else {
+    ipcRenderer.send('region-cancelled')
+  }
+})
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    ipcRenderer.send('region-cancelled')
+  }
+})
+</script>
+</body>
+</html>

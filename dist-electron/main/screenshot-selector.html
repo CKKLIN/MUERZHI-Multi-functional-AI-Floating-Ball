@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  cursor: crosshair;
+  user-select: none;
+}
+#bg {
+  position: fixed; inset: 0;
+  z-index: 0;
+}
+#overlay {
+  position: fixed; inset: 0;
+  z-index: 1;
+}
+#windowFrame {
+  position: fixed;
+  border: 2px solid #4ecdc4;
+  background: rgba(78, 205, 196, 0.08);
+  z-index: 3;
+  pointer-events: none;
+  display: none;
+  border-radius: 2px;
+}
+#windowLabel {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  background: rgba(78, 205, 196, 0.9);
+  color: #fff;
+  font: 12px "Segoe UI", system-ui, sans-serif;
+  padding: 2px 8px;
+  border-radius: 3px;
+  white-space: nowrap;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#rect {
+  position: fixed;
+  border: 2px solid #4ecdc4;
+  z-index: 4;
+  display: none;
+  pointer-events: none;
+}
+#size {
+  position: fixed;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  font: 12px Consolas, monospace;
+  padding: 2px 8px;
+  border-radius: 3px;
+  z-index: 5;
+  pointer-events: none;
+  display: none;
+}
+#hint {
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  color: rgba(255, 255, 255, 0.5);
+  font: 16px "Segoe UI", system-ui, sans-serif;
+  z-index: 6;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+#drawCanvas {
+  position: fixed;
+  display: none;
+  z-index: 7;
+  border: 2px solid #4ecdc4;
+}
+#toolbar {
+  position: fixed;
+  display: none;
+  z-index: 10;
+  background: #1e1e1e;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 8px;
+  padding: 5px 8px;
+  align-items: center;
+  gap: 1px;
+  transform: translateX(-50%);
+}
+#toolbar button {
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.85);
+  border-radius: 5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+#toolbar button:hover {
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+}
+#toolbar button.active {
+  background: rgba(255,255,255,0.2);
+  color: #fff;
+}
+#toolbar .sep {
+  width: 1px;
+  height: 18px;
+  background: rgba(255,255,255,0.15);
+  margin: 0 5px;
+}
+#toolbar .color-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color 0.15s;
+}
+#toolbar .color-dot:hover {
+  border-color: rgba(255,255,255,0.5);
+}
+#toolbar .color-dot.active {
+  border-color: #fff;
+}
+#toolbar .hint {
+  color: rgba(255,255,255,0.4);
+  font: 11px "Segoe UI", system-ui, sans-serif;
+  padding: 0 8px 0 4px;
+  white-space: nowrap;
+}
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<div id="overlay"></div>
+<div id="windowFrame"><div id="windowLabel"></div></div>
+<div id="rect"></div>
+<div id="size"></div>
+<div id="hint">悬停选择窗口 · 拖动框选区域 · ESC 取消</div>
+<canvas id="drawCanvas"></canvas>
+<div id="toolbar">
+  <button title="矩形" data-tool="rect">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="10" rx="1"/></svg>
+  </button>
+  <button title="圆形" data-tool="ellipse">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="8" cy="8" rx="6" ry="5"/></svg>
+  </button>
+  <button title="箭头" data-tool="arrow">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="2" y1="14" x2="14" y2="2"/><polyline points="8,2 14,2 14,8"/></svg>
+  </button>
+  <button title="画笔" data-tool="pen">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L5 13 2 14 3 11z"/></svg>
+  </button>
+  <button title="文字" data-tool="text">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="5" y1="3" x2="11" y2="3"/><line x1="8" y1="3" x2="8" y2="14"/></svg>
+  </button>
+  <button title="马赛克" data-tool="mosaic">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1"><rect x="1" y="1" width="6" height="6" fill="currentColor" opacity="0.5"/><rect x="9" y="1" width="6" height="6" fill="currentColor" opacity="0.3"/><rect x="1" y="9" width="6" height="6" fill="currentColor" opacity="0.3"/><rect x="9" y="9" width="6" height="6" fill="currentColor" opacity="0.5"/></svg>
+  </button>
+  <div class="sep"></div>
+  <div class="color-dot active" style="background:#ff0000" data-color="#ff0000"></div>
+  <div class="color-dot" style="background:#ffff00" data-color="#ffff00"></div>
+  <div class="color-dot" style="background:#00cc00" data-color="#00cc00"></div>
+  <div class="color-dot" style="background:#00bfff" data-color="#00bfff"></div>
+  <div class="color-dot" style="background:#ffffff" data-color="#ffffff"></div>
+  <div class="sep"></div>
+  <button title="撤销" id="undoBtn">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h7a4 4 0 010 8H8"/><polyline points="5,3 3,6 5,9"/></svg>
+  </button>
+  <div class="sep"></div>
+  <button title="下载保存" id="downloadBtn">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v9M4 8l4 3 4-3"/><line x1="3" y1="13" x2="13" y2="13"/></svg>
+  </button>
+  <button title="复制到剪贴板" id="copyBtn">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="9" height="9" rx="1"/><path d="M3 11V3a1 1 0 011-1h8"/></svg>
+  </button>
+  <div class="sep"></div>
+  <button title="贴图" id="pinBtn">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 2l4 4-8 8H2v-4z"/></svg>
+  </button>
+  <button title="取消" id="cancelBtn">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+  </button>
+  <div class="hint">左键确认 · 右键取消</div>
+</div>
+<script>
+const { ipcRenderer, desktopCapturer, screen: electronScreen, clipboard, nativeImage } = require('electron')
+const { execFile } = require('child_process')
+const os = require('os')
+const fs = require('fs')
+const path = require('path')
+
+let startX = 0, startY = 0
+let state = 'idle'
+let selectedRegion = null
+let screenSourceId = ''
+let screenW = 0, screenH = 0
+let detectedWindows = []
+let hoveredWindow = null
+let selectorSelfBounds = null
+
+// Drawing state
+let currentTool = null
+let drawColor = '#ff0000'
+let drawWidth = 3
+let isDrawing = false
+let strokes = []
+let undoneStrokes = []
+let currentStroke = null
+let screenshotImg = null
+
+const bgCanvas = document.getElementById('bg')
+const bgCtx = bgCanvas.getContext('2d')
+const windowFrame = document.getElementById('windowFrame')
+const windowLabel = document.getElementById('windowLabel')
+const rectEl = document.getElementById('rect')
+const sizeEl = document.getElementById('size')
+const hintEl = document.getElementById('hint')
+const toolbarEl = document.getElementById('toolbar')
+const drawCanvas = document.getElementById('drawCanvas')
+const drawCtx = drawCanvas.getContext('2d')
+
+// === Init & window detection ===
+async function init() {
+  const primaryDisplay = electronScreen.getPrimaryDisplay()
+  const { width, height } = primaryDisplay.workAreaSize
+  screenW = width
+  screenH = height
+  bgCanvas.width = width
+  bgCanvas.height = height
+  bgCanvas.style.width = width + 'px'
+  bgCanvas.style.height = height + 'px'
+
+  await detectWindows()
+
+  if (selectorSelfBounds) {
+    const selfWin = {
+      x: selectorSelfBounds.x,
+      y: selectorSelfBounds.y,
+      width: selectorSelfBounds.width,
+      height: selectorSelfBounds.height,
+      name: '截图选择',
+    }
+    showWindowFrame(selfWin)
+    hoveredWindow = selfWin
+  }
+}
+
+async function detectWindows() {
+  const display = electronScreen.getPrimaryDisplay()
+  const scale = display.scaleFactor
+
+  const script = `
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public class WH {
+  [DllImport("user32.dll")]
+  public static extern bool GetWindowRect(IntPtr h, out int L, out int T, out int R, out int B);
+  [DllImport("user32.dll")]
+  public static extern bool IsWindowVisible(IntPtr h);
+}
+'@
+$myPid = [int]$args[0]
+$results = @()
+Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and $_.Id -ne $myPid } | ForEach-Object {
+  $h = $_.MainWindowHandle
+  $L = 0; $T = 0; $R = 0; $B = 0
+  if ([WH]::IsWindowVisible($h) -and [WH]::GetWindowRect($h, [ref]$L, [ref]$T, [ref]$R, [ref]$B)) {
+    $w = $R - $L; $ht = $B - $T
+    if ($w -gt 40 -and $ht -gt 40) {
+      $title = $_.MainWindowTitle
+      if ($title) { $title = $title.Replace('"', '""') } else { $title = '' }
+      $results += '{"x":' + $L + ',"y":' + $T + ',"w":' + $w + ',"h":' + $ht + ',"n":"' + $title + '","p":' + $_.Id + '}'
+    }
+  }
+}
+'[' + ($results -join ',') + ']'
+`
+
+  return new Promise((resolve) => {
+    const tmpFile = path.join(os.tmpdir(), 'screenshot-detect.ps1')
+    fs.writeFileSync(tmpFile, script, 'utf8')
+    execFile('powershell', ['-NoProfile', '-NonInteractive', '-File', tmpFile, String(process.pid)], { timeout: 5000 }, (error, stdout) => {
+      try { fs.unlinkSync(tmpFile) } catch {}
+      console.log('[detectWindows] error:', error, 'stdout length:', stdout?.length, 'stdout:', stdout?.trim().slice(0, 200))
+      if (error || !stdout || !stdout.trim()) { resolve([]); return }
+      try {
+        const wins = JSON.parse(stdout.trim())
+        console.log('[detectWindows] parsed windows:', wins.length)
+        detectedWindows = wins
+          .map(w => ({
+            x: w.x,
+            y: w.y,
+            width: w.w,
+            height: w.h,
+            name: w.n || '',
+          }))
+          .filter(w => w.width > 40 && w.height > 40)
+          .filter(w => !(w.width >= screenW - 10 && w.height >= screenH - 10))
+          .filter(w => w.x + w.width > 0 && w.y + w.height > 0)
+          .filter(w => w.x < screenW && w.y < screenH)
+          .sort((a, b) => (a.width * a.height) - (b.width * b.height))
+        console.log('[detectWindows] filtered windows:', detectedWindows.length)
+      } catch (parseErr) {
+        console.error('[detectWindows] parse error:', parseErr)
+        detectedWindows = []
+      }
+      resolve()
+    })
+  })
+}
+
+function findWindowAt(mx, my) {
+  for (const win of detectedWindows) {
+    if (mx >= win.x && mx <= win.x + win.width &&
+        my >= win.y && my <= win.y + win.height) {
+      return win
+    }
+  }
+  return null
+}
+
+function showWindowFrame(win) {
+  windowFrame.style.left = win.x + 'px'
+  windowFrame.style.top = win.y + 'px'
+  windowFrame.style.width = win.width + 'px'
+  windowFrame.style.height = win.height + 'px'
+  windowFrame.style.display = 'block'
+  windowLabel.textContent = win.name
+}
+
+function hideWindowFrame() {
+  windowFrame.style.display = 'none'
+}
+
+// === Drawing canvas & annotation ===
+
+function initDrawCanvas(region) {
+  drawCanvas.width = region.width
+  drawCanvas.height = region.height
+  drawCanvas.style.left = region.x + 'px'
+  drawCanvas.style.top = region.y + 'px'
+  drawCanvas.style.display = 'block'
+
+  console.log('[initDrawCanvas] region:', region, 'bgCanvas size:', bgCanvas.width, 'x', bgCanvas.height)
+
+  strokes = []
+  undoneStrokes = []
+  currentStroke = null
+  isDrawing = false
+  currentTool = null
+  toolbarEl.querySelectorAll('button[data-tool]').forEach(b => b.classList.remove('active'))
+  drawCanvas.style.cursor = 'default'
+  redrawCanvas()
+}
+
+function redrawCanvas() {
+  drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height)
+  if (selectedRegion) {
+    drawCtx.drawImage(bgCanvas, selectedRegion.x, selectedRegion.y, selectedRegion.width, selectedRegion.height, 0, 0, drawCanvas.width, drawCanvas.height)
+  }
+  for (const s of strokes) renderStroke(drawCtx, s)
+  if (currentStroke) renderStroke(drawCtx, currentStroke)
+}
+
+function renderStroke(ctx, s) {
+  ctx.save()
+  ctx.strokeStyle = s.color
+  ctx.fillStyle = s.color
+  ctx.lineWidth = s.width
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+
+  switch (s.tool) {
+    case 'pen':
+      if (s.points.length < 2) break
+      ctx.beginPath()
+      ctx.moveTo(s.points[0].x, s.points[0].y)
+      for (let i = 1; i < s.points.length; i++) ctx.lineTo(s.points[i].x, s.points[i].y)
+      ctx.stroke()
+      break
+
+    case 'rect':
+      ctx.strokeRect(s.x, s.y, s.w, s.h)
+      break
+
+    case 'ellipse': {
+      const cx = s.x + s.w / 2, cy = s.y + s.h / 2
+      const rx = Math.max(1, Math.abs(s.w / 2)), ry = Math.max(1, Math.abs(s.h / 2))
+      ctx.beginPath()
+      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
+      ctx.stroke()
+      break
+    }
+
+    case 'arrow':
+      ctx.beginPath()
+      ctx.moveTo(s.x1, s.y1)
+      ctx.lineTo(s.x2, s.y2)
+      ctx.stroke()
+      const angle = Math.atan2(s.y2 - s.y1, s.x2 - s.x1)
+      const headLen = Math.max(12, s.width * 4)
+      ctx.beginPath()
+      ctx.moveTo(s.x2, s.y2)
+      ctx.lineTo(s.x2 - headLen * Math.cos(angle - Math.PI / 6), s.y2 - headLen * Math.sin(angle - Math.PI / 6))
+      ctx.lineTo(s.x2 - headLen * Math.cos(angle + Math.PI / 6), s.y2 - headLen * Math.sin(angle + Math.PI / 6))
+      ctx.closePath()
+      ctx.fill()
+      break
+
+    case 'mosaic': {
+      const bs = 10
+      for (const pt of s.points) {
+        const bx = Math.floor(pt.x / bs) * bs
+        const by = Math.floor(pt.y / bs) * bs
+        // Sample average color from screenshot
+        if (screenshotImg && screenshotImg.complete) {
+          const tmpC = document.createElement('canvas')
+          tmpC.width = bs; tmpC.height = bs
+          const tmpCtx2 = tmpC.getContext('2d')
+          tmpCtx2.drawImage(bgCanvas, selectedRegion.x + bx, selectedRegion.y + by, bs, bs, 0, 0, bs, bs)
+          try {
+            const px = tmpCtx2.getImageData(0, 0, bs, bs).data
+            let r = 0, g = 0, b = 0, cnt = 0
+            for (let i = 0; i < px.length; i += 4) { r += px[i]; g += px[i+1]; b += px[i+2]; cnt++ }
+            ctx.fillStyle = `rgb(${Math.round(r/cnt)},${Math.round(g/cnt)},${Math.round(b/cnt)})`
+          } catch { ctx.fillStyle = s.color }
+        } else { ctx.fillStyle = s.color }
+        ctx.fillRect(bx, by, bs, bs)
+      }
+      break
+    }
+
+    case 'text':
+      ctx.font = `${s.fontSize || 16}px "Segoe UI", system-ui, sans-serif`
+      ctx.fillText(s.text || '', s.x, s.y)
+      break
+  }
+  ctx.restore()
+}
+
+async function confirmPin() {
+  if (strokes.length === 0) {
+    ipcRenderer.send('screenshot-region-selected', {
+      x: selectedRegion.x,
+      y: selectedRegion.y,
+      width: selectedRegion.width,
+      height: selectedRegion.height,
+      sourceId: screenSourceId,
+    })
+    return
+  }
+
+  // 隐藏 UI 元素，避免截屏时包含标注和边框
+  drawCanvas.style.display = 'none'
+  windowFrame.style.display = 'none'
+  toolbarEl.style.display = 'none'
+  await new Promise(r => setTimeout(r, 100))
+
+  const result = await ipcRenderer.invoke('capture-region', selectedRegion)
+
+  // 恢复 UI
+  drawCanvas.style.display = 'block'
+  toolbarEl.style.display = 'flex'
+
+  if (!result) return
+
+  const img = new Image()
+  img.onload = () => {
+    drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height)
+    drawCtx.drawImage(img, 0, 0, drawCanvas.width, drawCanvas.height)
+    for (const s of strokes) renderStroke(drawCtx, s)
+    ipcRenderer.send('screenshot-annotated', {
+      dataUrl: drawCanvas.toDataURL('image/png'),
+      regionX: selectedRegion.x,
+      regionY: selectedRegion.y,
+      regionW: selectedRegion.width,
+      regionH: selectedRegion.height,
+    })
+  }
+  img.src = result.dataUrl
+}
+
+// === Draw canvas mouse events ===
+
+drawCanvas.addEventListener('mousedown', (e) => {
+  if (state !== 'selected') return
+  e.stopPropagation()
+
+  if (!currentTool) {
+    confirmPin()
+    return
+  }
+
+  isDrawing = true
+  const r = drawCanvas.getBoundingClientRect()
+  const x = e.clientX - r.left
+  const y = e.clientY - r.top
+
+  if (currentTool === 'text') {
+    isDrawing = false
+    const text = prompt('输入文字:')
+    if (text) {
+      strokes.push({ tool: 'text', x, y, text, color: drawColor, width: drawWidth, fontSize: 16 })
+      undoneStrokes = []
+      redrawCanvas()
+    }
+    return
+  }
+
+  switch (currentTool) {
+    case 'pen':
+    case 'mosaic':
+      currentStroke = { tool: currentTool, points: [{ x, y }], color: drawColor, width: drawWidth }
+      break
+    case 'rect':
+    case 'ellipse':
+      currentStroke = { tool: currentTool, x, y, w: 0, h: 0, color: drawColor, width: drawWidth }
+      break
+    case 'arrow':
+      currentStroke = { tool: 'arrow', x1: x, y1: y, x2: x, y2: y, color: drawColor, width: drawWidth }
+      break
+  }
+  undoneStrokes = []
+})
+
+drawCanvas.addEventListener('mousemove', (e) => {
+  if (!isDrawing || !currentStroke) return
+  const r = drawCanvas.getBoundingClientRect()
+  const x = e.clientX - r.left
+  const y = e.clientY - r.top
+
+  switch (currentStroke.tool) {
+    case 'pen':
+    case 'mosaic':
+      currentStroke.points.push({ x, y })
+      break
+    case 'rect':
+    case 'ellipse':
+      currentStroke.w = x - currentStroke.x
+      currentStroke.h = y - currentStroke.y
+      break
+    case 'arrow':
+      currentStroke.x2 = x
+      currentStroke.y2 = y
+      break
+  }
+  redrawCanvas()
+})
+
+drawCanvas.addEventListener('mouseup', () => {
+  if (!isDrawing || !currentStroke) return
+  isDrawing = false
+  strokes.push(currentStroke)
+  currentStroke = null
+  redrawCanvas()
+})
+
+drawCanvas.addEventListener('mouseleave', () => {
+  if (isDrawing && currentStroke) {
+    isDrawing = false
+    strokes.push(currentStroke)
+    currentStroke = null
+    redrawCanvas()
+  }
+})
+
+// === Toolbar button handlers ===
+
+// Tool buttons
+toolbarEl.querySelectorAll('button[data-tool]').forEach(btn => {
+  btn.addEventListener('mousedown', (e) => {
+    e.stopPropagation()
+    const tool = btn.dataset.tool
+    if (currentTool === tool) {
+      currentTool = null
+      btn.classList.remove('active')
+      drawCanvas.style.cursor = 'default'
+    } else {
+      currentTool = tool
+      toolbarEl.querySelectorAll('button[data-tool]').forEach(b => b.classList.remove('active'))
+      btn.classList.add('active')
+      drawCanvas.style.cursor = tool === 'text' ? 'text' : 'crosshair'
+    }
+  })
+})
+
+// Color dots
+toolbarEl.querySelectorAll('.color-dot').forEach(dot => {
+  dot.addEventListener('mousedown', (e) => {
+    e.stopPropagation()
+    drawColor = dot.dataset.color
+    toolbarEl.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'))
+    dot.classList.add('active')
+  })
+})
+
+// Undo
+document.getElementById('undoBtn').addEventListener('mousedown', (e) => {
+  e.stopPropagation()
+  if (strokes.length > 0) {
+    undoneStrokes.push(strokes.pop())
+    redrawCanvas()
+  }
+})
+
+// Download
+document.getElementById('downloadBtn').addEventListener('mousedown', (e) => {
+  e.stopPropagation()
+  redrawCanvas()
+  ipcRenderer.send('save-screenshot-data', drawCanvas.toDataURL('image/png'))
+})
+
+// Copy
+document.getElementById('copyBtn').addEventListener('mousedown', (e) => {
+  e.stopPropagation()
+  try {
+    redrawCanvas()
+    clipboard.writeImage(nativeImage.createFromDataURL(drawCanvas.toDataURL('image/png')))
+  } catch (err) {
+    console.error('Copy failed:', err)
+  }
+})
+
+// Pin
+document.getElementById('pinBtn').addEventListener('mousedown', (e) => {
+  e.stopPropagation()
+  confirmPin()
+})
+
+// Cancel
+document.getElementById('cancelBtn').addEventListener('mousedown', (e) => {
+  e.stopPropagation()
+  ipcRenderer.send('screenshot-cancelled')
+})
+
+// === Toolbar show/hide ===
+
+function showToolbar(region) {
+  let tbX = region.x + region.width / 2
+  let tbY = region.y + region.height + 8
+  if (tbY + 44 > screenH) tbY = region.y - 52
+  toolbarEl.style.left = tbX + 'px'
+  toolbarEl.style.top = tbY + 'px'
+  toolbarEl.style.display = 'flex'
+  rectEl.style.display = 'none'
+  sizeEl.style.display = 'none'
+  initDrawCanvas(region)
+  document.body.style.cursor = 'default'
+}
+
+function hideToolbar() {
+  toolbarEl.style.display = 'none'
+  drawCanvas.style.display = 'none'
+  document.body.style.cursor = 'crosshair'
+}
+
+// === Selection event handlers ===
+
+document.addEventListener('mousedown', (e) => {
+  if (e.button === 2) {
+    ipcRenderer.send('screenshot-cancelled')
+    return
+  }
+  if (state === 'selected') {
+    if (e.button === 0 && !toolbarEl.contains(e.target) && e.target !== drawCanvas) {
+      confirmPin()
+    }
+    return
+  }
+  startX = e.screenX
+  startY = e.screenY
+  state = 'dragging'
+  hintEl.style.opacity = '0'
+})
+
+document.addEventListener('mousemove', (e) => {
+  if (state === 'dragging') {
+    const x = Math.min(startX, e.screenX)
+    const y = Math.min(startY, e.screenY)
+    const w = Math.abs(e.screenX - startX)
+    const h = Math.abs(e.screenY - startY)
+
+    rectEl.style.left = x + 'px'
+    rectEl.style.top = y + 'px'
+    rectEl.style.width = w + 'px'
+    rectEl.style.height = h + 'px'
+    rectEl.style.display = 'block'
+    hideWindowFrame()
+
+    sizeEl.textContent = Math.round(w) + ' × ' + Math.round(h)
+    sizeEl.style.left = (x + w / 2 - 30) + 'px'
+    sizeEl.style.top = (y + h + 8) + 'px'
+    sizeEl.style.display = 'block'
+  } else if (state === 'idle') {
+    const win = findWindowAt(e.screenX, e.screenY)
+    if (win) {
+      hoveredWindow = win
+      showWindowFrame(win)
+    } else {
+      hoveredWindow = null
+      hideWindowFrame()
+    }
+  }
+})
+
+document.addEventListener('mouseup', (e) => {
+  if (state !== 'dragging') return
+  state = 'idle'
+
+  const w = Math.abs(e.screenX - startX)
+  const h = Math.abs(e.screenY - startY)
+
+  if (w > 10 && h > 10) {
+    selectedRegion = { x: Math.min(startX, e.screenX), y: Math.min(startY, e.screenY), width: w, height: h }
+    state = 'selected'
+    showToolbar(selectedRegion)
+  } else if (hoveredWindow) {
+    selectedRegion = { x: hoveredWindow.x, y: hoveredWindow.y, width: hoveredWindow.width, height: hoveredWindow.height }
+    state = 'selected'
+    showToolbar(selectedRegion)
+  }
+})
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    ipcRenderer.send('screenshot-cancelled')
+  }
+  if (state === 'selected' && (e.ctrlKey || e.metaKey) && e.key === 'z') {
+    e.preventDefault()
+    if (strokes.length > 0) {
+      undoneStrokes.push(strokes.pop())
+      redrawCanvas()
+    }
+  }
+})
+
+document.addEventListener('contextmenu', (e) => {
+  e.preventDefault()
+})
+
+ipcRenderer.on('screenshot-selector-info', (_e, bounds) => {
+  selectorSelfBounds = bounds
+})
+
+init()
+</script>
+</body>
+</html>
