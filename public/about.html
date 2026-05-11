@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>关于 - 二支录制</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+        background: #eaeaec;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        user-select: none;
+        overflow: hidden;
+      }
+
+      /* 标题栏 */
+      .titlebar {
+        height: 32px;
+        background: linear-gradient(180deg, #f2f2f4 0%, #e8e8ec 100%);
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        border-bottom: 1px solid #d4d4d8;
+        flex-shrink: 0;
+        -webkit-app-region: drag;
+      }
+      .titlebar-btn {
+        width: 46px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        background: transparent;
+        color: #666;
+        cursor: pointer;
+        -webkit-app-region: no-drag;
+        transition: background 0.15s;
+      }
+      .titlebar-btn:hover {
+        background: rgba(0, 0, 0, 0.06);
+      }
+      .titlebar-btn.close:hover {
+        background: #e94560;
+        color: #fff;
+      }
+
+      /* 内容 */
+      .about {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+      }
+
+      /* 图标 */
+      .app-icon {
+        width: 72px;
+        height: 72px;
+        border-radius: 18px;
+        margin-bottom: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+      }
+      .app-name {
+        font-size: 24px;
+        font-weight: 700;
+        color: #1a1a2e;
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+        letter-spacing: 1px;
+      }
+      .app-version {
+        font-size: 12px;
+        color: #999;
+        font-weight: 500;
+        margin-bottom: 18px;
+      }
+      .divider {
+        width: 36px;
+        height: 1.5px;
+        background: linear-gradient(90deg, transparent, #ccc, transparent);
+        border-radius: 1px;
+        margin-bottom: 14px;
+      }
+      .dev-label {
+        font-size: 10px;
+        color: #aaa;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      .dev-name {
+        font-size: 16px;
+        font-weight: 600;
+        color: #2a2a3e;
+        margin-bottom: 22px;
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+      }
+
+      /* 3D 按钮 - 与主界面 source-btn 一致 */
+      .update-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 22px;
+        background: linear-gradient(135deg, #ffffff 0%, #e8e8f0 100%);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        border-top-color: rgba(255, 255, 255, 0.9);
+        border-left-color: rgba(255, 255, 255, 0.85);
+        border-right-color: rgba(200, 200, 210, 0.4);
+        border-bottom-color: rgba(190, 190, 200, 0.5);
+        border-radius: 14px;
+        color: #1a1a2e;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 500;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow:
+          4px 4px 12px rgba(0, 0, 0, 0.1),
+          1px 1px 3px rgba(0, 0, 0, 0.06),
+          inset 1px 1px 2px rgba(255, 255, 255, 0.9),
+          inset -1px -1px 0 rgba(0, 0, 0, 0.04);
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+        -webkit-app-region: no-drag;
+      }
+      .update-btn:hover {
+        background: linear-gradient(135deg, #ffffff 0%, #ededf4 100%);
+        border-top-color: rgba(255, 255, 255, 0.95);
+        border-left-color: rgba(255, 255, 255, 0.9);
+        box-shadow:
+          6px 6px 18px rgba(0, 0, 0, 0.12),
+          2px 2px 5px rgba(0, 0, 0, 0.08),
+          inset 1px 1px 2px rgba(255, 255, 255, 0.95),
+          inset -1px -1px 0 rgba(0, 0, 0, 0.03);
+        transform: translate(-1px, -1px);
+      }
+      .update-btn:active {
+        background: linear-gradient(135deg, #ebebf0 0%, #dedee6 100%);
+        border-color: rgba(175, 175, 190, 0.5);
+        border-top-color: rgba(190, 190, 205, 0.6);
+        border-left-color: rgba(185, 185, 200, 0.55);
+        border-right-color: rgba(160, 160, 175, 0.45);
+        border-bottom-color: rgba(155, 155, 170, 0.5);
+        box-shadow:
+          inset 3px 3px 8px rgba(0, 0, 0, 0.15),
+          inset 1px 1px 3px rgba(0, 0, 0, 0.1),
+          inset -1px -1px 1px rgba(255, 255, 255, 0.2);
+        transform: translate(1px, 1px);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="titlebar">
+      <button class="titlebar-btn close" id="closeBtn" title="关闭">
+        <svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1.5"/><line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" stroke-width="1.5"/></svg>
+      </button>
+    </div>
+    <div class="about">
+      <div class="app-icon">
+        <img src="logo.ico" width="48" height="48" alt="二支录制" />
+      </div>
+      <div class="app-name">二支录制</div>
+      <div class="app-version">v1.0.0</div>
+      <div class="divider"></div>
+      <div class="dev-label">开发者</div>
+      <div class="dev-name">钞人本仁</div>
+      <button class="update-btn" id="updateBtn">检查更新</button>
+    </div>
+    <script>
+      document.getElementById('closeBtn').addEventListener('click', () => {
+        window.electronAPI.closeAboutWindow()
+      })
+      document.getElementById('updateBtn').addEventListener('click', function() {
+        window.electronAPI.openExternal('https://github.com/CKKLIN/screen-capture---texture-tool/releases')
+      })
+    </script>
+  </body>
+</html>

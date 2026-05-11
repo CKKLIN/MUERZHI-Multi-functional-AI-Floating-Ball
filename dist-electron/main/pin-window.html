@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  user-select: none;
+  background: transparent;
+}
+.container {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.glow-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 15;
+  pointer-events: none;
+}
+.screenshot-img {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+  background: transparent;
+  border-radius: 2px;
+}
+.drag-area {
+  position: absolute;
+  z-index: 2;
+  cursor: grab;
+  border-radius: 2px;
+}
+.drag-area.no-drag {
+  cursor: crosshair;
+}
+.draw-canvas {
+  position: absolute;
+  z-index: 10;
+  cursor: crosshair;
+  display: none;
+  -webkit-app-region: no-drag;
+}
+.draw-canvas.active { display: block; }
+.resize-handle {
+  position: absolute;
+  z-index: 5;
+  -webkit-app-region: no-drag;
+}
+.resize-handle.se { right: 0; bottom: 0; width: 16px; height: 16px; cursor: se-resize; }
+.resize-handle.e { right: 0; top: 0; bottom: 0; width: 6px; cursor: e-resize; }
+.resize-handle.s { bottom: 0; left: 0; right: 0; height: 6px; cursor: s-resize; }
+.resize-handle.sw { left: 0; bottom: 0; width: 16px; height: 16px; cursor: sw-resize; }
+.resize-handle.n { top: 0; left: 0; right: 0; height: 6px; cursor: n-resize; }
+.resize-handle.w { left: 0; top: 0; bottom: 0; width: 6px; cursor: w-resize; }
+.resize-handle.ne { right: 0; top: 0; width: 16px; height: 16px; cursor: ne-resize; }
+.resize-handle.nw { left: 0; top: 0; width: 16px; height: 16px; cursor: nw-resize; }
+.toolbar {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  align-items: center;
+  gap: 1px;
+  padding: 5px 8px;
+  background: rgba(30, 30, 30, 0.95);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px;
+  z-index: 20;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
+.toolbar.visible { display: flex; }
+.toolbar button {
+  width: 30px; height: 30px;
+  border: none; background: transparent;
+  color: rgba(255,255,255,0.85);
+  border-radius: 5px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.toolbar button:hover { background: rgba(255,255,255,0.12); color: #fff; }
+.toolbar button.active { background: rgba(255,255,255,0.2); color: #fff; }
+.toolbar .sep { width: 1px; height: 20px; background: rgba(255,255,255,0.15); margin: 0 4px; flex-shrink: 0; }
+.color-dot {
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  flex-shrink: 0;
+  transition: border-color 0.15s;
+}
+.color-dot:hover { border-color: rgba(255,255,255,0.5); }
+.color-dot.active { border-color: #fff; }
+</style>
+</head>
+<body>
+<div class="container" id="container">
+  <img class="screenshot-img" id="img" />
+  <div class="drag-area" id="dragArea"></div>
+  <canvas class="draw-canvas" id="drawCanvas"></canvas>
+  <div class="resize-handle nw"></div>
+  <div class="resize-handle n"></div>
+  <div class="resize-handle ne"></div>
+  <div class="resize-handle w"></div>
+  <div class="resize-handle e"></div>
+  <div class="resize-handle sw"></div>
+  <div class="resize-handle s"></div>
+  <div class="resize-handle se"></div>
+  <canvas class="glow-canvas" id="glowCanvas"></canvas>
+  <div class="toolbar" id="toolbar">
+    <button title="矩形" data-tool="rect">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="10" rx="1"/></svg>
+    </button>
+    <button title="圆形" data-tool="ellipse">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="8" cy="8" rx="6" ry="5"/></svg>
+    </button>
+    <button title="箭头" data-tool="arrow">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="2" y1="14" x2="14" y2="2"/><polyline points="8,2 14,2 14,8"/></svg>
+    </button>
+    <button title="画笔" data-tool="pen">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L5 13 2 14 3 11z"/></svg>
+    </button>
+    <button title="文字" data-tool="text">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="5" y1="3" x2="11" y2="3"/><line x1="8" y1="3" x2="8" y2="14"/></svg>
+    </button>
+    <button title="马赛克" data-tool="mosaic">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1"><rect x="1" y="1" width="6" height="6" fill="currentColor" opacity="0.5"/><rect x="9" y="1" width="6" height="6" fill="currentColor" opacity="0.3"/><rect x="1" y="9" width="6" height="6" fill="currentColor" opacity="0.3"/><rect x="9" y="9" width="6" height="6" fill="currentColor" opacity="0.5"/></svg>
+    </button>
+    <div class="sep"></div>
+    <div class="color-dot active" style="background:#ff0000" data-color="#ff0000"></div>
+    <div class="color-dot" style="background:#ffff00" data-color="#ffff00"></div>
+    <div class="color-dot" style="background:#00cc00" data-color="#00cc00"></div>
+    <div class="color-dot" style="background:#00bfff" data-color="#00bfff"></div>
+    <div class="color-dot" style="background:#ffffff" data-color="#ffffff"></div>
+    <div class="sep"></div>
+    <button title="撤销" id="undoBtn">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h7a4 4 0 010 8H8"/><polyline points="5,3 3,6 5,9"/></svg>
+    </button>
+    <div class="sep"></div>
+    <button title="保存" id="saveBtn">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v9M4 8l4 3 4-3"/><line x1="3" y1="13" x2="13" y2="13"/></svg>
+    </button>
+    <button title="复制" id="copyBtn">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="9" height="9" rx="1"/><path d="M3 11V3a1 1 0 011-1h8"/></svg>
+    </button>
+    <div class="sep"></div>
+    <button title="关闭" id="closeBtn">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+    </button>
+  </div>
+</div>
+<script>
+const { ipcRenderer, clipboard, nativeImage } = require('electron')
+let pinId = ''
+let isDrawMode = false
+let isResizing = false
+let strokes = []
+let undoneStrokes = []
+let currentStroke = null
+let currentTool = null
+let drawColor = '#ff0000'
+let drawWidth = 3
+let glowPad = 12
+let toolbarVisible = false
+const TOOLBAR_EXTRA = 50
+
+const imgEl = document.getElementById('img')
+const dragArea = document.getElementById('dragArea')
+const canvas = document.getElementById('drawCanvas')
+const ctx = canvas.getContext('2d')
+const glowCanvas = document.getElementById('glowCanvas')
+const glowCtx = glowCanvas.getContext('2d')
+const toolbarEl = document.getElementById('toolbar')
+
+function updateLayout() {
+  const dispW = window.innerWidth
+  const dispH = window.innerHeight
+  const tbOffset = toolbarVisible ? TOOLBAR_EXTRA : 0
+  const imgAreaW = dispW - glowPad * 2
+  const imgAreaH = dispH - glowPad * 2 - tbOffset
+  const imgTop = glowPad + tbOffset
+
+  imgEl.style.left = glowPad + 'px'
+  imgEl.style.top = imgTop + 'px'
+  imgEl.style.width = imgAreaW + 'px'
+  imgEl.style.height = imgAreaH + 'px'
+
+  dragArea.style.left = glowPad + 'px'
+  dragArea.style.top = imgTop + 'px'
+  dragArea.style.width = imgAreaW + 'px'
+  dragArea.style.height = imgAreaH + 'px'
+
+  canvas.style.left = glowPad + 'px'
+  canvas.style.top = imgTop + 'px'
+  canvas.style.width = imgAreaW + 'px'
+  canvas.style.height = imgAreaH + 'px'
+
+  toolbarEl.style.top = glowPad + 'px'
+  toolbarEl.classList.toggle('visible', toolbarVisible)
+
+  glowCanvas.width = dispW
+  glowCanvas.height = dispH
+  drawGlow()
+}
+
+function drawGlow() {
+  const w = glowCanvas.width
+  const h = glowCanvas.height
+  const p = glowPad
+  glowCtx.clearRect(0, 0, w, h)
+  const c = '78, 205, 196'
+  const a = 0.7
+
+  function linearFill(x, y, gw, gh, x0, y0, x1, y1) {
+    const g = glowCtx.createLinearGradient(x0, y0, x1, y1)
+    g.addColorStop(0, `rgba(${c}, ${a})`)
+    g.addColorStop(1, `rgba(${c}, 0)`)
+    glowCtx.fillStyle = g
+    glowCtx.fillRect(x, y, gw, gh)
+  }
+
+  function cornerFill(cx, cy, sx, sy, ex, ey) {
+    const g = glowCtx.createRadialGradient(cx, cy, 0, cx, cy, p)
+    g.addColorStop(0, `rgba(${c}, ${a})`)
+    g.addColorStop(1, `rgba(${c}, 0)`)
+    glowCtx.fillStyle = g
+    glowCtx.fillRect(sx, sy, ex - sx, ey - sy)
+  }
+
+  linearFill(p, 0, w - p * 2, p, 0, p, 0, 0)
+  linearFill(p, h - p, w - p * 2, p, 0, h - p, 0, h)
+  linearFill(0, p, p, h - p * 2, p, 0, 0, 0)
+  linearFill(w - p, p, p, h - p * 2, w - p, 0, w, 0)
+
+  cornerFill(p, p, 0, 0, p, p)
+  cornerFill(w - p, p, w - p, 0, w, p)
+  cornerFill(p, h - p, 0, h - p, p, h)
+  cornerFill(w - p, h - p, w - p, h - p, w, h)
+}
+
+function redrawCanvas() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  for (const s of strokes) renderStroke(ctx, s)
+  if (currentStroke) renderStroke(ctx, currentStroke)
+}
+
+function renderStroke(ctx, s) {
+  ctx.save()
+  ctx.strokeStyle = s.color
+  ctx.fillStyle = s.color
+  ctx.lineWidth = s.width
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+
+  switch (s.tool) {
+    case 'pen':
+      if (s.points.length < 2) break
+      ctx.beginPath()
+      ctx.moveTo(s.points[0].x, s.points[0].y)
+      for (let i = 1; i < s.points.length; i++) ctx.lineTo(s.points[i].x, s.points[i].y)
+      ctx.stroke()
+      break
+
+    case 'rect':
+      ctx.strokeRect(s.x, s.y, s.w, s.h)
+      break
+
+    case 'ellipse': {
+      const cx = s.x + s.w / 2, cy = s.y + s.h / 2
+      const rx = Math.max(1, Math.abs(s.w / 2)), ry = Math.max(1, Math.abs(s.h / 2))
+      ctx.beginPath()
+      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
+      ctx.stroke()
+      break
+    }
+
+    case 'arrow':
+      ctx.beginPath()
+      ctx.moveTo(s.x1, s.y1)
+      ctx.lineTo(s.x2, s.y2)
+      ctx.stroke()
+      const angle = Math.atan2(s.y2 - s.y1, s.x2 - s.x1)
+      const headLen = Math.max(12, s.width * 4)
+      ctx.beginPath()
+      ctx.moveTo(s.x2, s.y2)
+      ctx.lineTo(s.x2 - headLen * Math.cos(angle - Math.PI / 6), s.y2 - headLen * Math.sin(angle - Math.PI / 6))
+      ctx.lineTo(s.x2 - headLen * Math.cos(angle + Math.PI / 6), s.y2 - headLen * Math.sin(angle + Math.PI / 6))
+      ctx.closePath()
+      ctx.fill()
+      break
+
+    case 'mosaic': {
+      const bs = 10
+      for (const pt of s.points) {
+        const bx = Math.floor(pt.x / bs) * bs
+        const by = Math.floor(pt.y / bs) * bs
+        ctx.fillRect(bx, by, bs, bs)
+      }
+      break
+    }
+
+    case 'text':
+      ctx.font = `${s.fontSize || 16}px "Segoe UI", system-ui, sans-serif`
+      ctx.fillText(s.text || '', s.x, s.y)
+      break
+  }
+  ctx.restore()
+}
+
+function setTool(tool) {
+  if (currentTool === tool) {
+    currentTool = null
+    isDrawMode = false
+    canvas.classList.remove('active')
+    dragArea.classList.remove('no-drag')
+  } else {
+    currentTool = tool
+    isDrawMode = true
+    canvas.classList.add('active')
+    dragArea.classList.add('no-drag')
+  }
+  toolbarEl.querySelectorAll('button[data-tool]').forEach(b => {
+    b.classList.toggle('active', b.dataset.tool === currentTool)
+  })
+  canvas.style.cursor = currentTool === 'text' ? 'text' : 'crosshair'
+}
+
+function compositeAndGetDataUrl() {
+  const tmpC = document.createElement('canvas')
+  tmpC.width = canvas.width
+  tmpC.height = canvas.height
+  const tmpCtx = tmpC.getContext('2d')
+  tmpCtx.drawImage(imgEl, 0, 0, canvas.width, canvas.height)
+  for (const s of strokes) renderStroke(tmpCtx, s)
+  return tmpC.toDataURL('image/png')
+}
+
+// === Init ===
+
+ipcRenderer.on('pin-init', (e, { dataUrl, pinId: id, imgW, imgH, glowPad: pad }) => {
+  pinId = id
+  glowPad = pad
+  imgEl.src = dataUrl
+  imgEl.onload = () => {
+    canvas.width = imgEl.naturalWidth || imgW
+    canvas.height = imgEl.naturalHeight || imgH
+    updateLayout()
+  }
+})
+
+ipcRenderer.on('pin-toolbar-toggle', (_e, { visible }) => {
+  toolbarVisible = visible
+  updateLayout()
+  if (!visible && !currentTool) {
+    isDrawMode = false
+    canvas.classList.remove('active')
+    dragArea.classList.remove('no-drag')
+  }
+})
+
+// === Drag & Resize ===
+
+let isDragging = false
+let lastClickTime = 0
+
+dragArea.addEventListener('mousedown', (e) => {
+  if (isDrawMode) return
+  e.preventDefault()
+  ipcRenderer.send('pin-drag-start', { pinId })
+  isDragging = true
+})
+
+document.addEventListener('mouseup', () => {
+  if (isDragging) {
+    isDragging = false
+    ipcRenderer.send('pin-drag-end')
+  }
+  if (isResizing) {
+    isResizing = false
+    ipcRenderer.send('pin-resize-end')
+  }
+})
+
+document.addEventListener('click', () => {
+  if (isDragging) return
+  const now = Date.now()
+  if (now - lastClickTime < 400) {
+    ipcRenderer.send('pin-close', { pinId })
+    lastClickTime = 0
+    return
+  }
+  lastClickTime = now
+})
+
+document.querySelectorAll('.resize-handle').forEach(handle => {
+  handle.addEventListener('mousedown', (e) => {
+    let dir = ''
+    if (handle.classList.contains('se')) dir = 'se'
+    else if (handle.classList.contains('e')) dir = 'e'
+    else if (handle.classList.contains('s')) dir = 's'
+    else if (handle.classList.contains('sw')) dir = 'sw'
+    else if (handle.classList.contains('w')) dir = 'w'
+    else if (handle.classList.contains('nw')) dir = 'nw'
+    else if (handle.classList.contains('n')) dir = 'n'
+    else if (handle.classList.contains('ne')) dir = 'ne'
+    if (dir) {
+      isResizing = true
+      e.preventDefault()
+      e.stopPropagation()
+      ipcRenderer.send('pin-resize-start', { pinId, dir })
+    }
+  })
+})
+
+// === Toolbar buttons ===
+
+toolbarEl.querySelectorAll('button[data-tool]').forEach(btn => {
+  btn.addEventListener('mousedown', (e) => {
+    e.stopPropagation()
+    setTool(btn.dataset.tool)
+  })
+})
+
+toolbarEl.querySelectorAll('.color-dot').forEach(dot => {
+  dot.addEventListener('mousedown', (e) => {
+    e.stopPropagation()
+    drawColor = dot.dataset.color
+    toolbarEl.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'))
+    dot.classList.add('active')
+  })
+})
+
+document.getElementById('undoBtn').addEventListener('mousedown', (e) => {
+  e.stopPropagation()
+  if (strokes.length > 0) {
+    undoneStrokes.push(strokes.pop())
+    redrawCanvas()
+  }
+})
+
+document.getElementById('saveBtn').addEventListener('mousedown', (e) => {
+  e.stopPropagation()
+  ipcRenderer.send('pin-save-annotated', compositeAndGetDataUrl())
+})
+
+document.getElementById('copyBtn').addEventListener('mousedown', (e) => {
+  e.stopPropagation()
+  try {
+    clipboard.writeImage(nativeImage.createFromDataURL(compositeAndGetDataUrl()))
+  } catch (err) {
+    console.error('Copy failed:', err)
+  }
+})
+
+document.getElementById('closeBtn').addEventListener('mousedown', (e) => {
+  e.stopPropagation()
+  ipcRenderer.send('pin-close', { pinId })
+})
+
+// === Drawing ===
+
+canvas.addEventListener('mousedown', (e) => {
+  if (!isDrawMode || !currentTool) return
+  e.stopPropagation()
+  const rect = canvas.getBoundingClientRect()
+  const scaleX = canvas.width / rect.width
+  const scaleY = canvas.height / rect.height
+  const x = (e.clientX - rect.left) * scaleX
+  const y = (e.clientY - rect.top) * scaleY
+
+  if (currentTool === 'text') {
+    const text = prompt('输入文字:')
+    if (text) {
+      strokes.push({ tool: 'text', x, y, text, color: drawColor, width: drawWidth, fontSize: 16 })
+      undoneStrokes = []
+      redrawCanvas()
+    }
+    return
+  }
+
+  undoneStrokes = []
+
+  switch (currentTool) {
+    case 'pen':
+    case 'mosaic':
+      currentStroke = { tool: currentTool, points: [{ x, y }], color: drawColor, width: drawWidth }
+      break
+    case 'rect':
+    case 'ellipse':
+      currentStroke = { tool: currentTool, x, y, w: 0, h: 0, color: drawColor, width: drawWidth }
+      break
+    case 'arrow':
+      currentStroke = { tool: 'arrow', x1: x, y1: y, x2: x, y2: y, color: drawColor, width: drawWidth }
+      break
+  }
+})
+
+canvas.addEventListener('mousemove', (e) => {
+  if (!currentStroke) return
+  const rect = canvas.getBoundingClientRect()
+  const scaleX = canvas.width / rect.width
+  const scaleY = canvas.height / rect.height
+  const x = (e.clientX - rect.left) * scaleX
+  const y = (e.clientY - rect.top) * scaleY
+
+  switch (currentStroke.tool) {
+    case 'pen':
+    case 'mosaic':
+      currentStroke.points.push({ x, y })
+      break
+    case 'rect':
+    case 'ellipse':
+      currentStroke.w = x - currentStroke.x
+      currentStroke.h = y - currentStroke.y
+      break
+    case 'arrow':
+      currentStroke.x2 = x
+      currentStroke.y2 = y
+      break
+  }
+  redrawCanvas()
+})
+
+canvas.addEventListener('mouseup', () => {
+  if (!currentStroke) return
+  strokes.push(currentStroke)
+  currentStroke = null
+  redrawCanvas()
+})
+
+canvas.addEventListener('mouseleave', () => {
+  if (currentStroke) {
+    strokes.push(currentStroke)
+    currentStroke = null
+    redrawCanvas()
+  }
+})
+
+function closePin() {
+  ipcRenderer.send('pin-close', { pinId })
+}
+</script>
+</body>
+</html>
