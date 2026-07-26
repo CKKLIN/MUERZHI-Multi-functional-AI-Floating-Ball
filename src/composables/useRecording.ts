@@ -395,7 +395,7 @@ export function useRecording() {
 
     try {
       const now = new Date()
-      const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19)
+      const timestamp = now.toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19)
 
       if (multiRecorders.length > 0) {
         // === 多屏模式：保存各屏幕临时文件，然后用 ffmpeg 合并 ===
