@@ -29,6 +29,15 @@ const playingRecording = ref<Recording | null>(null)
 const conversionTarget = ref<'gif'>('gif')
 const convertingFile = ref('')
 
+// 悬浮球操作处理映射
+const floatingBallActions: Record<string, () => void> = {
+  fullscreen: () => handleFullscreen(),
+  region: () => handleSelectRegion(),
+  screenshot: () => handleScreenshot(),
+  settings: () => { activeTab.value = 'settings' },
+  record: () => { activeTab.value = 'record' },
+}
+
 // 多显示器下拉菜单
 const showScreenDropdown = ref(false)
 const screens = ref<{ id: number; label: string; isPrimary: boolean; sourceId: string | null; sourceName: string; thumbnail: string }[]>([])
@@ -242,6 +251,15 @@ async function handleSelectRegion() {
   }
 }
 
+// 截图：截取全屏保存到桌面
+async function handleScreenshot() {
+  try {
+    await window.electronAPI.takeScreenshot()
+  } catch (err: any) {
+    console.error('截图失败', err)
+  }
+}
+
 // 录制列表事件
 function handlePlayRecording(rec: Recording) {
   window.electronAPI.openPath(rec.filePath)
@@ -391,6 +409,16 @@ onMounted(() => {
     stopCamera()
     audio.cleanup()
     window.electronAPI.hideRegionBorder()
+    window.electronAPI.hideFloatingBall()
+  })
+
+  // 显示系统级悬浮球
+  window.electronAPI.showFloatingBall()
+
+  // 监听悬浮球操作
+  const cleanupBallAction = window.electronAPI.onFloatingBallAction((action: string) => {
+    const handler = floatingBallActions[action]
+    if (handler) handler()
   })
 
   // 定时将音频电平转发给工具栏窗口（仅在音频激活时）
@@ -402,6 +430,9 @@ onMounted(() => {
     )
   }, 50)
   onUnmounted(() => clearInterval(audioLevelInterval))
+
+  // 暴露清理函数供 onUnmounted 使用
+  onUnmounted(() => cleanupBallAction())
 })
 
 onUnmounted(() => {
@@ -412,6 +443,7 @@ onUnmounted(() => {
   cleanupBeforeQuit()
   audio.cleanup()
   window.electronAPI.hideFloatingIsland()
+  window.electronAPI.hideFloatingBall()
   recording.stop()
   stopCamera()
   window.electronAPI.hideRegionBorder()

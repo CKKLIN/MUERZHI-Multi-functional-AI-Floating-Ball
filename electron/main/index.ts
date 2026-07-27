@@ -6,6 +6,7 @@ import { setMainWindow } from './region-selector'
 import { registerGlobalShortcuts, unregisterGlobalShortcuts } from './global-shortcuts'
 import { createTray, destroyTray } from './tray'
 import { reportIP, retryPending } from './ip-reporter'
+import { showFloatingBall } from './floating-ball'
 
 declare const __dirname: string
 
@@ -38,10 +39,6 @@ function createWindow(preloadPath: string) {
       sandbox: false,
       backgroundThrottling: false,
     },
-  })
-
-  mainWindow.on('ready-to-show', () => {
-    mainWindow?.show()
   })
 
   if (VITE_DEV_SERVER_URL) {
@@ -83,6 +80,7 @@ app.whenReady().then(() => {
   setMainWindow(mainWindow!)
   createTray()
   registerGlobalShortcuts(mainWindow!)
+  showFloatingBall()
   reportIP()
 
   setInterval(retryPending, 30_000)

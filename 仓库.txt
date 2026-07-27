@@ -19,3 +19,28 @@
 	fetch = +refs/heads/*:refs/remotes/all/*
 	pushurl = https://github.com/CKKLIN/screen-capture---texture-tool.git
 	pushurl = https://gitee.com/ckklin/screen-capture---texture-tool.git
+
+-------------------------------------------------------
+
+[core]
+	repositoryformatversion = 0
+	filemode = false
+	bare = false
+	logallrefupdates = true
+	symlinks = false
+	ignorecase = true
+[remote "hub"]
+	url = git@github.com:CKKLIN/screen-capture---texture-tool.git
+	fetch = +refs/heads/*:refs/remotes/hub/*
+[branch "main"]
+	remote = all
+	merge = refs/heads/main
+[remote "ee"]
+	url = https://gitee.com/ckklin/screen-capture---texture-tool.git
+	fetch = +refs/heads/*:refs/remotes/ee/*
+[remote "all"]
+	url = git@github.com:CKKLIN/screen-capture---texture-tool.git
+	fetch = +refs/heads/*:refs/remotes/all/*
+	pushurl = git@github.com:CKKLIN/screen-capture---texture-tool.git
+	pushurl = https://gitee.com/ckklin/screen-capture---texture-tool.git
+

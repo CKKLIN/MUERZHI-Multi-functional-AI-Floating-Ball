@@ -7,6 +7,10 @@ function close() { window.electronAPI.closeWindow() }
 <template>
   <div class="layout">
     <div class="titlebar" style="-webkit-app-region: drag">
+      <div class="titlebar-brand" style="-webkit-app-region: drag">
+        <img class="titlebar-logo" src="/logo.png" alt="Logo" />
+        <span class="titlebar-title">MUERZHI</span>
+      </div>
       <div class="titlebar-controls" style="-webkit-app-region: no-drag">
         <button style="-webkit-app-region: no-drag" class="titlebar-btn" @click="minimize" title="最小化">
           <svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1.5"/></svg>
@@ -38,10 +42,30 @@ function close() { window.electronAPI.closeWindow() }
   background: var(--bg-hover);
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  padding: 0 0 0 0;
+  justify-content: space-between;
+  padding: 0 0 0 12px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+}
+
+.titlebar-brand {
+  display: flex;
+  align-items: center;
+  user-select: none;
+}
+
+.titlebar-logo {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.titlebar-title {
+  font-size: 13px;
+  /* font-weight: 700; */
+  color: var(--text-primary);
+  letter-spacing: 2px;
 }
 
 .titlebar-controls {

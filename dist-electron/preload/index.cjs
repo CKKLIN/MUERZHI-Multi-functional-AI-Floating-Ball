@@ -50,6 +50,7 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
 	getScreenScaleFactor: () => electron.ipcRenderer.invoke("get-screen-scale-factor"),
 	getScreenBounds: () => electron.ipcRenderer.invoke("get-screen-bounds"),
 	getAllDisplays: () => electron.ipcRenderer.invoke("get-all-displays"),
+	takeScreenshot: () => electron.ipcRenderer.invoke("take-screenshot"),
 	selectRegion: () => electron.ipcRenderer.invoke("select-region"),
 	showRegionBorder: (region, audioState) => electron.ipcRenderer.invoke("show-region-border", region, audioState),
 	hideRegionBorder: () => electron.ipcRenderer.invoke("hide-region-border"),
@@ -75,6 +76,14 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
 		})));
 	},
 	loadRecordings: () => electron.ipcRenderer.invoke("load-recordings"),
-	saveRecordings: (recordings) => electron.ipcRenderer.invoke("save-recordings", recordings)
+	saveRecordings: (recordings) => electron.ipcRenderer.invoke("save-recordings", recordings),
+	showFloatingBall: () => electron.ipcRenderer.invoke("show-floating-ball"),
+	hideFloatingBall: () => electron.ipcRenderer.invoke("hide-floating-ball"),
+	toggleFloatingBall: () => electron.ipcRenderer.invoke("toggle-floating-ball"),
+	onFloatingBallAction: (callback) => {
+		const handler = (_event, action) => callback(action);
+		electron.ipcRenderer.on("on-floating-ball-action", handler);
+		return () => electron.ipcRenderer.removeListener("on-floating-ball-action", handler);
+	}
 });
 //#endregion

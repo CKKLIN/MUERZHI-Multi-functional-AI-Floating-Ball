@@ -3001,8 +3001,387 @@ html,body{width:100%;height:100%;overflow:hidden}
 	};
 }));
 //#endregion
-//#region electron/main/tray.ts
-var require_tray = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+//#region electron/main/floating-ball.ts
+var import_region_selector = require_region_selector();
+init_logger();
+var floatingBallWindow = null;
+var ballPos = null;
+/** 拖拽起点的绝对基准 */
+var dragOrigin = null;
+var BALL_SIZE = 66;
+var RING_SIZE = 220;
+function showFloatingBall() {
+	if (floatingBallWindow && !floatingBallWindow.isDestroyed()) {
+		floatingBallWindow.show();
+		floatingBallWindow.focus();
+		return;
+	}
+	if (!ballPos) {
+		const cursor = electron.screen.getCursorScreenPoint();
+		const display = electron.screen.getDisplayNearestPoint(cursor).bounds;
+		ballPos = {
+			x: Math.round(display.x + display.width - BALL_SIZE - 20),
+			y: Math.round(display.y + display.height - BALL_SIZE - 20)
+		};
+	}
+	floatingBallWindow = new electron.BrowserWindow({
+		x: ballPos.x,
+		y: ballPos.y,
+		width: BALL_SIZE,
+		height: BALL_SIZE,
+		frame: false,
+		transparent: true,
+		backgroundColor: "#00000000",
+		resizable: false,
+		alwaysOnTop: true,
+		skipTaskbar: true,
+		hasShadow: false,
+		show: false,
+		webPreferences: {
+			nodeIntegration: true,
+			contextIsolation: false
+		}
+	});
+	floatingBallWindow.setVisibleOnAllWorkspaces(true);
+	floatingBallWindow.setAlwaysOnTop(true, "screen-saver");
+	const html = buildFloatingBallHtml();
+	floatingBallWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+	floatingBallWindow.once("ready-to-show", () => {
+		floatingBallWindow?.show();
+	});
+	floatingBallWindow.on("closed", () => {
+		floatingBallWindow = null;
+	});
+	floatingBallWindow.on("move", () => {
+		if (floatingBallWindow && !floatingBallWindow.isDestroyed()) ballPos = floatingBallWindow.getPosition();
+	});
+	logger_default.info("Floating ball shown");
+}
+function hideFloatingBall() {
+	if (floatingBallWindow && !floatingBallWindow.isDestroyed()) {
+		ballPos = floatingBallWindow.getPosition();
+		floatingBallWindow.close();
+		floatingBallWindow = null;
+		logger_default.info("Floating ball hidden");
+	}
+}
+function expandBall() {
+	if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
+	const [x, y] = floatingBallWindow.getPosition();
+	const cx = Math.round(x + BALL_SIZE / 2);
+	const cy = Math.round(y + BALL_SIZE / 2);
+	logger_default.info("[Ball] expand at", [x, y], "center", [cx, cy]);
+	floatingBallWindow.setBounds({
+		x: cx - RING_SIZE / 2,
+		y: cy - RING_SIZE / 2,
+		width: RING_SIZE,
+		height: RING_SIZE
+	});
+	floatingBallWindow.webContents.send("ball-state", "expanded");
+}
+async function collapseBall() {
+	if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
+	const [x, y] = floatingBallWindow.getPosition();
+	const cx = Math.round(x + RING_SIZE / 2);
+	const cy = Math.round(y + RING_SIZE / 2);
+	logger_default.info("[Ball] collapse at", [x, y], "center", [cx, cy]);
+	try {
+		await floatingBallWindow.webContents.executeJavaScript(`document.body.classList.remove('expanded');
+       document.querySelectorAll('.menu-item').forEach(function(el){el.remove()});
+       menuCreated=false; isExpanded=false; void 0;`);
+	} catch {}
+	if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
+	floatingBallWindow.setOpacity(0);
+	const nx = cx - BALL_SIZE / 2;
+	const ny = cy - BALL_SIZE / 2;
+	floatingBallWindow.setBounds({
+		x: nx,
+		y: ny,
+		width: BALL_SIZE,
+		height: BALL_SIZE
+	});
+	const [ax, ay] = floatingBallWindow.getPosition();
+	if (ax !== nx || ay !== ny) floatingBallWindow.setBounds({
+		x: nx + (nx - ax),
+		y: ny + (ny - ay),
+		width: BALL_SIZE,
+		height: BALL_SIZE
+	});
+	floatingBallWindow.setOpacity(1);
+}
+function forwardAction(action) {
+	const mainWindow = electron.BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w !== floatingBallWindow);
+	if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("on-floating-ball-action", action);
+	collapseBall();
+}
+var logoBase64 = null;
+function getLogoDataUrl(size = 48) {
+	if (logoBase64) return logoBase64;
+	try {
+		const paths = [
+			(0, node_path.join)(__dirname, "..", "..", "public", "logo.png"),
+			(0, node_path.join)(__dirname, "..", "public", "logo.png"),
+			(0, node_path.join)(__dirname, "..", "..", "resources", "logo.png")
+		];
+		for (const p of paths) if (node_fs.default.existsSync(p)) {
+			logoBase64 = electron.nativeImage.createFromPath(p).resize({
+				width: size,
+				height: size,
+				quality: "good"
+			}).toDataURL();
+			return logoBase64;
+		}
+	} catch {}
+	return "";
+}
+function buildFloatingBallHtml() {
+	return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;user-select:none}
+html,body{
+  width:100%;height:100%;overflow:clip;
+  font-family:'Segoe UI',system-ui,sans-serif;
+  background:transparent;
+}
+/* 彻底隐藏滚动条 */
+html::-webkit-scrollbar, body::-webkit-scrollbar{display:none}
+body{
+  display:flex;align-items:center;justify-content:center;
+}
+
+/* 容器 */
+#ball{
+  position:relative;
+  width:66px;height:66px;
+  display:flex;align-items:center;justify-content:center;
+}
+body.expanded #ball{
+  width:220px;height:220px;
+}
+
+/* 中心按钮 - 显示 logo */
+#trigger{
+  position:absolute;z-index:10;
+  width:56px;height:56px;border-radius:50%;border:none;
+  background:#e8e8e8;
+  cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 2px 12px rgba(0,0,0,0.15);
+  transition:transform 0.3s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.3s;
+}
+#trigger:hover{transform:scale(1.08);box-shadow:0 4px 20px rgba(0,0,0,0.2)}
+.logo-img{
+  width:40px;height:40px;
+  border-radius:50%;
+  object-fit:cover;
+  pointer-events:none;
+}
+#trigger:active{transform:scale(0.95)}
+
+/* 菜单项 */
+.menu-item{
+  position:absolute;
+  width:50px;height:50px;border-radius:12px;
+  background:rgba(255,255,255,0.95);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  border:1px solid rgba(255,255,255,0.7);
+  box-shadow:0 4px 20px rgba(0,0,0,0.12);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  opacity:0;transform:scale(0.3);
+  transition:transform 0.35s cubic-bezier(0.34,1.56,0.64,1),opacity 0.25s;
+  pointer-events:none;
+  cursor:pointer;
+}
+.menu-item.visible{
+  opacity:1;transform:scale(1);
+  pointer-events:auto;
+}
+.menu-item:hover{
+  transform:translateY(-2px) scale(1.05);
+  box-shadow:0 8px 24px rgba(0,0,0,0.14);
+  border-color:#e94560;
+}
+.menu-item:active{transform:scale(0.92)}
+.menu-item .icon{font-size:16px;line-height:1;color:#e94560}
+.menu-item .label{font-size:9px;font-weight:600;color:#5a5a6e;white-space:nowrap}
+</style>
+</head>
+<body>
+<div id="ball">
+  <button id="trigger">
+    <img id="logoImg" class="logo-img" src="${getLogoDataUrl(48)}" alt="logo" />
+  </button>
+</div>
+
+<script>
+const {ipcRenderer} = require('electron')
+
+const ITEMS = [
+  {label:'全屏',icon:'⛶',action:'fullscreen'},
+  {label:'区域',icon:'▣',action:'region'},
+  {label:'截图',icon:'📷',action:'screenshot'},
+  {label:'设置',icon:'⚙',action:'settings'},
+]
+
+let isExpanded = false
+let menuCreated = false
+
+// === 展开时创建菜单项（避免 collapsed 状态下 DOM 残留）===
+function ensureMenu(){
+  if(menuCreated) return
+  menuCreated = true
+  const ball = document.getElementById('ball')
+  const total = ITEMS.length
+  const startAngle = -150, endAngle = -30
+  const radius = 85
+  ITEMS.forEach((item,i)=>{
+    const angle = startAngle + i * (endAngle - startAngle) / (Math.max(total-1,1))
+    const rad = angle * Math.PI / 180
+    const x = Math.cos(rad) * radius
+    const y = Math.sin(rad) * radius
+    const el = document.createElement('div')
+    el.className = 'menu-item'
+    el.dataset.action = item.action
+    el.style.setProperty('--tx', x+'px')
+    el.style.setProperty('--ty', y+'px')
+    el.style.transitionDelay = (i*0.05)+'s'
+    el.style.webkitAppRegion = 'no-drag'
+    el.innerHTML = '<span class="icon">'+item.icon+'</span><span class="label">'+item.label+'</span>'
+    el.addEventListener('click',function(e){
+      e.stopPropagation()
+      ipcRenderer.send('floating-ball-action', this.dataset.action)
+    })
+    ball.appendChild(el)
+    // 强制下一帧显示动画
+    requestAnimationFrame(function(){
+      setTimeout(function(){
+        el.style.transform = 'translate(var(--tx),var(--ty))'
+        el.classList.add('visible')
+      }, i*50)
+    })
+  })
+}
+
+// === 手动拖拽：pointer 事件 + 绝对增量 + setBounds + 读回修正 DWM ===
+let dsX = 0, dsY = 0, dragging = false
+
+trigger.addEventListener('pointerdown', function(e){
+  dsX = e.screenX; dsY = e.screenY
+  dragging = false
+  trigger.setPointerCapture(e.pointerId)
+  ipcRenderer.send('floating-ball-drag-start', e.screenX, e.screenY)
+})
+
+trigger.addEventListener('pointermove', function(e){
+  if(e.buttons !== 1) return
+  if(!dragging){
+    if(Math.abs(e.screenX - dsX) <= 4 && Math.abs(e.screenY - dsY) <= 4) return
+    dragging = true
+  }
+  ipcRenderer.send('floating-ball-move', e.screenX, e.screenY)
+})
+
+trigger.addEventListener('pointerup', function(e){
+  trigger.releasePointerCapture(e.pointerId)
+  if(dragging){
+    ipcRenderer.send('floating-ball-drag-end')
+    dragging = false
+    return
+  }
+  if(isExpanded){
+    isExpanded = false
+    ipcRenderer.send('floating-ball-collapse')
+  } else {
+    isExpanded = true
+    ipcRenderer.send('floating-ball-expand')
+  }
+})
+
+ipcRenderer.on('ball-state',function(_event,state){
+  if(state==='expanded'){
+    document.body.classList.add('expanded')
+    ensureMenu()
+    isExpanded=true
+  } else {
+    document.body.classList.remove('expanded')
+    document.querySelectorAll('.menu-item').forEach(function(el){ el.remove() })
+    menuCreated = false
+    isExpanded=false
+  }
+})
+
+// === 点击外部收起 ===
+document.addEventListener('click',function(e){
+  if(isExpanded && !e.target.closest('#ball')){
+    ipcRenderer.send('floating-ball-collapse')
+  }
+})
+<\/script>
+</body>
+</html>`;
+}
+function registerFloatingBallHandlers() {
+	electron.ipcMain.handle("show-floating-ball", () => {
+		showFloatingBall();
+	});
+	electron.ipcMain.handle("hide-floating-ball", () => {
+		hideFloatingBall();
+	});
+	electron.ipcMain.handle("toggle-floating-ball", () => {
+		hideFloatingBall();
+	});
+	electron.ipcMain.on("floating-ball-expand", () => {
+		expandBall();
+	});
+	electron.ipcMain.on("floating-ball-collapse", () => {
+		collapseBall();
+	});
+	electron.ipcMain.on("floating-ball-action", (_event, action) => {
+		logger_default.info("Floating ball action:", action);
+		forwardAction(action);
+	});
+	electron.ipcMain.on("floating-ball-drag-start", (_event, sx, sy) => {
+		if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
+		const [wx, wy] = floatingBallWindow.getPosition();
+		dragOrigin = {
+			winX: wx,
+			winY: wy,
+			scrX: sx,
+			scrY: sy
+		};
+	});
+	electron.ipcMain.on("floating-ball-move", (_event, sx, sy) => {
+		if (!floatingBallWindow || floatingBallWindow.isDestroyed() || !dragOrigin) return;
+		const dx = sx - dragOrigin.scrX;
+		const dy = sy - dragOrigin.scrY;
+		const nx = Math.round(dragOrigin.winX + dx);
+		const ny = Math.round(dragOrigin.winY + dy);
+		floatingBallWindow.setBounds({
+			x: nx,
+			y: ny,
+			width: BALL_SIZE,
+			height: BALL_SIZE
+		});
+		const [ax, ay] = floatingBallWindow.getPosition();
+		if (ax !== nx || ay !== ny) floatingBallWindow.setBounds({
+			x: nx + (nx - ax),
+			y: ny + (ny - ay),
+			width: BALL_SIZE,
+			height: BALL_SIZE
+		});
+	});
+	electron.ipcMain.on("floating-ball-drag-end", () => {
+		dragOrigin = null;
+		if (floatingBallWindow && !floatingBallWindow.isDestroyed()) ballPos = floatingBallWindow.getPosition();
+	});
+}
+//#endregion
+//#region electron/main/ipc-handlers.ts
+var import_tray = (/* @__PURE__ */ __commonJSMin(((exports, module) => {
 	init_logger();
 	var tray = null;
 	function getTrayIcon() {
@@ -3066,11 +3445,7 @@ var require_tray = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		showBalloon,
 		destroyTray
 	};
-}));
-//#endregion
-//#region electron/main/ipc-handlers.ts
-var import_region_selector = require_region_selector();
-var import_tray = require_tray();
+})))();
 init_logger();
 var { updateAudioLevels } = require_region_selector();
 function getRecordingsPath() {
@@ -3078,6 +3453,7 @@ function getRecordingsPath() {
 }
 function registerIpcHandlers() {
 	(0, import_region_selector.registerRegionSelectorHandlers)();
+	registerFloatingBallHandlers();
 	electron.ipcMain.handle("select-region", async () => {
 		return (0, import_region_selector.selectRegion)();
 	});
@@ -3261,6 +3637,34 @@ function registerIpcHandlers() {
 			width: Math.round(display.bounds.width / scaleFactor),
 			height: Math.round(display.bounds.height / scaleFactor)
 		};
+	});
+	electron.ipcMain.handle("take-screenshot", async (_event) => {
+		try {
+			const sources = await electron.desktopCapturer.getSources({
+				types: ["screen"],
+				thumbnailSize: {
+					width: 0,
+					height: 0
+				}
+			});
+			if (!sources.length) throw new Error("未找到屏幕源");
+			const pngData = sources[0].thumbnail.toPNG();
+			const now = /* @__PURE__ */ new Date();
+			const filename = `截图_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}_${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}${String(now.getSeconds()).padStart(2, "0")}.png`;
+			const savePath = (0, node_path.join)(electron.app.getPath("desktop"), filename);
+			await node_fs.default.promises.writeFile(savePath, pngData);
+			(0, import_tray.showBalloon)("二支录制", `截图已保存到桌面：${filename}`);
+			return {
+				success: true,
+				filePath: savePath
+			};
+		} catch (err) {
+			logger_default.error("截图失败", err.message);
+			return {
+				success: false,
+				error: err.message
+			};
+		}
 	});
 	electron.ipcMain.handle("get-all-displays", async () => {
 		const displays = electron.screen.getAllDisplays();
@@ -3584,9 +3988,6 @@ function createWindow(preloadPath) {
 			backgroundThrottling: false
 		}
 	});
-	mainWindow.on("ready-to-show", () => {
-		mainWindow?.show();
-	});
 	if (VITE_DEV_SERVER_URL) mainWindow.loadURL(VITE_DEV_SERVER_URL);
 	else mainWindow.loadFile((0, node_path.join)(process.env.DIST, "index.html"));
 	mainWindow.on("close", (e) => {
@@ -3617,6 +4018,7 @@ electron.app.whenReady().then(() => {
 	(0, import_region_selector.setMainWindow)(mainWindow);
 	(0, import_tray.createTray)();
 	registerGlobalShortcuts(mainWindow);
+	showFloatingBall();
 	reportIP();
 	setInterval(retryPending, 3e4);
 	electron.app.on("activate", () => {

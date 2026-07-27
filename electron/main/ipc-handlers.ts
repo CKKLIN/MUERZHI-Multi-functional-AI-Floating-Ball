@@ -3,6 +3,7 @@ import nodeFs from 'node:fs'
 import { dirname, join } from 'node:path'
 import { convertWebmToMp4, convertToGif, cropVideo, mergeMultiScreen } from './ffmpeg'
 import { selectRegion, registerRegionSelectorHandlers } from './region-selector'
+import { registerFloatingBallHandlers } from './floating-ball'
 import { showBalloon } from './tray'
 import log from './logger'
 
@@ -14,6 +15,7 @@ function getRecordingsPath() {
 
 export function registerIpcHandlers() {
   registerRegionSelectorHandlers()
+  registerFloatingBallHandlers()
   ipcMain.handle('select-region', async () => {
     return selectRegion()
   })
@@ -198,6 +200,29 @@ export function registerIpcHandlers() {
       y: Math.round(display.bounds.y / scaleFactor),
       width: Math.round(display.bounds.width / scaleFactor),
       height: Math.round(display.bounds.height / scaleFactor),
+    }
+  })
+
+  // 截图：捕获全屏并保存为 PNG
+  ipcMain.handle('take-screenshot', async (_event) => {
+    try {
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width: 0, height: 0 },
+      })
+      if (!sources.length) throw new Error('未找到屏幕源')
+
+      const pngData = sources[0].thumbnail.toPNG()
+      const now = new Date()
+      const filename = `截图_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}.png`
+      const savePath = join(app.getPath('desktop'), filename)
+      await nodeFs.promises.writeFile(savePath, pngData)
+
+      showBalloon('二支录制', `截图已保存到桌面：${filename}`)
+      return { success: true, filePath: savePath }
+    } catch (err: any) {
+      log.error('截图失败', err.message)
+      return { success: false, error: err.message }
     }
   })
 

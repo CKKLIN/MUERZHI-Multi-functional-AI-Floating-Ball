@@ -91,6 +91,9 @@ const electronAPI = {
   getScreenBounds: () => ipcRenderer.invoke('get-screen-bounds'),
   getAllDisplays: () => ipcRenderer.invoke('get-all-displays'),
 
+  // Screenshot
+  takeScreenshot: () => ipcRenderer.invoke('take-screenshot'),
+
   // Region selector
   selectRegion: () => ipcRenderer.invoke('select-region'),
   showRegionBorder: (region: { x: number; y: number; width: number; height: number }, audioState?: { micEnabled: boolean; sysEnabled: boolean; cameraEnabled?: boolean; cameraDeviceId?: string }) =>
@@ -129,6 +132,16 @@ const electronAPI = {
   // Recordings persistence
   loadRecordings: () => ipcRenderer.invoke('load-recordings'),
   saveRecordings: (recordings: unknown[]) => ipcRenderer.invoke('save-recordings', recordings),
+
+  // Floating ball
+  showFloatingBall: () => ipcRenderer.invoke('show-floating-ball'),
+  hideFloatingBall: () => ipcRenderer.invoke('hide-floating-ball'),
+  toggleFloatingBall: () => ipcRenderer.invoke('toggle-floating-ball'),
+  onFloatingBallAction: (callback: (action: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, action: string) => callback(action)
+    ipcRenderer.on('on-floating-ball-action', handler)
+    return () => ipcRenderer.removeListener('on-floating-ball-action', handler)
+  },
 
 }
 
