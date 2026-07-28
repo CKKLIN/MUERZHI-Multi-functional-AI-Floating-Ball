@@ -9,6 +9,7 @@ import DrawingCanvas from '../components/DrawingCanvas.vue'
 import DrawingToolbar from '../components/DrawingToolbar.vue'
 import RecordingsList from '../components/RecordingsList.vue'
 import VideoPlayer from '../components/VideoPlayer.vue'
+import SettingsPanel from '../components/SettingsPanel.vue'
 import ConversionDialog from '../components/ConversionDialog.vue'
 import { useRecordingStore, type Recording } from '../stores/recording'
 import { useSettingsStore } from '../stores/settings'
@@ -21,6 +22,7 @@ const recording = useRecording()
 const audio = useAudioCapture()
 
 // UI 状态
+const activeTab = ref<'record' | 'settings'>('record')
 const showVideoPlayer = ref(false)
 const showConversion = ref(false)
 const playingRecording = ref<Recording | null>(null)
@@ -32,8 +34,8 @@ const floatingBallActions: Record<string, () => void> = {
   fullscreen: () => handleFullscreen(),
   region: () => handleSelectRegion(),
   screenshot: () => handleScreenshot(),
-  record: () => { window.electronAPI.showMainWindow() },
-  ai: () => { window.electronAPI.showAiWindow() },
+  settings: () => { activeTab.value = 'settings' },
+  record: () => { activeTab.value = 'record' },
 }
 
 // 多显示器下拉菜单
@@ -480,27 +482,36 @@ watch(() => isConverting.value, (val) => {
 <template>
   <Layout>
     <div class="home">
-      <Transition name="bubble">
-        <div v-if="showBubble" class="convert-bubble">
-          <div class="bubble-icon" :class="{ done: !isConverting }">
-            <svg v-if="isConverting" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/>
-            </svg>
-            <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
-          </div>
-          <div class="bubble-body">
-            <span class="bubble-label">{{ isConverting ? '转换中' : '转换完成' }}</span>
-            <div class="bubble-bar">
-              <div class="bubble-bar-fill" :class="{ done: !isConverting }" :style="{ width: (isConverting ? store.conversionProgress : 100) + '%' }"/>
-            </div>
-          </div>
-          <span class="bubble-percent">{{ isConverting ? store.conversionProgress : 100 }}%</span>
-        </div>
-      </Transition>
+      <!-- 标签栏 -->
+      <div class="tab-bar">
+        <button class="tab-btn" :class="{ active: activeTab === 'record' }" @click="activeTab = 'record'">录屏</button>
+        <button class="tab-btn" :class="{ active: activeTab === 'settings' }" @click="activeTab = 'settings'">设置</button>
+      </div>
 
-      <div v-if="isRecordingView" class="recording-view">
+      <!-- 录屏标签页 -->
+      <template v-if="activeTab === 'record'">
+        <!-- 转换进度气泡 -->
+        <Transition name="bubble">
+          <div v-if="showBubble" class="convert-bubble">
+            <div class="bubble-icon" :class="{ done: !isConverting }">
+              <svg v-if="isConverting" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/>
+              </svg>
+              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            </div>
+            <div class="bubble-body">
+              <span class="bubble-label">{{ isConverting ? '转换中' : '转换完成' }}</span>
+              <div class="bubble-bar">
+                <div class="bubble-bar-fill" :class="{ done: !isConverting }" :style="{ width: (isConverting ? store.conversionProgress : 100) + '%' }"/>
+              </div>
+            </div>
+            <span class="bubble-percent">{{ isConverting ? store.conversionProgress : 100 }}%</span>
+          </div>
+        </Transition>
+
+        <div v-if="isRecordingView" class="recording-view">
         <div class="preview-container">
           <video ref="previewVideoRef" class="preview-video" muted autoplay playsinline/>
           <CameraOverlay v-if="store.isCameraEnabled" :stream="recording.cameraStream" @position-update="handleCameraPositionUpdate"/>
@@ -539,6 +550,12 @@ watch(() => isConverting.value, (val) => {
 
         <RecordingControls @start="handleStart" @pause="handlePause" @resume="handleResume" @stop="handleStop" @toggle-camera="toggleCamera" @toggle-mic="toggleMic" @toggle-drawing="toggleDrawing"/>
         <RecordingsList @play="handlePlayRecording" @export-gif="handleExportGif" @delete="handleDeleteRecording"/>
+      </div>
+      </template>
+
+      <!-- 设置标签页 -->
+      <div v-else class="settings-tab">
+        <SettingsPanel />
       </div>
     </div>
 
