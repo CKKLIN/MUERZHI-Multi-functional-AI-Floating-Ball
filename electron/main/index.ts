@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, nativeImage } from 'electron'
+import { app, BrowserWindow, nativeImage, ipcMain } from 'electron'
 import log, { ensureLogPath } from './logger'
 import { registerIpcHandlers } from './ipc-handlers'
 import { setMainWindow } from './region-selector'
@@ -12,6 +12,7 @@ import { createAgentBridge, type AgentBridge } from './agent-bridge'
 declare const __dirname: string
 
 let mainWindow: BrowserWindow | null = null
+let settingsWindow: BrowserWindow | null = null
 let agentBridge: AgentBridge | null = null
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 
@@ -85,6 +86,36 @@ app.whenReady().then(() => {
   registerGlobalShortcuts(mainWindow!)
   showFloatingBall()
   reportIP()
+
+  // 设置窗口 IPC
+  ipcMain.handle('show-settings-window', () => {
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      settingsWindow.show()
+      settingsWindow.focus()
+      return
+    }
+    settingsWindow = new BrowserWindow({
+      width: 480,
+      height: 540,
+      minWidth: 400,
+      minHeight: 400,
+      frame: true,
+      title: '设置',
+      backgroundColor: '#eaeaec',
+      webPreferences: {
+        preload: preloadPath,
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+      },
+    })
+    if (VITE_DEV_SERVER_URL) {
+      settingsWindow.loadURL(`${VITE_DEV_SERVER_URL}#/settings`)
+    } else {
+      settingsWindow.loadFile(join(process.env.DIST!, 'index.html'), { hash: '/settings' })
+    }
+    settingsWindow.on('closed', () => { settingsWindow = null })
+  })
 
   setInterval(retryPending, 30_000)
 
