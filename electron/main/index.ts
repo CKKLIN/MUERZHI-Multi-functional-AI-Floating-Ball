@@ -98,6 +98,17 @@ app.whenReady().then(() => {
     }
   })
 
+  // 悬浮球触发窗口
+  process.on('clawd-show-main-window' as any, () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+  process.on('clawd-show-ai-window' as any, () => {
+    showAiWindow()
+  })
+
   setInterval(retryPending, 30_000)
 
   app.on('activate', () => {

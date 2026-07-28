@@ -179,11 +179,20 @@ async function collapseBall() {
 
 // 转发操作到主窗口
 function forwardAction(action: string) {
-  const mainWindow = BrowserWindow.getAllWindows().find(w =>
-    !w.isDestroyed() && w !== floatingBallWindow
-  )
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('on-floating-ball-action', action)
+  // 录屏和AI助手直接由主进程处理
+  if (action === 'record') {
+    const { ipcMain } = require('electron') as typeof import('electron')
+    ipcMain.emit('clawd-show-main-window' as any)
+  } else if (action === 'ai') {
+    const { ipcMain } = require('electron') as typeof import('electron')
+    ipcMain.emit('clawd-show-ai-window' as any)
+  } else {
+    const mainWindow = BrowserWindow.getAllWindows().find(w =>
+      !w.isDestroyed() && w !== floatingBallWindow
+    )
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('on-floating-ball-action', action)
+    }
   }
   collapseBall()
 }
