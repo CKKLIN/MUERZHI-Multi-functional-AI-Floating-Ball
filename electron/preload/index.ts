@@ -130,6 +130,22 @@ const electronAPI = {
   loadRecordings: () => ipcRenderer.invoke('load-recordings'),
   saveRecordings: (recordings: unknown[]) => ipcRenderer.invoke('save-recordings', recordings),
 
+  // Agent bridge
+  agentGetStatus: () => ipcRenderer.invoke('agent-get-status'),
+  agentInstallHooks: () => ipcRenderer.invoke('agent-install-hooks'),
+  agentUninstallHooks: () => ipcRenderer.invoke('agent-uninstall-hooks'),
+  agentSetAutoStart: (enabled: boolean) => ipcRenderer.invoke('agent-set-auto-start', enabled),
+  agentResolvePermission: (behavior: string) => ipcRenderer.invoke('agent-resolve-permission', behavior),
+  onAgentStateUpdate: (callback: (data: any) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
+    ipcRenderer.on('agent-state-update', handler)
+    return () => ipcRenderer.removeListener('agent-state-update', handler)
+  },
+  onAgentPermissionRequest: (callback: (data: any) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
+    ipcRenderer.on('agent-permission-request', handler)
+    return () => ipcRenderer.removeListener('agent-permission-request', handler)
+  },
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

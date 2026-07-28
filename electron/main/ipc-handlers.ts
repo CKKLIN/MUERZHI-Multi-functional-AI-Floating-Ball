@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { convertWebmToMp4, convertToGif, cropVideo, mergeMultiScreen } from './ffmpeg'
 import { selectRegion, registerRegionSelectorHandlers } from './region-selector'
 import { showBalloon } from './tray'
+import type { AgentBridge } from './agent-bridge'
 import log from './logger'
 
 const { updateAudioLevels } = require('./region-selector')
@@ -12,7 +13,7 @@ function getRecordingsPath() {
   return join(app.getPath('userData'), 'recordings.json')
 }
 
-export function registerIpcHandlers() {
+export function registerIpcHandlers(agentBridge?: AgentBridge) {
   registerRegionSelectorHandlers()
   ipcMain.handle('select-region', async () => {
     return selectRegion()
@@ -322,4 +323,30 @@ export function registerIpcHandlers() {
     }
   })
 
+  // Agent Bridge handlers
+  if (agentBridge) {
+    agentBridge.setStateListener((state, sessions) => {
+      const wins = BrowserWindow.getAllWindows()
+      for (const win of wins) {
+        if (!win.isDestroyed()) {
+          try { win.webContents.send('agent-state-update', { state, sessions }) } catch {}
+        }
+      }
+    })
+
+    agentBridge.setPermissionListener((perm) => {
+      const wins = BrowserWindow.getAllWindows()
+      for (const win of wins) {
+        if (!win.isDestroyed()) {
+          try { win.webContents.send('agent-permission-request', perm) } catch {}
+        }
+      }
+    })
+
+    ipcMain.handle('agent-get-status', () => agentBridge?.getStatus() ?? null)
+    ipcMain.handle('agent-install-hooks', () => { agentBridge?.installHooks(); return agentBridge?.getStatus() })
+    ipcMain.handle('agent-uninstall-hooks', () => { agentBridge?.uninstallHooks(); return agentBridge?.getStatus() })
+    ipcMain.handle('agent-set-auto-start', (_event, enabled: boolean) => agentBridge?.setAutoStart(enabled))
+    ipcMain.handle('agent-resolve-permission', (_event, behavior: string) => agentBridge?.resolvePermission(behavior))
+  }
 }

@@ -115,6 +115,44 @@ export interface ElectronAPI {
 
   // Scheduled recording
   onScheduledRecording: (callback: () => void) => () => void
+
+  // Agent bridge
+  agentGetStatus: () => Promise<AgentBridgeStatus | null>
+  agentInstallHooks: () => Promise<AgentBridgeStatus | null>
+  agentUninstallHooks: () => Promise<AgentBridgeStatus | null>
+  agentSetAutoStart: (enabled: boolean) => Promise<void>
+  agentResolvePermission: (behavior: string) => Promise<void>
+  onAgentStateUpdate: (callback: (data: AgentStatePayload) => void) => () => void
+  onAgentPermissionRequest: (callback: (data: AgentPermissionPayload) => void) => () => void
+}
+
+export interface AgentStatePayload {
+  state: string
+  sessions: {
+    sessionId: string
+    agentId: string
+    state: string
+    toolName?: string
+    contextUsage?: { used: number; limit: number }
+    model?: string
+    updatedAt: number
+  }[]
+}
+
+export interface AgentPermissionPayload {
+  sessionId: string
+  toolName: string
+  toolInput: any
+  suggestions: string[] | null
+}
+
+export interface AgentBridgeStatus {
+  serverRunning: boolean
+  port: number | null
+  hookInstalled: boolean | null
+  displayState: string
+  pendingPermission: AgentPermissionPayload | null
+  sessionCount: number
 }
 
 declare global {
