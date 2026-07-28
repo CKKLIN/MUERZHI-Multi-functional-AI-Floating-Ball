@@ -159,6 +159,8 @@ const electronAPI = {
     ipcRenderer.on('agent-permission-request', handler)
     return () => ipcRenderer.removeListener('agent-permission-request', handler)
   },
+  showAiWindow: () => ipcRenderer.invoke('show-ai-window'),
+  showMainWindow: () => ipcRenderer.invoke('show-main-window'),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

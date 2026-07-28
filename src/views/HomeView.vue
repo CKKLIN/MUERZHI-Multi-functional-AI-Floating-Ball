@@ -9,7 +9,6 @@ import DrawingCanvas from '../components/DrawingCanvas.vue'
 import DrawingToolbar from '../components/DrawingToolbar.vue'
 import RecordingsList from '../components/RecordingsList.vue'
 import VideoPlayer from '../components/VideoPlayer.vue'
-import SettingsPanel from '../components/SettingsPanel.vue'
 import ConversionDialog from '../components/ConversionDialog.vue'
 import { useRecordingStore, type Recording } from '../stores/recording'
 import { useSettingsStore } from '../stores/settings'
@@ -22,7 +21,6 @@ const recording = useRecording()
 const audio = useAudioCapture()
 
 // UI 状态
-const activeTab = ref<'record' | 'settings'>('record')
 const showVideoPlayer = ref(false)
 const showConversion = ref(false)
 const playingRecording = ref<Recording | null>(null)
@@ -34,8 +32,8 @@ const floatingBallActions: Record<string, () => void> = {
   fullscreen: () => handleFullscreen(),
   region: () => handleSelectRegion(),
   screenshot: () => handleScreenshot(),
-  settings: () => { activeTab.value = 'settings' },
-  record: () => { activeTab.value = 'record' },
+  record: () => { window.electronAPI.showMainWindow() },
+  ai: () => { window.electronAPI.showAiWindow() },
 }
 
 // 多显示器下拉菜单
@@ -482,155 +480,70 @@ watch(() => isConverting.value, (val) => {
 <template>
   <Layout>
     <div class="home">
-      <!-- 标签栏 -->
-      <div class="tab-bar">
-        <button class="tab-btn" :class="{ active: activeTab === 'record' }" @click="activeTab = 'record'">录屏</button>
-        <button class="tab-btn" :class="{ active: activeTab === 'settings' }" @click="activeTab = 'settings'">设置</button>
+      <Transition name="bubble">
+        <div v-if="showBubble" class="convert-bubble">
+          <div class="bubble-icon" :class="{ done: !isConverting }">
+            <svg v-if="isConverting" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/>
+            </svg>
+            <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+          </div>
+          <div class="bubble-body">
+            <span class="bubble-label">{{ isConverting ? '转换中' : '转换完成' }}</span>
+            <div class="bubble-bar">
+              <div class="bubble-bar-fill" :class="{ done: !isConverting }" :style="{ width: (isConverting ? store.conversionProgress : 100) + '%' }"/>
+            </div>
+          </div>
+          <span class="bubble-percent">{{ isConverting ? store.conversionProgress : 100 }}%</span>
+        </div>
+      </Transition>
+
+      <div v-if="isRecordingView" class="recording-view">
+        <div class="preview-container">
+          <video ref="previewVideoRef" class="preview-video" muted autoplay playsinline/>
+          <CameraOverlay v-if="store.isCameraEnabled" :stream="recording.cameraStream" @position-update="handleCameraPositionUpdate"/>
+          <DrawingCanvas v-if="store.isDrawingEnabled" @draw="handleDrawAnnotations"/>
+          <DrawingToolbar v-if="store.isDrawingEnabled"/>
+        </div>
+        <div class="recording-header">
+          <RecordingTimer/>
+          <AudioMeter v-if="store.isMicrophoneEnabled" :level="audio.micLevel.value" label="麦克风"/>
+        </div>
+        <RecordingControls @start="handleStart" @pause="handlePause" @resume="handleResume" @stop="handleStop" @toggle-camera="toggleCamera" @toggle-mic="toggleMic" @toggle-drawing="toggleDrawing"/>
       </div>
 
-      <!-- 录屏标签页 -->
-      <template v-if="activeTab === 'record'">
-        <!-- 转换进度气泡 -->
-        <Transition name="bubble">
-          <div v-if="showBubble" class="convert-bubble">
-            <div class="bubble-icon" :class="{ done: !isConverting }">
-              <svg v-if="isConverting" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/>
-              </svg>
-              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-            </div>
-            <div class="bubble-body">
-              <span class="bubble-label">{{ isConverting ? '转换中' : '转换完成' }}</span>
-              <div class="bubble-bar">
-                <div class="bubble-bar-fill" :class="{ done: !isConverting }" :style="{ width: (isConverting ? store.conversionProgress : 100) + '%' }" />
-              </div>
-            </div>
-            <span class="bubble-percent">{{ isConverting ? store.conversionProgress : 100 }}%</span>
-          </div>
-        </Transition>
-        <!-- 录制中视图 -->
-        <div v-if="isRecordingView" class="recording-view">
-          <div class="preview-container">
-            <video ref="previewVideoRef" class="preview-video" muted autoplay playsinline />
-            <CameraOverlay
-              v-if="store.isCameraEnabled"
-              :stream="recording.cameraStream"
-              @position-update="handleCameraPositionUpdate"
-            />
-            <DrawingCanvas
-              v-if="store.isDrawingEnabled"
-              @draw="handleDrawAnnotations"
-            />
-            <DrawingToolbar v-if="store.isDrawingEnabled" />
-          </div>
-          <div class="recording-header">
-            <RecordingTimer />
-            <AudioMeter v-if="store.isMicrophoneEnabled" :level="audio.micLevel.value" label="麦克风" />
-            <!-- <AudioMeter v-if="store.isSystemAudioEnabled" :level="audio.sysLevel.value" label="系统" /> -->
-          </div>
-          <RecordingControls
-            @start="handleStart"
-            @pause="handlePause"
-            @resume="handleResume"
-            @stop="handleStop"
-            @toggle-camera="toggleCamera"
-            @toggle-mic="toggleMic"
-            @toggle-drawing="toggleDrawing"
-          />
-        </div>
-
-        <!-- 空闲视图 -->
-        <div v-else class="idle-view">
-          <div class="source-buttons">
-            <div class="fullscreen-wrapper">
-              <button class="source-btn" @click="handleFullscreen">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="2" y="3" width="20" height="14" rx="2"/>
-                  <line x1="2" y1="10" x2="22" y2="10"/>
-                </svg>
-                <span>全屏录制</span>
-                <svg v-if="screens.length > 1" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="dropdown-arrow">
-                  <polyline points="6 9 12 15 18 9"/>
-                </svg>
-              </button>
-              <Transition name="dropdown">
-                <div v-if="showScreenDropdown" class="screen-dropdown">
-                  <button
-                    v-for="s in screens"
-                    :key="s.id"
-                    class="screen-option"
-                    @click="selectScreen(s.id)"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect x="2" y="3" width="20" height="14" rx="2"/>
-                      <line x1="2" y1="10" x2="22" y2="10"/>
-                    </svg>
-                    <span>{{ s.label }}</span>
-                    <span v-if="s.isPrimary" class="primary-tag">主</span>
-                  </button>
-                  <!-- <div class="dropdown-divider" />
-                  <button class="screen-option" @click="selectScreen(undefined)">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect x="1" y="3" width="9" height="14" rx="1.5"/>
-                      <rect x="14" y="3" width="9" height="14" rx="1.5"/>
-                    </svg>
-                    <span>全部屏幕</span>
-                  </button> -->
-                </div>
-              </Transition>
-            </div>
-            <button class="source-btn" @click="handleSelectRegion">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="4 2"/>
-                <line x1="3" y1="9" x2="3" y2="3" stroke-width="2.5"/>
-                <line x1="3" y1="3" x2="9" y2="3" stroke-width="2.5"/>
-                <line x1="15" y1="21" x2="21" y2="21" stroke-width="2.5"/>
-                <line x1="21" y1="15" x2="21" y2="21" stroke-width="2.5"/>
-              </svg>
-              <span>自定义区域</span>
+      <div v-else class="idle-view">
+        <div class="source-buttons">
+          <div class="fullscreen-wrapper">
+            <button class="source-btn" @click="handleFullscreen">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+              <span>全屏录制</span>
             </button>
+            <Transition name="dropdown">
+              <div v-if="showScreenDropdown" class="screen-dropdown">
+                <button v-for="s in screens" :key="s.id" class="screen-option" @click="selectScreen(s.id)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                  <span>{{ s.label }}</span>
+                  <span v-if="s.isPrimary" class="primary-tag">主</span>
+                </button>
+              </div>
+            </Transition>
           </div>
-
-          <RecordingControls
-            @start="handleStart"
-            @pause="handlePause"
-            @resume="handleResume"
-            @stop="handleStop"
-            @toggle-camera="toggleCamera"
-            @toggle-mic="toggleMic"
-            @toggle-drawing="toggleDrawing"
-          />
-
-          <RecordingsList
-            @play="handlePlayRecording"
-            @export-gif="handleExportGif"
-            @delete="handleDeleteRecording"
-          />
+          <button class="source-btn" @click="handleSelectRegion">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="4 2"/><line x1="3" y1="9" x2="3" y2="3" stroke-width="2.5"/><line x1="3" y1="3" x2="9" y2="3" stroke-width="2.5"/><line x1="15" y1="21" x2="21" y2="21" stroke-width="2.5"/><line x1="21" y1="15" x2="21" y2="21" stroke-width="2.5"/></svg>
+            <span>自定义区域</span>
+          </button>
         </div>
-      </template>
 
-      <!-- 设置标签页 -->
-      <div v-else class="settings-tab">
-        <SettingsPanel />
+        <RecordingControls @start="handleStart" @pause="handlePause" @resume="handleResume" @stop="handleStop" @toggle-camera="toggleCamera" @toggle-mic="toggleMic" @toggle-drawing="toggleDrawing"/>
+        <RecordingsList @play="handlePlayRecording" @export-gif="handleExportGif" @delete="handleDeleteRecording"/>
       </div>
-
-      <!-- 视频播放器 -->
-      <VideoPlayer
-        v-if="showVideoPlayer && playingRecording"
-        :recording="playingRecording"
-        @close="showVideoPlayer = false"
-      />
-
-      <!-- 转换进度对话框 -->
-      <ConversionDialog
-        v-if="showConversion"
-        :file-path="convertingFile"
-        :target="conversionTarget"
-        @close="showConversion = false"
-      />
     </div>
+
+    <VideoPlayer v-if="showVideoPlayer && playingRecording" :recording="playingRecording" @close="showVideoPlayer = false"/>
+    <ConversionDialog v-if="showConversion" :file-path="convertingFile" :target="conversionTarget" @close="showConversion = false"/>
   </Layout>
 </template>
 

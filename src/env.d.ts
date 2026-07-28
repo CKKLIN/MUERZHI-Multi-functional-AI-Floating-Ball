@@ -124,6 +124,8 @@ export interface ElectronAPI {
   agentResolvePermission: (behavior: string) => Promise<void>
   onAgentStateUpdate: (callback: (data: AgentStatePayload) => void) => () => void
   onAgentPermissionRequest: (callback: (data: AgentPermissionPayload) => void) => () => void
+  showAiWindow: () => Promise<void>
+  showMainWindow: () => Promise<void>
 }
 
 export interface AgentStatePayload {

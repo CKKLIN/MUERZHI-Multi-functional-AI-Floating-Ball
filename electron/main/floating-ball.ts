@@ -331,9 +331,8 @@ body.expanded .arc-label{
 const {ipcRenderer} = require('electron')
 
 const ITEMS = [
-  {label:'全屏',icon:'⛶',action:'fullscreen'},
-  {label:'区域',icon:'▣',action:'region'},
-  {label:'设置',icon:'⚙',action:'settings'},
+  {label:'录屏',icon:'⏺',action:'record'},
+  {label:'AI助手',icon:'🤖',action:'ai'},
 ]
 
 let isExpanded = false

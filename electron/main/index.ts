@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, nativeImage } from 'electron'
+import { app, BrowserWindow, nativeImage, ipcMain } from 'electron'
 import log, { ensureLogPath } from './logger'
 import { registerIpcHandlers } from './ipc-handlers'
 import { setMainWindow } from './region-selector'
@@ -12,6 +12,7 @@ import { createAgentBridge, type AgentBridge } from './agent-bridge'
 declare const __dirname: string
 
 let mainWindow: BrowserWindow | null = null
+let aiWindow: BrowserWindow | null = null
 let agentBridge: AgentBridge | null = null
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 
@@ -86,6 +87,17 @@ app.whenReady().then(() => {
   showFloatingBall()
   reportIP()
 
+  // AI 助手窗口 IPC
+  ipcMain.handle('show-ai-window', () => {
+    showAiWindow()
+  })
+  ipcMain.handle('show-main-window', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+
   setInterval(retryPending, 30_000)
 
   app.on('activate', () => {
@@ -104,4 +116,42 @@ app.on('before-quit', () => {
   unregisterGlobalShortcuts()
   destroyTray()
   mainWindow = null
+  aiWindow = null
 })
+
+function showAiWindow() {
+  if (aiWindow && !aiWindow.isDestroyed()) {
+    aiWindow.show()
+    aiWindow.focus()
+    return
+  }
+  const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
+  const preloadPath = join(__dirname, '..', 'preload', 'index.cjs')
+  aiWindow = new BrowserWindow({
+    width: 480,
+    height: 540,
+    minWidth: 400,
+    minHeight: 400,
+    show: false,
+    frame: false,
+    titleBarStyle: 'hidden',
+    title: 'AI 助手',
+    backgroundColor: '#eaeaec',
+    webPreferences: {
+      preload: preloadPath,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      backgroundThrottling: false,
+    },
+  })
+  if (VITE_DEV_SERVER_URL) {
+    aiWindow.loadURL(`${VITE_DEV_SERVER_URL}#/ai`)
+  } else {
+    aiWindow.loadFile(join(process.env.DIST!, 'index.html'), { hash: '/ai' })
+  }
+  aiWindow.once('ready-to-show', () => {
+    aiWindow?.show()
+  })
+  aiWindow.on('closed', () => { aiWindow = null })
+}
