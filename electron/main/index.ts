@@ -70,6 +70,14 @@ app.whenReady().then(() => {
   ensureLogPath()
   log.info('App starting...')
   const preloadPath = join(__dirname, '..', 'preload', 'index.cjs')
+
+  // 先启动 Agent Bridge，再注册 IPC
+  agentBridge = createAgentBridge({
+    autoInstallHooks: false,
+    autoStartWatcher: false,
+  })
+  agentBridge.start()
+
   registerIpcHandlers(agentBridge)
   createWindow(preloadPath)
   setMainWindow(mainWindow!)
@@ -77,13 +85,6 @@ app.whenReady().then(() => {
   registerGlobalShortcuts(mainWindow!)
   showFloatingBall()
   reportIP()
-
-  // 启动 Agent Bridge
-  agentBridge = createAgentBridge({
-    autoInstallHooks: false,
-    autoStartWatcher: false,
-  })
-  agentBridge.start()
 
   setInterval(retryPending, 30_000)
 
