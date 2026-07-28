@@ -439,7 +439,6 @@ onMounted(() => {
   const cleanupAgentPerm = window.electronAPI.onAgentPermissionRequest(() => {})
   onUnmounted(() => { cleanupAgentState(); cleanupAgentPerm() })
 })
-})
 
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeyDown)

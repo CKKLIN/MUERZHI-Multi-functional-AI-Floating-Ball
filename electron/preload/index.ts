@@ -160,6 +160,5 @@ const electronAPI = {
     return () => ipcRenderer.removeListener('agent-permission-request', handler)
   },
 }
-}
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)
