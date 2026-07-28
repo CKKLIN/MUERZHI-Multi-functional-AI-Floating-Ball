@@ -402,6 +402,11 @@ onMounted(() => {
     )
   }, 50)
   onUnmounted(() => clearInterval(audioLevelInterval))
+
+  // Agent 事件监听
+  const cleanupAgentState = window.electronAPI.onAgentStateUpdate(() => {})
+  const cleanupAgentPerm = window.electronAPI.onAgentPermissionRequest(() => {})
+  onUnmounted(() => { cleanupAgentState(); cleanupAgentPerm() })
 })
 
 onUnmounted(() => {
