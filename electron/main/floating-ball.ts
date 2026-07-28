@@ -485,11 +485,6 @@ export function registerFloatingBallHandlers() {
 
   ipcMain.on('floating-ball-action', (_event: any, action: string) => {
     log.info('Floating ball action:', action)
-    // 设置窗口由悬浮球直接控制，不依赖主窗口转发
-    if (action === 'settings') {
-      // 触发设置窗口显示 - 通过自定义事件通知 index.ts
-      process.emit('clawd-show-settings' as any)
-    }
     forwardAction(action)
   })
 

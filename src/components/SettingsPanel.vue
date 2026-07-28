@@ -281,9 +281,10 @@ import type { AgentBridgeStatus } from '../env.d.ts'
 }
 
 .settings-body {
+  /* background-color:red; */
   overflow-y: auto;
   flex: 1;
-  padding: 0 20px;
+  padding: 0 50px;
 }
 
 .settings-group {

@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, nativeImage, ipcMain } from 'electron'
+import { app, BrowserWindow, nativeImage } from 'electron'
 import log, { ensureLogPath } from './logger'
 import { registerIpcHandlers } from './ipc-handlers'
 import { setMainWindow } from './region-selector'
@@ -12,7 +12,6 @@ import { createAgentBridge, type AgentBridge } from './agent-bridge'
 declare const __dirname: string
 
 let mainWindow: BrowserWindow | null = null
-let settingsWindow: BrowserWindow | null = null
 let agentBridge: AgentBridge | null = null
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 
@@ -87,16 +86,6 @@ app.whenReady().then(() => {
   showFloatingBall()
   reportIP()
 
-  // 设置窗口 IPC
-  ipcMain.handle('show-settings-window', () => {
-    showSettingsWindow()
-  })
-
-  // 悬浮球触发设置窗口
-  process.on('clawd-show-settings' as any, () => {
-    showSettingsWindow()
-  })
-
   setInterval(retryPending, 30_000)
 
   app.on('activate', () => {
@@ -105,43 +94,6 @@ app.whenReady().then(() => {
     }
   })
 })
-
-function showSettingsWindow() {
-  if (settingsWindow && !settingsWindow.isDestroyed()) {
-    settingsWindow.show()
-    settingsWindow.focus()
-    return
-  }
-  const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
-  const preloadPath = join(__dirname, '..', 'preload', 'index.cjs')
-  settingsWindow = new BrowserWindow({
-    width: 480,
-    height: 540,
-    minWidth: 400,
-    minHeight: 400,
-    show: false,
-    frame: false,
-    titleBarStyle: 'hidden',
-    title: '设置',
-    backgroundColor: '#eaeaec',
-    webPreferences: {
-      preload: preloadPath,
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false,
-      backgroundThrottling: false,
-    },
-  })
-  if (VITE_DEV_SERVER_URL) {
-    settingsWindow.loadURL(`${VITE_DEV_SERVER_URL}#/settings`)
-  } else {
-    settingsWindow.loadFile(join(process.env.DIST!, 'index.html'), { hash: '/settings' })
-  }
-  settingsWindow.once('ready-to-show', () => {
-    settingsWindow?.show()
-  })
-  settingsWindow.on('closed', () => { settingsWindow = null })
-}
 
 app.on('window-all-closed', () => {
   // 关闭所有窗口后不退出，继续在托盘运行

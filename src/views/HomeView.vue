@@ -9,6 +9,7 @@ import DrawingCanvas from '../components/DrawingCanvas.vue'
 import DrawingToolbar from '../components/DrawingToolbar.vue'
 import RecordingsList from '../components/RecordingsList.vue'
 import VideoPlayer from '../components/VideoPlayer.vue'
+import SettingsPanel from '../components/SettingsPanel.vue'
 import ConversionDialog from '../components/ConversionDialog.vue'
 import { useRecordingStore, type Recording } from '../stores/recording'
 import { useSettingsStore } from '../stores/settings'
@@ -21,6 +22,7 @@ const recording = useRecording()
 const audio = useAudioCapture()
 
 // UI 状态
+const activeTab = ref<'record' | 'settings'>('record')
 const showVideoPlayer = ref(false)
 const showConversion = ref(false)
 const playingRecording = ref<Recording | null>(null)
@@ -32,7 +34,7 @@ const floatingBallActions: Record<string, () => void> = {
   fullscreen: () => handleFullscreen(),
   region: () => handleSelectRegion(),
   screenshot: () => handleScreenshot(),
-  settings: () => { window.electronAPI.showSettingsWindow() },
+  settings: () => { activeTab.value = 'settings' },
   record: () => { activeTab.value = 'record' },
 }
 
@@ -480,8 +482,14 @@ watch(() => isConverting.value, (val) => {
 <template>
   <Layout>
     <div class="home">
+      <!-- 标签栏 -->
+      <div class="tab-bar">
+        <button class="tab-btn" :class="{ active: activeTab === 'record' }" @click="activeTab = 'record'">录屏</button>
+        <button class="tab-btn" :class="{ active: activeTab === 'settings' }" @click="activeTab = 'settings'">设置</button>
+      </div>
+
       <!-- 录屏标签页 -->
-      <template>
+      <template v-if="activeTab === 'record'">
         <!-- 转换进度气泡 -->
         <Transition name="bubble">
           <div v-if="showBubble" class="convert-bubble">
@@ -602,6 +610,11 @@ watch(() => isConverting.value, (val) => {
           />
         </div>
       </template>
+
+      <!-- 设置标签页 -->
+      <div v-else class="settings-tab">
+        <SettingsPanel />
+      </div>
 
       <!-- 视频播放器 -->
       <VideoPlayer

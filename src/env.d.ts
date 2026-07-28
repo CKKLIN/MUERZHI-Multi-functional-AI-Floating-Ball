@@ -122,7 +122,6 @@ export interface ElectronAPI {
   agentUninstallHooks: () => Promise<AgentBridgeStatus | null>
   agentSetAutoStart: (enabled: boolean) => Promise<void>
   agentResolvePermission: (behavior: string) => Promise<void>
-  showSettingsWindow: () => Promise<void>
   onAgentStateUpdate: (callback: (data: AgentStatePayload) => void) => () => void
   onAgentPermissionRequest: (callback: (data: AgentPermissionPayload) => void) => () => void
 }
