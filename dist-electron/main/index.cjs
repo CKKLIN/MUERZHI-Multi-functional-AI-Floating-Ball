@@ -3298,7 +3298,6 @@ const {ipcRenderer} = require('electron')
 const ITEMS = [
   {label:'全屏',icon:'⛶',action:'fullscreen'},
   {label:'区域',icon:'▣',action:'region'},
-  {label:'截图',icon:'📷',action:'screenshot'},
   {label:'设置',icon:'⚙',action:'settings'},
 ]
 
@@ -3322,11 +3321,11 @@ function ensureMenu(){
   const svg = document.getElementById('ringSvg')
   const cx=120, cy=120, r1=34, r2=75
   const total = ITEMS.length
-  const segArc = 90  // 每段 90°，无间隙
-  const startOff = -135
+  const segArc = 360 / total
+  const startOff = -90 - segArc / 2
 
   ITEMS.forEach(function(item, i){
-    const sa = startOff + i*90
+    const sa = startOff + i * segArc
     const ea = sa + segArc
     const d = arcPath(cx, cy, r1, r2, sa, ea)
 
@@ -3500,6 +3499,15 @@ var import_tray = (/* @__PURE__ */ __commonJSMin(((exports, module) => {
 			height: 16
 		});
 	}
+	function getBalloonIcon() {
+		const iconPath = electron.app.isPackaged ? (0, node_path.join)(process.resourcesPath, "logo.png") : (0, node_path.join)(__dirname, "../../public/logo.png");
+		if (iconPath) return electron.nativeImage.createFromPath(iconPath).resize({
+			width: 64,
+			height: 64,
+			quality: "better"
+		});
+		return electron.nativeImage.createEmpty();
+	}
 	function createTray$1() {
 		if (tray && !tray.isDestroyed()) return;
 		tray = new electron.Tray(getTrayIcon());
@@ -3538,7 +3546,8 @@ var import_tray = (/* @__PURE__ */ __commonJSMin(((exports, module) => {
 		if (tray && !tray.isDestroyed()) {
 			tray.displayBalloon({
 				title,
-				content
+				content,
+				icon: getBalloonIcon()
 			});
 			logger_default.info("Tray balloon:", title, content);
 		}
@@ -3819,7 +3828,8 @@ function registerIpcHandlers() {
 		else win?.maximize();
 	});
 	electron.ipcMain.handle("close-window", async (event) => {
-		electron.BrowserWindow.fromWebContents(event.sender)?.close();
+		const win = electron.BrowserWindow.fromWebContents(event.sender);
+		if (win) win.hide();
 	});
 	electron.ipcMain.on("notify-conversion-start", () => {
 		(0, import_tray.showBalloon)("二支录制", "录制完成，正在转换视频格式...");
@@ -4102,14 +4112,7 @@ function createWindow(preloadPath) {
 	mainWindow.on("close", (e) => {
 		if (!electron.app.isQuitting) {
 			e.preventDefault();
-			electron.app.isQuitting = true;
-			mainWindow.webContents.send("app-before-quit");
-			setTimeout(() => {
-				unregisterGlobalShortcuts();
-				(0, import_tray.destroyTray)();
-				mainWindow = null;
-				electron.app.quit();
-			}, 300);
+			mainWindow?.hide();
 		}
 	});
 }

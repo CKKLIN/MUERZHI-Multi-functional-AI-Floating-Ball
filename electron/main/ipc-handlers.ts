@@ -271,7 +271,10 @@ export function registerIpcHandlers() {
   })
 
   ipcMain.handle('close-window', async (event) => {
-    BrowserWindow.fromWebContents(event.sender)?.close()
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win) {
+      win.hide()
+    }
   })
 
   ipcMain.on('notify-conversion-start', () => {

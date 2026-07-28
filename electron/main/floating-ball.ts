@@ -333,7 +333,6 @@ const {ipcRenderer} = require('electron')
 const ITEMS = [
   {label:'全屏',icon:'⛶',action:'fullscreen'},
   {label:'区域',icon:'▣',action:'region'},
-  {label:'截图',icon:'📷',action:'screenshot'},
   {label:'设置',icon:'⚙',action:'settings'},
 ]
 
@@ -357,11 +356,11 @@ function ensureMenu(){
   const svg = document.getElementById('ringSvg')
   const cx=120, cy=120, r1=34, r2=75
   const total = ITEMS.length
-  const segArc = 90  // 每段 90°，无间隙
-  const startOff = -135
+  const segArc = 360 / total
+  const startOff = -90 - segArc / 2
 
   ITEMS.forEach(function(item, i){
-    const sa = startOff + i*90
+    const sa = startOff + i * segArc
     const ea = sa + segArc
     const d = arcPath(cx, cy, r1, r2, sa, ea)
 

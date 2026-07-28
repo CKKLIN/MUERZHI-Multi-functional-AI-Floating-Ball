@@ -50,14 +50,7 @@ function createWindow(preloadPath: string) {
   mainWindow.on('close', (e) => {
     if (!(app as any).isQuitting) {
       e.preventDefault()
-      ;(app as any).isQuitting = true
-      mainWindow!.webContents.send('app-before-quit')
-      setTimeout(() => {
-        unregisterGlobalShortcuts()
-        destroyTray()
-        mainWindow = null
-        app.quit()
-      }, 300)
+      mainWindow?.hide()
     }
   })
 }
