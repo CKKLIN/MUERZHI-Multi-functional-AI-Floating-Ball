@@ -217,8 +217,6 @@ import type { AgentBridgeStatus } from '../env.d.ts'
 
 <style scoped>
 .settings-panel {
-  max-width: 480px;
-  margin: 0 auto;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -285,6 +283,7 @@ import type { AgentBridgeStatus } from '../env.d.ts'
 .settings-body {
   overflow-y: auto;
   flex: 1;
+  padding: 0 16px;
 }
 
 .settings-group {
