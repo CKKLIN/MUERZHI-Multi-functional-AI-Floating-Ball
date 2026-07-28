@@ -99,7 +99,7 @@ app.whenReady().then(() => {
   })
 
   // 悬浮球触发窗口
-  process.on('clawd-show-main-window' as any, () => {
+  process.on('clawd-show-record-window' as any, () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.show()
       mainWindow.focus()
