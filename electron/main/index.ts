@@ -99,7 +99,9 @@ app.whenReady().then(() => {
       height: 540,
       minWidth: 400,
       minHeight: 400,
-      frame: true,
+      show: false,
+      frame: false,
+      titleBarStyle: 'hidden',
       title: '设置',
       backgroundColor: '#eaeaec',
       webPreferences: {
@@ -107,6 +109,7 @@ app.whenReady().then(() => {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: false,
+        backgroundThrottling: false,
       },
     })
     if (VITE_DEV_SERVER_URL) {
@@ -114,6 +117,9 @@ app.whenReady().then(() => {
     } else {
       settingsWindow.loadFile(join(process.env.DIST!, 'index.html'), { hash: '/settings' })
     }
+    settingsWindow.once('ready-to-show', () => {
+      settingsWindow?.show()
+    })
     settingsWindow.on('closed', () => { settingsWindow = null })
   })
 
