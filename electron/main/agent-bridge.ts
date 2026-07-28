@@ -79,6 +79,10 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
     server.stop()
   }
 
+  function getServer() { return server }
+  function getStateMachine() { return stateMachine }
+  function getHookManager() { return hookManager }
+
   function setStateListener(listener: (state: DisplayState, sessions: AgentSession[]) => void) {
     stateListener = listener
   }
