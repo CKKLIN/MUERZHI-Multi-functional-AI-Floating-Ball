@@ -179,13 +179,17 @@ async function collapseBall() {
 
 // 转发操作到主窗口
 function forwardAction(action: string) {
-  // 录屏和AI助手直接由主进程处理
   if (action === 'record') {
-    const { ipcMain } = require('electron') as typeof import('electron')
-    ipcMain.emit('clawd-show-main-window' as any)
+    // 直接找到录屏主窗口并显示
+    const wins = BrowserWindow.getAllWindows()
+    const mainWin = wins.find(w => !w.isDestroyed() && w !== floatingBallWindow && !w.getTitle?.()?.includes?.('AI'))
+    if (mainWin && !mainWin.isDestroyed()) {
+      mainWin.show()
+      mainWin.focus()
+    }
   } else if (action === 'ai') {
-    const { ipcMain } = require('electron') as typeof import('electron')
-    ipcMain.emit('clawd-show-ai-window' as any)
+    // 触发AI窗口显示
+    process.emit('clawd-show-ai-window' as any)
   } else {
     const mainWindow = BrowserWindow.getAllWindows().find(w =>
       !w.isDestroyed() && w !== floatingBallWindow
