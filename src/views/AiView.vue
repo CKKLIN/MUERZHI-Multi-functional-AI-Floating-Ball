@@ -2,13 +2,13 @@
 // AI assistant view — loaded in a separate BrowserWindow
 <script setup lang="ts">
 import Layout from '../components/Layout.vue'
-import SettingsPanel from '../components/SettingsPanel.vue'
+import AiSettingsPanel from '../components/AiSettingsPanel.vue'
 </script>
 
 <template>
   <Layout>
     <div class="ai-view">
-      <SettingsPanel />
+      <AiSettingsPanel />
     </div>
   </Layout>
 </template>

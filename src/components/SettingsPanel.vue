@@ -44,38 +44,7 @@ function showAbout() {
   window.electronAPI.showAboutWindow()
 }
 
-// AI 助手状态
-const claudeIntegrated = ref(false)
-const bridgeStatus = ref<AgentBridgeStatus | null>(null)
-let statusInterval: ReturnType<typeof setInterval> | null = null
 
-async function loadAiStatus() {
-  try {
-    const status = await window.electronAPI.agentGetStatus()
-    if (status) {
-      bridgeStatus.value = status
-      claudeIntegrated.value = status.hookInstalled === true
-    }
-  } catch {}
-}
-
-async function toggleClaudeIntegration() {
-  if (claudeIntegrated.value) {
-    await window.electronAPI.agentUninstallHooks()
-    claudeIntegrated.value = false
-  } else {
-    const status = await window.electronAPI.agentInstallHooks()
-    claudeIntegrated.value = status?.hookInstalled === true
-  }
-  await loadAiStatus()
-}
-
-onMounted(() => {
-  loadAiStatus()
-  statusInterval = setInterval(loadAiStatus, 5000)
-})
-
-import type { AgentBridgeStatus } from '../env.d.ts'
 </script>
 
 <template>
