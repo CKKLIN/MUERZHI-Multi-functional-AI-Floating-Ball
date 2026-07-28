@@ -146,37 +146,6 @@ function showAbout() {
         </div>
       </div>
 
-      <!-- AI 助手设置 -->
-      <div class="settings-group">
-        <div class="group-header">AI 助手</div>
-        <div class="settings-section">
-          <div class="setting-row">
-            <label>Claude Code</label>
-            <div class="setting-control">
-              <button class="btn btn-sm" @click="toggleClaudeIntegration" :style="{ minWidth: '70px' }">
-                {{ claudeIntegrated ? '已安装' : '未安装' }}
-              </button>
-            </div>
-          </div>
-          <div class="setting-row">
-            <label>服务状态</label>
-            <span :class="['status-badge', bridgeStatus?.serverRunning ? 'online' : 'offline']">
-              {{ bridgeStatus?.serverRunning ? '运行中' : '未启动' }}
-            </span>
-          </div>
-          <div class="setting-row" v-if="bridgeStatus">
-            <label>当前状态</label>
-            <span :class="['status-badge', bridgeStatus.sessionCount > 0 ? 'online' : 'idle']">
-              {{ bridgeStatus.displayState }} ({{ bridgeStatus.sessionCount }} 会话)
-            </span>
-          </div>
-          <div class="setting-row" v-if="bridgeStatus">
-            <label>端口</label>
-            <kbd>{{ bridgeStatus.port || '-' }}</kbd>
-          </div>
-        </div>
-      </div>
-
       <div class="about-footer">
         <button class="about-btn" @click="showAbout()">关于</button>
       </div>
