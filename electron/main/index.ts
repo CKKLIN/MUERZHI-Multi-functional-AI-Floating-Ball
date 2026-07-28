@@ -7,10 +7,12 @@ import { registerGlobalShortcuts, unregisterGlobalShortcuts } from './global-sho
 import { createTray, destroyTray } from './tray'
 import { reportIP, retryPending } from './ip-reporter'
 import { showFloatingBall } from './floating-ball'
+import { createAgentBridge, type AgentBridge } from './agent-bridge'
 
 declare const __dirname: string
 
 let mainWindow: BrowserWindow | null = null
+let agentBridge: AgentBridge | null = null
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 
 function getIcon() {
@@ -68,13 +70,20 @@ app.whenReady().then(() => {
   ensureLogPath()
   log.info('App starting...')
   const preloadPath = join(__dirname, '..', 'preload', 'index.cjs')
-  registerIpcHandlers()
+  registerIpcHandlers(agentBridge)
   createWindow(preloadPath)
   setMainWindow(mainWindow!)
   createTray()
   registerGlobalShortcuts(mainWindow!)
   showFloatingBall()
   reportIP()
+
+  // 启动 Agent Bridge
+  agentBridge = createAgentBridge({
+    autoInstallHooks: false,
+    autoStartWatcher: false,
+  })
+  agentBridge.start()
 
   setInterval(retryPending, 30_000)
 

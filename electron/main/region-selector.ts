@@ -271,6 +271,35 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
 .meter-bar.on{background:#4ecdc4;box-shadow:0 0 4px #4ecdc4}
 .meter-bar.on.warn{background:#ffd93d;box-shadow:0 0 4px #ffd93d}
 .meter-bar.on.hot{background:#e94560;box-shadow:0 0 4px #e94560}
+/* AI 状态指示器 */
+.ai-indicator{display:flex;align-items:center;gap:6px;flex-shrink:0;padding:0 6px;cursor:pointer;border-radius:6px;transition:background 0.15s}
+.ai-indicator:hover{background:rgba(255,255,255,0.1)}
+.ai-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;transition:all 0.3s}
+.ai-dot.idle{background:#9e9e9e}
+.ai-dot.thinking{background:#ffd93d;animation:ai-breathe 1.5s ease-in-out infinite}
+.ai-dot.working{background:#4ecdc4;animation:ai-pulse 0.8s ease-in-out infinite}
+.ai-dot.error{background:#e94560}
+.ai-dot.notification{background:#b388ff;animation:ai-pulse 0.6s ease-in-out infinite}
+.ai-dot.done{background:#66bb6a;animation:ai-flash 0.3s ease 3}
+@keyframes ai-breathe{0%,100%{opacity:0.4;transform:scale(0.8)}50%{opacity:1;transform:scale(1.1)}}
+@keyframes ai-pulse{0%,100%{opacity:0.5;transform:scale(0.9)}50%{opacity:1;transform:scale(1.15)}}
+@keyframes ai-flash{0%,100%{opacity:1}50%{opacity:0.2;transform:scale(1.3)}}
+.ai-label{font-size:11px;color:rgba(255,255,255,0.6);white-space:nowrap;font-weight:500}
+.ai-label.active{color:#e8e8f0}
+/* 权限卡片 */
+.perm-card{width:100%;padding:8px 12px;background:rgba(255,255,255,0.06);border-top:1px solid rgba(255,255,255,0.08);display:none;flex-direction:column;gap:6px}
+.perm-card.show{display:flex}
+.perm-header{font-size:11px;font-weight:600;color:#e8e8f0;display:flex;align-items:center;gap:6px}
+.perm-detail{font-size:10px;color:rgba(255,255,255,0.6);word-break:break-all;line-height:1.4}
+.perm-tool{color:#4ecdc4;font-weight:500}
+.perm-actions{display:flex;gap:6px;margin-top:2px}
+.perm-btn{flex:1;padding:5px 8px;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.15s}
+.perm-btn.allow{background:#4ecdc4;color:#1a1a2e}
+.perm-btn.allow:hover{background:#6eddd6}
+.perm-btn.deny{background:rgba(255,255,255,0.1);color:#e8e8f0}
+.perm-btn.deny:hover{background:rgba(233,69,96,0.3);color:#e94560}
+.perm-btn.always{background:rgba(78,205,196,0.15);color:#4ecdc4;border:1px solid rgba(78,205,196,0.3)}
+.perm-btn.always:hover{background:rgba(78,205,196,0.25)}
 </style></head><body>
 <div class="island" id="island">
   <span class="recording-dot" id="dot" style="display:none"></span>
@@ -309,6 +338,26 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
   <button class="close-btn" onclick="doClose()" title="取消">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
   </button>
+</div>
+<div class="sep" id="aiSep" style="display:none"></div>
+<div class="ai-indicator" id="aiIndicator" style="display:none" onclick="showAiDetail()" title="点击查看详情">
+  <span class="ai-dot idle" id="aiDot"></span>
+  <span class="ai-label" id="aiLabel">AI 待机</span>
+</div>
+<div class="perm-card" id="permCard">
+  <div class="perm-header">
+    <span>🤖</span>
+    <span>Claude Code 请求权限</span>
+  </div>
+  <div class="perm-detail">
+    <span class="perm-tool" id="permTool">工具名</span>
+    <span id="permTarget">目标信息</span>
+  </div>
+  <div class="perm-actions">
+    <button class="perm-btn allow" onclick="doAllow()">✅ 允许</button>
+    <button class="perm-btn deny" onclick="doDeny()">❌ 拒绝</button>
+    <button class="perm-btn always" onclick="doAlwaysAllow()">📌 始终允许</button>
+  </div>
 </div>
 <script>
 const {ipcRenderer}=require('electron')
@@ -382,10 +431,34 @@ function doClose(){ipcRenderer.send('island-action','close')}
 function resizeIsland(){
   const island=document.getElementById('island')
   const w=island.scrollWidth
-  ipcRenderer.send('resize-island',w)
+  const permCard=document.getElementById('permCard')
+  const extraH=permCard&&permCard.classList.contains('show')?100:0
+  ipcRenderer.send('resize-island',w,44+extraH)
 }
 const ro=new ResizeObserver(()=>resizeIsland())
 ro.observe(document.getElementById('island'))
+// AI 状态管理
+let currentAiState='idle'
+const aiLabels={idle:'AI 待机',thinking:'AI 思考中',working:'AI 工作中',error:'AI 出错了',notification:'等待审批',done:'任务完成'}
+ipcRenderer.on('agent-state-update',(e,data)=>{
+  const ind=document.getElementById('aiIndicator'),dot=document.getElementById('aiDot'),lb=document.getElementById('aiLabel'),sp=document.getElementById('aiSep')
+  if(!data||(data.state==='idle'&&(!data.sessions||!data.sessions.length))){ind.style.display='none';sp.style.display='none';return}
+  ind.style.display='flex';sp.style.display='block';currentAiState=data.state
+  dot.className='ai-dot '+data.state;lb.textContent=aiLabels[data.state]||'AI '+data.state;lb.classList.toggle('active',data.state!=='idle')
+  setTimeout(resizeIsland,50)
+})
+ipcRenderer.on('agent-permission-request',(e,data)=>{
+  document.getElementById('permCard').classList.add('show')
+  document.getElementById('permTool').textContent=data.toolName||'未知操作'
+  const istr=data.toolInput?JSON.stringify(data.toolInput).slice(0,80):''
+  document.getElementById('permTarget').textContent=istr?': '+istr:''
+  setTimeout(resizeIsland,50)
+})
+function doAllow(){resolvePerm('allow')}
+function doDeny(){resolvePerm('deny')}
+function doAlwaysAllow(){resolvePerm('always')}
+function resolvePerm(b){ipcRenderer.invoke('agent-resolve-permission',b);document.getElementById('permCard').classList.remove('show');setTimeout(resizeIsland,50)}
+function showAiDetail(){}
 </script>
 </body></html>`
 
@@ -863,12 +936,13 @@ function registerRegionSelectorHandlers() {
     }
   })
 
-  ipcMain.on('resize-island', (_event: any, contentWidth: number) => {
+  ipcMain.on('resize-island', (_event: any, contentWidth: number, contentHeight?: number) => {
     if (floatingIsland && !floatingIsland.isDestroyed()) {
       const bounds = islandTargetBounds || screen.getPrimaryDisplay().bounds
       const totalW = contentWidth + 20 // padding
       const newX = Math.round(bounds.x + (bounds.width - totalW) / 2)
-      floatingIsland.setBounds({ x: newX, y: bounds.y + 4, width: totalW, height: 44 })
+      const h = contentHeight || 44
+      floatingIsland.setBounds({ x: newX, y: bounds.y + 4, width: totalW, height: h })
     }
   })
 }

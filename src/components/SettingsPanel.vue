@@ -43,6 +43,39 @@ function save() {
 function showAbout() {
   window.electronAPI.showAboutWindow()
 }
+
+// AI 助手状态
+const claudeIntegrated = ref(false)
+const bridgeStatus = ref<AgentBridgeStatus | null>(null)
+let statusInterval: ReturnType<typeof setInterval> | null = null
+
+async function loadAiStatus() {
+  try {
+    const status = await window.electronAPI.agentGetStatus()
+    if (status) {
+      bridgeStatus.value = status
+      claudeIntegrated.value = status.hookInstalled === true
+    }
+  } catch {}
+}
+
+async function toggleClaudeIntegration() {
+  if (claudeIntegrated.value) {
+    await window.electronAPI.agentUninstallHooks()
+    claudeIntegrated.value = false
+  } else {
+    const status = await window.electronAPI.agentInstallHooks()
+    claudeIntegrated.value = status?.hookInstalled === true
+  }
+  await loadAiStatus()
+}
+
+onMounted(() => {
+  loadAiStatus()
+  statusInterval = setInterval(loadAiStatus, 5000)
+})
+
+import type { AgentBridgeStatus } from '../env.d.ts'
 </script>
 
 <template>
@@ -143,6 +176,38 @@ function showAbout() {
           </div>
         </div>
       </div>
+
+      <!-- AI 助手设置 -->
+      <div class="settings-group">
+        <div class="group-header">AI 助手</div>
+        <div class="settings-section">
+          <div class="setting-row">
+            <label>Claude Code</label>
+            <div class="setting-control">
+              <button class="btn btn-sm" @click="toggleClaudeIntegration" :style="{ minWidth: '70px' }">
+                {{ claudeIntegrated ? '已安装' : '未安装' }}
+              </button>
+            </div>
+          </div>
+          <div class="setting-row">
+            <label>服务状态</label>
+            <span :class="['status-badge', bridgeStatus?.serverRunning ? 'online' : 'offline']">
+              {{ bridgeStatus?.serverRunning ? '运行中' : '未启动' }}
+            </span>
+          </div>
+          <div class="setting-row" v-if="bridgeStatus">
+            <label>当前状态</label>
+            <span :class="['status-badge', bridgeStatus.sessionCount > 0 ? 'online' : 'idle']">
+              {{ bridgeStatus.displayState }} ({{ bridgeStatus.sessionCount }} 会话)
+            </span>
+          </div>
+          <div class="setting-row" v-if="bridgeStatus">
+            <label>端口</label>
+            <kbd>{{ bridgeStatus.port || '-' }}</kbd>
+          </div>
+        </div>
+      </div>
+
       <div class="about-footer">
         <button class="about-btn" @click="showAbout()">关于</button>
       </div>

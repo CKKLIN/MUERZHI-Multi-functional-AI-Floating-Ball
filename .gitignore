@@ -28,8 +28,6 @@ release/
 
 src/log
 
-<<<<<<< HEAD
 .claude
-=======
-.claude
->>>>>>> e23b4f114715f74f0e1ad24d43e9b9ef714e8b73
+
+floating-ball-pos.json

@@ -433,6 +433,12 @@ onMounted(() => {
 
   // 暴露清理函数供 onUnmounted 使用
   onUnmounted(() => cleanupBallAction())
+
+  // Agent 事件监听
+  const cleanupAgentState = window.electronAPI.onAgentStateUpdate(() => {})
+  const cleanupAgentPerm = window.electronAPI.onAgentPermissionRequest(() => {})
+  onUnmounted(() => { cleanupAgentState(); cleanupAgentPerm() })
+})
 })
 
 onUnmounted(() => {
