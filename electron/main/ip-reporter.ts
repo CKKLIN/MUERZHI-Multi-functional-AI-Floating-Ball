@@ -65,7 +65,6 @@ async function flushPending(): Promise<boolean> {
     return true
   }
   fs.writeFileSync(getPendingPath(), JSON.stringify(failed, null, 2), 'utf-8')
-  log.info('Some pending reports still failed, remaining:', failed.length)
   return false
 }
 
@@ -158,7 +157,6 @@ export async function reportIP() {
 export function retryPending() {
   const pending = loadPending()
   if (pending.length > 0) {
-    log.info('Retrying pending reports:', pending.length)
     flushPending()
   }
 }

@@ -15,6 +15,7 @@ function copyHtmlFiles() {
   try { copyFileSync('electron/camera-preview.html', 'dist-electron/main/camera-preview.html') } catch {}
   try { copyFileSync('electron/screenshot-selector.html', 'dist-electron/main/screenshot-selector.html') } catch {}
   try { copyFileSync('electron/pin-window.html', 'dist-electron/main/pin-window.html') } catch {}
+  try { copyFileSync('electron/main/clawd-hook.js', 'dist-electron/main/clawd-hook.js') } catch {}
 }
 
 function srcHtmlNewer() {
@@ -69,14 +70,18 @@ export default defineConfig({
         server.watcher.add('electron/region-selector.html')
         server.watcher.add('electron/screenshot-selector.html')
         server.watcher.add('electron/pin-window.html')
+        server.watcher.add('electron/main/clawd-hook.js')
         server.watcher.on('change', (file) => {
-          if (file.includes('camera-preview.html') || file.includes('region-selector.html') || file.includes('screenshot-selector.html') || file.includes('pin-window.html')) {
+          if (file.includes('camera-preview.html') || file.includes('region-selector.html') || file.includes('screenshot-selector.html') || file.includes('pin-window.html') || file.includes('clawd-hook.js')) {
             copyHtmlFiles()
           }
         })
       },
       buildEnd: copyHtmlFiles,
-      closeBundle: copyHtmlFiles,
+      closeBundle: function() {
+        // 只复制文件一次，不触发重建
+        copyHtmlFiles()
+      },
     },
   ],
   build: {
@@ -84,7 +89,11 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-    port: 3344,
-    strictPort: true,
+    port: 21047,
+    strictPort: false,
+    headers: {
+      'Cache-Control': 'no-store',
+    },
+    hmr: true,
   },
 })

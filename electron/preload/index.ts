@@ -103,6 +103,8 @@ const electronAPI = {
   showFloatingIsland: (audioState?: { micEnabled: boolean; sysEnabled: boolean; cameraEnabled?: boolean; cameraDeviceId?: string }, targetDisplayId?: number) =>
     ipcRenderer.invoke('show-floating-island', audioState, targetDisplayId),
   hideFloatingIsland: () => ipcRenderer.invoke('hide-floating-island'),
+  showAiIsland: () => ipcRenderer.invoke('show-ai-island'),
+  hideAiIsland: () => ipcRenderer.invoke('hide-ai-island'),
   hideCameraPreview: () => ipcRenderer.invoke('hide-camera-preview'),
   toggleCameraPreview: (show: boolean, cameraDeviceId?: string) =>
     ipcRenderer.invoke('toggle-camera-preview', show, cameraDeviceId),
@@ -147,8 +149,9 @@ const electronAPI = {
   agentGetStatus: () => ipcRenderer.invoke('agent-get-status'),
   agentInstallHooks: () => ipcRenderer.invoke('agent-install-hooks'),
   agentUninstallHooks: () => ipcRenderer.invoke('agent-uninstall-hooks'),
-  agentSetAutoStart: (enabled: boolean) => ipcRenderer.invoke('agent-set-auto-start', enabled),
   agentResolvePermission: (behavior: string) => ipcRenderer.invoke('agent-resolve-permission', behavior),
+  agentSetAutoAllow: (enabled: boolean) => ipcRenderer.invoke('agent-set-auto-allow', enabled),
+  agentGetAutoAllow: () => ipcRenderer.invoke('agent-get-auto-allow'),
   onAgentStateUpdate: (callback: (data: any) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
     ipcRenderer.on('agent-state-update', handler)

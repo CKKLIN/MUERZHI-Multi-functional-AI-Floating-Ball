@@ -1,6 +1,8 @@
 // electron/main/agent-state-machine.ts
 // Agent state machine — tracks sessions, resolves display state, cleans stale sessions
 
+import log from "./logger"
+
 export interface AgentSession {
   sessionId: string
   agentId: string
@@ -46,11 +48,12 @@ export function createAgentStateMachine() {
 
   function notify() {
     const state = resolveDisplayState()
+    const snapshot = Array.from(sessions.values())
+    // 始终通知前端，确保 session 数量变化能即时更新
     if (state !== currentGlobalState) {
       currentGlobalState = state
-      const snapshot = Array.from(sessions.values())
-      for (const l of listeners) l(state, snapshot)
     }
+    for (const l of listeners) l(currentGlobalState, snapshot)
   }
 
   function updateSession(
@@ -81,6 +84,8 @@ export function createAgentStateMachine() {
     }
     sessions.set(sessionId, session)
 
+    log.info(`[StateMachine] updateSession: id=${sessionId}, state=${state}, event=${event}, total=${sessions.size}`)
+
     if (state === "idle" && event === "Stop") {
       doneTimer = setTimeout(() => {
         doneTimer = null
@@ -89,6 +94,7 @@ export function createAgentStateMachine() {
           s.state = "idle"
           s.updatedAt = Date.now()
         }
+        log.info(`[StateMachine] doneTimer fired for ${sessionId}, total=${sessions.size}`)
         notify()
       }, DONE_DURATION_MS)
     }
@@ -116,7 +122,11 @@ export function createAgentStateMachine() {
   }
 
   function getSessions(): AgentSession[] {
-    return Array.from(sessions.values())
+    const result: AgentSession[] = []
+    for (const [, v] of sessions) {
+      result.push(v)
+    }
+    return result
   }
 
   function cleanStaleSessions() {
@@ -126,10 +136,12 @@ export function createAgentStateMachine() {
       const age = now - s.updatedAt
       if (age > SESSION_STALE_MS) {
         sessions.delete(id)
+        log.info(`[StateMachine] cleanStale: removed ${id} (age=${Math.round(age / 1000)}s)`)
         changed = true
       } else if (s.state !== "idle" && age > WORKING_STALE_MS) {
         s.state = "idle"
         s.updatedAt = now
+        log.info(`[StateMachine] cleanStale: reset ${id} to idle (age=${Math.round(age / 1000)}s)`)
         changed = true
       }
     }

@@ -7,8 +7,8 @@ import * as path from "path"
 import { createAgentStateMachine, type AgentLogicalState } from "./agent-state-machine"
 import log from "./logger"
 
-const DEFAULT_PORT = 23338
-const MAX_PORT = 23342
+const DEFAULT_PORT = 60000
+const MAX_PORT = 60019
 const PERMISSION_TIMEOUT_MS = 120_000
 
 export interface PendingPermission {
@@ -57,7 +57,10 @@ export function createAgentServer(stateMachine: ReturnType<typeof createAgentSta
     const state = data.state as AgentLogicalState
     const event = data.event
 
+    log.info(`[AgentServer] /state received: session=${sessionId}, state=${state}, event=${event}, tool=${data.tool_name || data.toolName}`)
+
     if (!sessionId || !state || !event) {
+      log.warn(`[AgentServer] /state rejected: missing fields (sessionId=${sessionId}, state=${state}, event=${event})`)
       sendJson(res, 400, { error: "Missing required fields: session_id, state, event" })
       return
     }
@@ -70,6 +73,7 @@ export function createAgentServer(stateMachine: ReturnType<typeof createAgentSta
       model: data.model,
     })
 
+    log.info(`[AgentServer] /state ok, total sessions=${stateMachine.getSessions().length}`)
     sendJson(res, 200, { ok: true, app: "erzhi-recording" })
   }
 
@@ -113,24 +117,45 @@ export function createAgentServer(stateMachine: ReturnType<typeof createAgentSta
     perm.then((behavior) => {
       if (res.headersSent) return
       stateMachine.updateSession(sessionId, "idle", "PermissionResolved")
-      sendJson(res, 200, { behavior })
+      // Claude Code PermissionRequest 要求的响应格式
+      // behavior: allow / deny / cancel（always 归为 allow）
+      const mappedBehavior = behavior === "always" ? "allow" : behavior
+      const responseBody = JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: "PermissionRequest",
+          decision: { behavior: mappedBehavior },
+        },
+      })
+      log.info(`[AgentServer] /permission resolved: behavior=${behavior} -> ${mappedBehavior}`)
+      res.writeHead(200, { "Content-Type": "application/json" })
+      res.end(responseBody)
     }).catch((reason) => {
       if (res.headersSent) return
       stateMachine.updateSession(sessionId, "idle", "PermissionCancelled")
-      sendJson(res, 200, { behavior: "cancel" })
+      const responseBody = JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: "PermissionRequest",
+          decision: { behavior: "cancel" },
+        },
+      })
+      log.info(`[AgentServer] /permission cancelled: ${reason}`)
+      res.writeHead(200, { "Content-Type": "application/json" })
+      res.end(responseBody)
     })
   }
 
   function handleHealth(res: http.ServerResponse) {
-    sendJson(res, 200, { ok: true, app: "erzhi-recording", port: activePort })
+    const sc = stateMachine.getSessions().length
+    sendJson(res, 200, { ok: true, app: "erzhi-recording", port: activePort, sessionCount: sc })
   }
 
   function route(req: http.IncomingMessage, res: http.ServerResponse) {
     res.setHeader("Access-Control-Allow-Origin", "*")
+    log.info(`[AgentServer] ${req.method} ${req.url}`)
     if (req.method === "POST" && req.url === "/state") {
-      parseBody(req).then(d => handleState(d, res)).catch(() => sendJson(res, 400, { error: "Invalid JSON" }))
+      parseBody(req).then(d => handleState(d, res)).catch((e) => { log.error('[AgentServer] parseBody error:', e); sendJson(res, 400, { error: "Invalid JSON" }) })
     } else if (req.method === "POST" && req.url === "/permission") {
-      parseBody(req).then(d => handlePermission(d, res)).catch(() => sendJson(res, 400, { error: "Invalid JSON" }))
+      parseBody(req).then(d => handlePermission(d, res)).catch((e) => { log.error('[AgentServer] parseBody error:', e); sendJson(res, 400, { error: "Invalid JSON" }) })
     } else if (req.method === "GET" && req.url === "/health") {
       handleHealth(res)
     } else {
@@ -162,34 +187,42 @@ export function createAgentServer(stateMachine: ReturnType<typeof createAgentSta
 
   function start(): Promise<number | null> {
     return new Promise((resolve) => {
-      server = http.createServer(route)
-      let port = DEFAULT_PORT
-      const tryListen = () => {
-        if (port > MAX_PORT) {
+      let currentPort = DEFAULT_PORT
+      let currentServer: http.Server | null = null
+
+      function tryListen() {
+        if (currentPort > MAX_PORT) {
           log.error(`Agent server: all ports ${DEFAULT_PORT}-${MAX_PORT} occupied`)
           resolve(null)
           return
         }
-        server!.listen(port, "127.0.0.1", () => {
-          activePort = port
-          try {
-            const dir = getRuntimeDir()
-            fs.mkdirSync(dir, { recursive: true })
-            fs.writeFileSync(path.join(dir, "runtime.json"), JSON.stringify({ port, pid: process.pid }), "utf8")
-          } catch {}
-          log.info(`Agent server listening on 127.0.0.1:${port}`)
-          resolve(port)
-        })
-        server!.on("error", (err: any) => {
+
+        // 每次尝试创建一个新 server，避免旧 listener 堆积
+        currentServer = http.createServer(route)
+
+        currentServer.on("error", (err: any) => {
           if (err.code === "EADDRINUSE") {
-            port++
+            currentPort++
             tryListen()
           } else {
             log.error("Agent server error:", err.message)
             resolve(null)
           }
         })
+
+        currentServer.listen(currentPort, "127.0.0.1", () => {
+          activePort = currentPort
+          server = currentServer
+          try {
+            const dir = getRuntimeDir()
+            fs.mkdirSync(dir, { recursive: true })
+            fs.writeFileSync(path.join(dir, "runtime.json"), JSON.stringify({ port: currentPort, pid: process.pid }), "utf8")
+          } catch {}
+          log.info(`Agent server listening on 127.0.0.1:${currentPort}`)
+          resolve(currentPort)
+        })
       }
+
       tryListen()
     })
   }

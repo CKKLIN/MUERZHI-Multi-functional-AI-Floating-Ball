@@ -120,12 +120,15 @@ export interface ElectronAPI {
   agentGetStatus: () => Promise<AgentBridgeStatus | null>
   agentInstallHooks: () => Promise<AgentBridgeStatus | null>
   agentUninstallHooks: () => Promise<AgentBridgeStatus | null>
-  agentSetAutoStart: (enabled: boolean) => Promise<void>
   agentResolvePermission: (behavior: string) => Promise<void>
+  agentSetAutoAllow: (enabled: boolean) => Promise<void>
+  agentGetAutoAllow: () => Promise<boolean>
   onAgentStateUpdate: (callback: (data: AgentStatePayload) => void) => () => void
   onAgentPermissionRequest: (callback: (data: AgentPermissionPayload) => void) => () => void
   showAiWindow: () => Promise<void>
   showMainWindow: () => Promise<void>
+  showAiIsland: () => Promise<void>
+  hideAiIsland: () => Promise<void>
 }
 
 export interface AgentStatePayload {
@@ -155,6 +158,7 @@ export interface AgentBridgeStatus {
   displayState: string
   pendingPermission: AgentPermissionPayload | null
   sessionCount: number
+  claudeRunning: boolean
 }
 
 declare global {

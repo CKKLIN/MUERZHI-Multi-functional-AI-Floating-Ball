@@ -1,11 +1,13 @@
 // src/components/AiSettingsPanel.vue
 // AI assistant settings — for the AI assistant window only
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import type { AgentBridgeStatus } from '../env.d.ts'
 
 const claudeIntegrated = ref(false)
 const bridgeStatus = ref<AgentBridgeStatus | null>(null)
+const loading = ref(true)
+const autoAllow = ref(false)
 let statusInterval: ReturnType<typeof setInterval> | null = null
 
 async function loadAiStatus() {
@@ -15,7 +17,10 @@ async function loadAiStatus() {
       bridgeStatus.value = status
       claudeIntegrated.value = status.hookInstalled === true
     }
-  } catch {}
+  } catch (e) {
+    console.error('[AiSettingsPanel] loadAiStatus error:', e)
+  }
+  loading.value = false
 }
 
 async function toggleClaudeIntegration() {
@@ -29,9 +34,59 @@ async function toggleClaudeIntegration() {
   await loadAiStatus()
 }
 
-onMounted(() => {
-  loadAiStatus()
+async function toggleAutoAllow() {
+  autoAllow.value = !autoAllow.value
+  try {
+    await window.electronAPI.agentSetAutoAllow(autoAllow.value)
+  } catch (e) {
+    console.error('[AiSettingsPanel] setAutoAllow error:', e)
+    autoAllow.value = !autoAllow.value
+  }
+}
+
+// 实时状态更新
+function onAgentStateUpdate(data: { state: string; sessions: any[] }) {
+  if (bridgeStatus.value) {
+    bridgeStatus.value = {
+      ...bridgeStatus.value,
+      displayState: data.state,
+      sessionCount: data.sessions?.length ?? 0,
+    }
+  }
+}
+
+const displayStateLabel = computed(() => {
+  const map: Record<string, string> = {
+    idle: '空闲',
+    thinking: '思考中',
+    working: '工作中',
+    error: '错误',
+    notification: '待审批',
+    done: '完成',
+  }
+  return map[bridgeStatus.value?.displayState ?? 'idle'] ?? bridgeStatus.value?.displayState ?? '-'
+})
+
+const stateDotClass = computed(() => {
+  const s = bridgeStatus.value?.displayState ?? 'idle'
+  return ['idle', 'thinking', 'working', 'error', 'notification', 'done'].includes(s) ? s : 'idle'
+})
+
+onMounted(async () => {
+  await loadAiStatus()
+  // 读取自动允许设置
+  try {
+    autoAllow.value = await window.electronAPI.agentGetAutoAllow()
+  } catch {}
+  // 保留轮询作为兜底，但主要依赖实时更新
   statusInterval = setInterval(loadAiStatus, 5000)
+
+  // 监听实时状态更新
+  const cleanupState = window.electronAPI.onAgentStateUpdate(onAgentStateUpdate)
+
+  onUnmounted(() => {
+    cleanupState()
+  })
 })
 
 onUnmounted(() => {
@@ -42,33 +97,61 @@ onUnmounted(() => {
 <template>
   <div class="ai-settings-panel">
     <div class="settings-body">
-      <div class="settings-group">
-        <div class="group-header">AI 助手</div>
-        <div class="settings-section">
-          <div class="setting-row">
-            <label>Claude Code</label>
-            <div class="setting-control">
-              <button class="btn btn-sm" @click="toggleClaudeIntegration" :style="{ minWidth: '70px' }">
-                {{ claudeIntegrated ? '已安装' : '未安装' }}
-              </button>
+      <!-- 状态概览卡片 -->
+      <div class="status-card" :class="{ active: bridgeStatus?.sessionCount && bridgeStatus.sessionCount > 0 }">
+        <div class="status-card-top">
+          <div class="status-dot" :class="stateDotClass"></div>
+          <div class="status-info">
+            <div class="status-title">{{ displayStateLabel }}</div>
+            <div class="status-sub">
+              <template v-if="bridgeStatus?.sessionCount && bridgeStatus.sessionCount > 0">
+                {{ bridgeStatus.sessionCount }} 个会话
+              </template>
+              <template v-else-if="bridgeStatus?.claudeRunning">Claude 运行中，等待交互</template>
+              <template v-else>无活跃会话</template>
             </div>
           </div>
+          <div class="status-server" :class="bridgeStatus?.serverRunning ? 'on' : 'off'">
+            <span class="server-dot"></span>
+            {{ bridgeStatus?.serverRunning ? '在线' : '离线' }}
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <div class="group-header">集成</div>
+        <div class="settings-section">
           <div class="setting-row">
-            <label>服务状态</label>
-            <span :class="['status-badge', bridgeStatus?.serverRunning ? 'online' : 'offline']">
-              {{ bridgeStatus?.serverRunning ? '运行中' : '未启动' }}
-            </span>
+            <div class="row-text">
+              <div class="row-label">Claude Code Hooks</div>
+              <div class="row-desc">钩子脚本状态</div>
+            </div>
+            <button class="toggle-btn" :class="{ on: claudeIntegrated }" @click="toggleClaudeIntegration">
+              <span class="toggle-knob"></span>
+            </button>
           </div>
-          <div class="setting-row" v-if="bridgeStatus">
-            <label>当前状态</label>
-            <span :class="['status-badge', bridgeStatus.sessionCount > 0 ? 'online' : 'idle']">
-              {{ bridgeStatus.displayState }} ({{ bridgeStatus.sessionCount }} 会话)
-            </span>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <div class="group-header">权限</div>
+        <div class="settings-section">
+          <div class="setting-row">
+            <div class="row-text">
+              <div class="row-label">自动允许所有权限</div>
+              <div class="row-desc">开启后 Claude Code 的权限请求将自动通过，不再弹出悬浮岛审批</div>
+            </div>
+            <button class="toggle-btn" :class="{ on: autoAllow }" @click="toggleAutoAllow">
+              <span class="toggle-knob"></span>
+            </button>
           </div>
-          <div class="setting-row" v-if="bridgeStatus">
-            <label>端口</label>
-            <kbd>{{ bridgeStatus.port || '-' }}</kbd>
-          </div>
+        </div>
+      </div>
+
+      <div class="settings-group" v-if="loading">
+        <div class="loading-row">
+          <span class="loading-dot"></span>
+          <span>加载中...</span>
         </div>
       </div>
     </div>
@@ -85,114 +168,170 @@ onUnmounted(() => {
 .settings-body {
   overflow-y: auto;
   flex: 1;
-  padding: 0 20px;
+  padding: 16px 20px;
 }
 
-.settings-group {
-  padding-top: 4px;
+/* 状态概览卡片 */
+.status-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  transition: all 0.2s;
 }
-
-.settings-group + .settings-group {
-  margin-top: 8px;
+.status-card.active {
+  border-color: rgba(78, 205, 196, 0.4);
+  box-shadow: 0 0 0 1px rgba(78, 205, 196, 0.15);
 }
-
-.group-header {
-  font-size: 14px;
+.status-card-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: all 0.3s;
+}
+.status-dot.idle { background: #9e9e9e; }
+.status-dot.thinking { background: #fbbf24; animation: dot-pulse 1.5s ease-in-out infinite; }
+.status-dot.working { background: #34d399; animation: dot-pulse 0.8s ease-in-out infinite; }
+.status-dot.error { background: #f87171; }
+.status-dot.notification { background: #a78bfa; animation: dot-pulse 0.6s ease-in-out infinite; }
+.status-dot.done { background: #66bb6a; }
+@keyframes dot-pulse {
+  0%, 100% { opacity: 0.5; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.2); box-shadow: 0 0 8px currentColor; }
+}
+.status-info {
+  flex: 1;
+  min-width: 0;
+}
+.status-title {
+  font-size: 15px;
   font-weight: 600;
   color: var(--text-primary);
-  padding: 8px 0;
-  border-bottom: 2px solid var(--border);
-  margin-bottom: 4px;
+  line-height: 1.3;
 }
-
-.settings-section {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border);
+.status-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
 }
-
-.settings-section:last-child {
-  border-bottom: none;
+.status-server {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 10px;
+  flex-shrink: 0;
 }
+.status-server.on { color: #34d399; background: rgba(52, 211, 153, 0.1); }
+.status-server.off { color: #9e9e9e; background: rgba(158, 158, 158, 0.1); }
+.server-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.status-server.on .server-dot { box-shadow: 0 0 6px #34d399; }
 
-.settings-section h4 {
-  font-size: 12px;
+/* 设置分组 */
+.settings-group + .settings-group {
+  margin-top: 12px;
+}
+.group-header {
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 10px;
+  letter-spacing: 0.6px;
+  margin-bottom: 6px;
+  padding: 0 2px;
 }
-
+.settings-section {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
 .setting-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
   gap: 12px;
 }
-
-.setting-row label {
-  font-size: 13px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  min-width: 60px;
-}
-
-.setting-control {
-  display: flex;
-  gap: 6px;
+.row-text {
   flex: 1;
-  justify-content: flex-end;
+  min-width: 0;
 }
-
-.btn {
-  padding: 6px 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-surface);
-  cursor: pointer;
-  font-size: 12px;
-  transition: all 0.2s;
-}
-
-.btn:hover {
-  background: var(--bg-hover);
-}
-
-.btn-sm {
-  padding: 4px 10px;
-  font-size: 11px;
-}
-
-.status-badge {
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-size: 11px;
+.row-label {
+  font-size: 13px;
   font-weight: 500;
-}
-
-.status-badge.online {
-  background: rgba(78, 205, 196, 0.15);
-  color: #4ecdc4;
-}
-
-.status-badge.offline {
-  background: rgba(158, 158, 158, 0.15);
-  color: #9e9e9e;
-}
-
-.status-badge.idle {
-  background: rgba(158, 158, 158, 0.15);
-  color: #9e9e9e;
-}
-
-kbd {
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 2px 8px;
-  font-family: var(--font-mono);
-  font-size: 11px;
   color: var(--text-primary);
+}
+.row-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+/* 开关按钮 */
+.toggle-btn {
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  background: rgba(158, 158, 158, 0.25);
+  border: none;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.2s;
+  flex-shrink: 0;
+  padding: 0;
+}
+.toggle-btn.on {
+  background: #34d399;
+}
+.toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+.toggle-btn.on .toggle-knob {
+  transform: translateX(18px);
+}
+
+/* 加载 */
+.loading-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 16px 0;
+}
+.loading-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  animation: pulse 1s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.2); }
 }
 </style>

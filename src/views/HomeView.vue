@@ -128,6 +128,7 @@ async function handleStop() {
   previewMicTracks = []
   previewSysTracks = []
   stopCamera()
+  window.electronAPI.showAiIsland()
 }
 
 // 摄像头控制
@@ -171,6 +172,7 @@ async function handleFullscreen() {
       }
       window.electronAPI.minimizeWindow()
       await new Promise(r => setTimeout(r, 200))
+      window.electronAPI.hideAiIsland()
       await window.electronAPI.showFloatingIsland({ micEnabled: store.isMicrophoneEnabled, sysEnabled: store.isSystemAudioEnabled, cameraEnabled: store.isCameraEnabled, cameraDeviceId: settingsStore.cameraDeviceId })
       if (store.isMicrophoneEnabled || (store.isSystemAudioEnabled && settingsStore.systemAudioSourceId)) {
         startAudioPreview()
@@ -223,6 +225,7 @@ async function selectScreen(displayId?: number) {
 
   // 悬浮岛显示在主屏幕（目标显示器或主显示器）
   const islandDisplayId = displayId ?? undefined
+  window.electronAPI.hideAiIsland()
   await window.electronAPI.showFloatingIsland(
     { micEnabled: store.isMicrophoneEnabled, sysEnabled: store.isSystemAudioEnabled, cameraEnabled: store.isCameraEnabled, cameraDeviceId: settingsStore.cameraDeviceId },
     islandDisplayId,
@@ -245,6 +248,7 @@ async function handleSelectRegion() {
     }
     window.electronAPI.showRegionBorder(region, { micEnabled: store.isMicrophoneEnabled, sysEnabled: store.isSystemAudioEnabled, cameraEnabled: store.isCameraEnabled, cameraDeviceId: settingsStore.cameraDeviceId })
     window.electronAPI.minimizeWindow()
+    window.electronAPI.hideAiIsland()
     if (store.isMicrophoneEnabled || (store.isSystemAudioEnabled && settingsStore.systemAudioSourceId)) {
       startAudioPreview()
     }
@@ -358,6 +362,7 @@ const cleanupToolbar = window.electronAPI.onToolbarAction((action: string) => {
     } else {
       window.electronAPI.showWindow()
       store.resetState()
+      window.electronAPI.showAiIsland()
     }
   }
 })
@@ -398,6 +403,7 @@ watch(() => store.state, (state) => {
   } else {
     window.electronAPI.updateToolbarState('idle')
     window.electronAPI.hideFloatingIsland()
+    window.electronAPI.showAiIsland()
   }
 })
 
@@ -433,11 +439,6 @@ onMounted(() => {
 
   // 暴露清理函数供 onUnmounted 使用
   onUnmounted(() => cleanupBallAction())
-
-  // Agent 事件监听
-  const cleanupAgentState = window.electronAPI.onAgentStateUpdate(() => {})
-  const cleanupAgentPerm = window.electronAPI.onAgentPermissionRequest(() => {})
-  onUnmounted(() => { cleanupAgentState(); cleanupAgentPerm() })
 })
 
 onUnmounted(() => {

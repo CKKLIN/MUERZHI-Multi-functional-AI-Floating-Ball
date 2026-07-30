@@ -4,6 +4,7 @@
 import { createAgentStateMachine } from "./agent-state-machine"
 import { createAgentServer, type PendingPermission } from "./agent-server"
 import { createClaudeHookManager, type HookManagerStatus } from "./claude-hook-manager"
+import { execSync } from "child_process"
 import log from "./logger"
 
 export type { PendingPermission, HookManagerStatus }
@@ -25,6 +26,7 @@ export interface AgentBridgeStatus {
   displayState: DisplayState
   pendingPermission: PendingPermission | null
   sessionCount: number
+  claudeRunning: boolean
 }
 
 export interface AgentBridge {
@@ -39,7 +41,8 @@ export interface AgentBridge {
   resolvePermission: (behavior: string) => void
   installHooks: () => void
   uninstallHooks: () => void
-  setAutoStart: (enabled: boolean) => void
+  setAutoAllow: (enabled: boolean) => void
+  getAutoAllow: () => boolean
 }
 
 export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
@@ -49,12 +52,19 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
 
   let stateListener: ((state: DisplayState, sessions: AgentSession[]) => void) | null = null
   let permissionListener: ((perm: PendingPermission) => void) | null = null
+  let autoAllow = false
 
   stateMachine.subscribe((state, sessions) => {
     if (stateListener) stateListener(state, sessions)
   })
 
   server.setOnPermissionRequest((perm) => {
+    // 自动允许模式：直接通过权限，不弹悬浮岛
+    if (autoAllow) {
+      log.info(`[AgentBridge] auto-allow permission: tool=${perm.toolName}`)
+      server.resolvePendingPermission("allow")
+      return
+    }
     if (permissionListener) permissionListener(perm)
   })
 
@@ -97,23 +107,42 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
 
   function installHooks() { hookManager.install() }
   function uninstallHooks() { hookManager.uninstall() }
-  function setAutoStart(enabled: boolean) { hookManager.setAutoStart(enabled) }
+  function setAutoAllow(enabled: boolean) { autoAllow = enabled; log.info(`[AgentBridge] autoAllow=${enabled}`) }
+  function getAutoAllow() { return autoAllow }
+
+  function checkClaudeRunning(): boolean {
+    try {
+      const { execSync } = require("child_process")
+      const result = execSync("tasklist /NH /FI \"IMAGENAME eq claude.exe\"", { encoding: "utf8", timeout: 2000 })
+      return result.includes("claude.exe")
+    } catch {
+      return false
+    }
+  }
 
   function getStatus(): AgentBridgeStatus {
+    const sessionsRaw = stateMachine.getSessions()
+    const realCount = sessionsRaw.length
+    const displayState = stateMachine.getCurrentState()
+    const sessionIds = sessionsRaw.map(s => s.sessionId).join(',')
+    log.info(`[AgentBridge] getStatus: real_count=${realCount}, ids=[${sessionIds}], display=${displayState}`)
+    const sessionCount = stateMachine.getSessions().length
     return {
       serverRunning: server.getPort() !== null,
       port: server.getPort(),
       hookInstalled: hookManager.isInstalled(),
       hookManagerStatus: hookManager.getStatus(),
-      displayState: stateMachine.getCurrentState(),
+      displayState,
       pendingPermission: server.getPendingPermission(),
-      sessionCount: stateMachine.getSessions().length,
+      sessionCount,
+      claudeRunning: checkClaudeRunning(),
     }
   }
 
   return {
     start, stop, getServer, getStateMachine, getHookManager, getStatus,
     setStateListener, setPermissionListener,
-    resolvePermission, installHooks, uninstallHooks, setAutoStart,
+    resolvePermission, installHooks, uninstallHooks,
+    setAutoAllow, getAutoAllow,
   }
 }

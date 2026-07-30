@@ -27,6 +27,10 @@
       {
         "from": "node_modules/@ffmpeg-installer/win32-x64/ffmpeg.exe",
         "to": "ffmpeg.exe"
+      },
+      {
+        "from": "electron/main/clawd-hook.js",
+        "to": "clawd-hook.js"
       }
     ],
     "win": {

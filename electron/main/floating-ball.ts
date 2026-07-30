@@ -303,7 +303,7 @@ body.expanded .arc-label{
   opacity:1;
   transform:scale(1);
 }
-.arc-label .icon{font-size:14px;fill:#e94560}
+.arc-label .icon{font-size:18px;fill:#e94560;font-weight:700}
 .arc-label .label{font-size:10px;font-weight:600;fill:#5a5a6e}
 
 /* 中心按钮 */
@@ -338,8 +338,8 @@ body.expanded .arc-label{
 const {ipcRenderer} = require('electron')
 
 const ITEMS = [
-  {label:'录屏',icon:'⏺',action:'record'},
-  {label:'AI助手',icon:'🤖',action:'ai'},
+  {label:'录屏',icon:'●',action:'record'},
+  {label:'AI助手',icon:'✦',action:'ai'},
 ]
 
 let isExpanded = false

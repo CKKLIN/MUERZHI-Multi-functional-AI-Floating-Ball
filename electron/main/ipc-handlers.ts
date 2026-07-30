@@ -5,6 +5,7 @@ import { convertWebmToMp4, convertToGif, cropVideo, mergeMultiScreen } from './f
 import { selectRegion, registerRegionSelectorHandlers } from './region-selector'
 import { registerFloatingBallHandlers } from './floating-ball'
 import { showBalloon } from './tray'
+import { showAiIsland, hideAiIsland, registerAiIslandHandlers } from './ai-island'
 import type { AgentBridge } from './agent-bridge'
 import log from './logger'
 
@@ -17,6 +18,9 @@ function getRecordingsPath() {
 export function registerIpcHandlers(agentBridge?: AgentBridge) {
   registerRegionSelectorHandlers()
   registerFloatingBallHandlers()
+  registerAiIslandHandlers()
+  ipcMain.handle('show-ai-island', () => { showAiIsland() })
+  ipcMain.handle('hide-ai-island', () => { hideAiIsland() })
   ipcMain.handle('select-region', async () => {
     return selectRegion()
   })
@@ -363,18 +367,34 @@ export function registerIpcHandlers(agentBridge?: AgentBridge) {
     })
 
     agentBridge.setPermissionListener((perm) => {
+      // IPC 无法序列化函数，只发送纯数据字段
+      const safePerm = {
+        sessionId: perm.sessionId,
+        toolName: perm.toolName,
+        toolInput: perm.toolInput,
+        suggestions: perm.suggestions,
+        createdAt: perm.createdAt,
+      }
+      log.info(`[IPC] broadcast permission: tool=${perm.toolName}, wins=${BrowserWindow.getAllWindows().length}`)
       const wins = BrowserWindow.getAllWindows()
       for (const win of wins) {
         if (!win.isDestroyed()) {
-          try { win.webContents.send('agent-permission-request', perm) } catch {}
+          try { win.webContents.send('agent-permission-request', safePerm) } catch (e:any) {
+            log.error(`[IPC] send permission to window failed: ${e.message}`)
+          }
         }
       }
     })
 
-    ipcMain.handle('agent-get-status', () => agentBridge?.getStatus() ?? null)
+    ipcMain.handle('agent-get-status', () => {
+      const status = agentBridge?.getStatus() ?? null
+      log.info(`[IPC] agentGetStatus: sessionCount=${status?.sessionCount}, displayState=${status?.displayState}, serverRunning=${status?.serverRunning}`)
+      return status
+    })
     ipcMain.handle('agent-install-hooks', () => { agentBridge?.installHooks(); return agentBridge?.getStatus() })
     ipcMain.handle('agent-uninstall-hooks', () => { agentBridge?.uninstallHooks(); return agentBridge?.getStatus() })
-    ipcMain.handle('agent-set-auto-start', (_event, enabled: boolean) => agentBridge?.setAutoStart(enabled))
     ipcMain.handle('agent-resolve-permission', (_event, behavior: string) => agentBridge?.resolvePermission(behavior))
+    ipcMain.handle('agent-set-auto-allow', (_event, enabled: boolean) => agentBridge?.setAutoAllow(enabled))
+    ipcMain.handle('agent-get-auto-allow', () => agentBridge?.getAutoAllow() ?? false)
   }
 }

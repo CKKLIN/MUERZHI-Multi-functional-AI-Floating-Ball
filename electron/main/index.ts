@@ -8,6 +8,7 @@ import { createTray, destroyTray } from './tray'
 import { reportIP, retryPending } from './ip-reporter'
 import { showFloatingBall } from './floating-ball'
 import { createAgentBridge, type AgentBridge } from './agent-bridge'
+import { showAiIsland } from './ai-island'
 
 declare const __dirname: string
 
@@ -74,10 +75,13 @@ app.whenReady().then(() => {
 
   // 先启动 Agent Bridge，再注册 IPC
   agentBridge = createAgentBridge({
-    autoInstallHooks: false,
-    autoStartWatcher: false,
+    autoInstallHooks: true,
+    autoStartWatcher: true,
   })
-  agentBridge.start()
+  agentBridge.start().then(() => {
+    // 启动后显示 AI 迷你悬浮岛
+    showAiIsland()
+  })
 
   registerIpcHandlers(agentBridge)
   createWindow(preloadPath)
@@ -139,6 +143,7 @@ function showAiWindow() {
   const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
   const preloadPath = join(__dirname, '..', 'preload', 'index.cjs')
   aiWindow = new BrowserWindow({
+    icon: getIcon(),
     width: 480,
     height: 540,
     minWidth: 400,
@@ -157,7 +162,7 @@ function showAiWindow() {
     },
   })
   if (VITE_DEV_SERVER_URL) {
-    aiWindow.loadURL(`${VITE_DEV_SERVER_URL}#/ai`)
+    aiWindow.loadURL(`${VITE_DEV_SERVER_URL}#/ai?t=${Date.now()}`)
   } else {
     aiWindow.loadFile(join(process.env.DIST!, 'index.html'), { hash: '/ai' })
   }
