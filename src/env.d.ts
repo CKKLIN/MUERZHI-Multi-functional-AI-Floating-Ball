@@ -46,6 +46,7 @@ export interface ElectronAPI {
 
   // File I/O
   writeFile: (data: ArrayBuffer, filePath: string) => Promise<{ success: boolean; filePath: string }>
+  toLocalVideoUrl: (filePath: string) => string
   readFile: (filePath: string) => Promise<ArrayBuffer>
   fileExists: (filePath: string) => Promise<boolean>
   deleteFile: (filePath: string) => Promise<boolean>

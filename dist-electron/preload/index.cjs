@@ -1,4 +1,6 @@
 let electron = require("electron");
+let node_fs_promises = require("node:fs/promises");
+let node_path = require("node:path");
 //#region electron/preload/index.ts
 electron.contextBridge.exposeInMainWorld("electronAPI", {
 	getSources: (types) => electron.ipcRenderer.invoke("get-sources", types),
@@ -6,7 +8,24 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
 	showSaveDialog: (options) => electron.ipcRenderer.invoke("show-save-dialog", options),
 	showOpenDialog: (options) => electron.ipcRenderer.invoke("show-open-dialog", options),
 	getDefaultSaveDir: () => electron.ipcRenderer.invoke("get-default-save-dir"),
-	writeFile: (data, filePath) => electron.ipcRenderer.invoke("write-file", Buffer.from(data), filePath),
+	writeFile: async (data, filePath) => {
+		try {
+			await (0, node_fs_promises.mkdir)((0, node_path.dirname)(filePath), { recursive: true });
+			await (0, node_fs_promises.writeFile)(filePath, new Uint8Array(data));
+			return {
+				success: true,
+				filePath
+			};
+		} catch (err) {
+			console.error("保存文件失败", filePath, err?.message);
+			return {
+				success: false,
+				filePath,
+				error: err?.message
+			};
+		}
+	},
+	toLocalVideoUrl: (filePath) => `local-video:///${filePath.replace(/\\/g, "/")}`,
 	readFile: (filePath) => electron.ipcRenderer.invoke("read-file", filePath),
 	fileExists: (filePath) => electron.ipcRenderer.invoke("file-exists", filePath),
 	deleteFile: (filePath) => electron.ipcRenderer.invoke("delete-file", filePath),

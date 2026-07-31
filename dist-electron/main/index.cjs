@@ -42,6 +42,10 @@ let _ffmpeg_installer_ffmpeg = require("@ffmpeg-installer/ffmpeg");
 _ffmpeg_installer_ffmpeg = __toESM(_ffmpeg_installer_ffmpeg);
 let node_os = require("node:os");
 node_os = __toESM(node_os);
+let node_crypto = require("node:crypto");
+let node_child_process = require("node:child_process");
+let node_util = require("node:util");
+let node_stream = require("node:stream");
 //#region node_modules/electron-log/src/node/packageJson.js
 var require_packageJson = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	var fs$6 = require("fs");
@@ -1922,14 +1926,152 @@ var init_logger = __esmMin((() => {
 	logger_default = import_main.default;
 }));
 //#endregion
-//#region electron/main/ffmpeg.ts
+//#region electron/main/conversion-registry.ts
 init_logger();
+var tasks = /* @__PURE__ */ new Map();
+var logger$1 = {
+	info: () => {},
+	warn: () => {}
+};
+/** 注入日志实现（生产环境在 main 进程入口调用，传入 electron-log 实例）。 */
+function setRegistryLogger(log) {
+	logger$1 = log;
+}
+/** 注册一个在途转换任务，返回 id。任务结束后应调用 unregister(id)。 */
+function registerConversion(kill) {
+	const id = (0, node_crypto.randomUUID)();
+	tasks.set(id, {
+		id,
+		kill
+	});
+	return id;
+}
+/** 注销一个任务（任务正常结束或失败后调用）。id 不存在时静默忽略。 */
+function unregisterConversion(id) {
+	tasks.delete(id);
+}
+/** kill 所有在途转换任务。退出 / 关闭应用时调用。
+*  返回被 kill 的任务数。对每个任务吞掉 kill 抛出的异常（进程可能已退出）。 */
+function killAllConversions() {
+	const count = tasks.size;
+	if (count === 0) return 0;
+	logger$1.info(`Killing ${count} in-flight conversion(s) on quit`);
+	for (const task of tasks.values()) try {
+		task.kill();
+	} catch (err) {
+		logger$1.warn(`Conversion kill failed for ${task.id}:`, err?.message ?? err);
+	}
+	tasks.clear();
+	return count;
+}
+//#endregion
+//#region electron/main/hw-encoder.ts
+var execFileAsync = (0, node_util.promisify)(node_child_process.execFile);
+var PRIORITY = [
+	"h264_nvenc",
+	"h264_qsv",
+	"h264_amf"
+];
+var cached = null;
+var probing = null;
+var logger = {
+	info: () => {},
+	warn: () => {}
+};
+/** 注入日志实现（生产环境在 main 进程入口调用，传入 electron-log 实例）。 */
+function setHwEncoderLogger(log) {
+	logger = log;
+}
+/** 从 ffmpeg -encoders 输出里解析出可用的 h264 硬编器，按优先级返回第一个。
+*  纯函数，便于单测（注入 encoders 文本）。无可用硬编器时返回 'libx264'。 */
+function pickHwEncoder(encodersText) {
+	for (const enc of PRIORITY) if (new RegExp(`\\b${enc}\\b`).test(encodersText)) return enc;
+	return "libx264";
+}
+/** 探测可用硬件编码器，结果进程内缓存。多次调用返回同一 Promise。
+*  失败（ffmpeg 不可用 / 超时）时回退 'libx264'。 */
+function getH264Encoder(ffmpegBin) {
+	if (cached) return Promise.resolve(cached);
+	if (probing) return probing;
+	probing = (async () => {
+		try {
+			const { stdout } = await execFileAsync(ffmpegBin, ["-hide_banner", "-encoders"], {
+				timeout: 5e3,
+				maxBuffer: 2 * 1024 * 1024
+			});
+			const enc = pickHwEncoder(stdout);
+			logger.info(`H.264 encoder selected: ${enc}`);
+			cached = enc;
+			return enc;
+		} catch (err) {
+			logger.warn("HW encoder probe failed, falling back to libx264:", err?.message ?? err);
+			cached = "libx264";
+			return "libx264";
+		} finally {
+			probing = null;
+		}
+	})();
+	return probing;
+}
+/** 为给定编码器和 crf 构造 ffmpeg outputOptions（re-encode 路径用）。
+*  libx264 用 -crf；硬编器用各自的质量参数（nvenc -cq、qsv -global_quality、amf -qp_i/-qp_p）。
+*  纯函数，便于单测。 */
+function buildEncodeOptions(encoder, crf, numThreads) {
+	switch (encoder) {
+		case "h264_nvenc": return [
+			"-c:v",
+			"h264_nvenc",
+			"-preset",
+			"p4",
+			"-rc",
+			"vbr",
+			"-cq",
+			crf,
+			"-b:v",
+			"0"
+		];
+		case "h264_qsv": return [
+			"-c:v",
+			"h264_qsv",
+			"-preset",
+			"veryfast",
+			"-global_quality",
+			crf
+		];
+		case "h264_amf": return [
+			"-c:v",
+			"h264_amf",
+			"-quality",
+			"balanced",
+			"-rc",
+			"cqp",
+			"-qp_i",
+			crf,
+			"-qp_p",
+			crf
+		];
+		default: return [
+			"-c:v",
+			"libx264",
+			"-preset",
+			"ultrafast",
+			"-crf",
+			crf,
+			"-threads",
+			String(numThreads)
+		];
+	}
+}
+//#endregion
+//#region electron/main/ffmpeg.ts
 var ffmpegBinPath = electron.app.isPackaged ? node_path.default.join(process.resourcesPath, "ffmpeg.exe") : _ffmpeg_installer_ffmpeg.default.path;
 fluent_ffmpeg.default.setFfmpegPath(ffmpegBinPath);
 var NUM_THREADS = Math.min(node_os.default.cpus().length, 8);
 function convertWebmToMp4(inputPath, outputPath, onProgress, crop) {
 	if (!crop) return new Promise((resolve) => {
-		(0, fluent_ffmpeg.default)(inputPath).outputOptions([
+		const cmd = (0, fluent_ffmpeg.default)(inputPath);
+		const taskId = registerConversion(() => cmd.kill("SIGKILL"));
+		cmd.outputOptions([
 			"-c:v",
 			"copy",
 			"-c:a",
@@ -1944,6 +2086,7 @@ function convertWebmToMp4(inputPath, outputPath, onProgress, crop) {
 				targetSize: 0
 			});
 		}).on("end", () => {
+			unregisterConversion(taskId);
 			onProgress?.({
 				percent: 100,
 				targetSize: 0
@@ -1953,6 +2096,7 @@ function convertWebmToMp4(inputPath, outputPath, onProgress, crop) {
 				outputPath
 			});
 		}).on("error", (err) => {
+			unregisterConversion(taskId);
 			logger_default.error("MP4 remux failed:", err.message);
 			resolve({
 				success: false,
@@ -1963,68 +2107,91 @@ function convertWebmToMp4(inputPath, outputPath, onProgress, crop) {
 	});
 	const tmpPath = outputPath.replace(/\.mp4$/i, "_tmp.mp4");
 	const cropFilter = `crop=${Math.round(crop.width / 2) * 2}:${Math.round(crop.height / 2) * 2}:${Math.round(crop.x / 2) * 2}:${Math.round(crop.y / 2) * 2},`;
-	return new Promise((resolve) => {
-		(0, fluent_ffmpeg.default)(inputPath).outputOptions([
-			"-c:v libx264",
-			"-preset ultrafast",
-			"-crf 23",
-			"-threads",
-			String(NUM_THREADS),
-			"-vf",
-			`${cropFilter}pad=ceil(iw/2)*2:ceil(ih/2)*2,format=yuv420p`,
-			"-an",
-			"-movflags +faststart"
-		]).output(tmpPath).on("progress", (progress) => {
-			onProgress?.({
-				percent: Math.round((progress.percent ?? 0) * 100) / 200,
-				targetSize: progress.targetSize ?? 0
-			});
-		}).on("end", () => {
-			(0, fluent_ffmpeg.default)(tmpPath).addInput(inputPath).outputOptions([
-				"-c:v",
-				"copy",
-				"-c:a",
-				"aac",
-				"-b:a",
-				"128k",
-				"-map",
-				"0:v",
-				"-map",
-				"1:a?",
-				"-shortest",
-				"-movflags",
-				"+faststart"
-			]).output(outputPath).on("progress", (progress) => {
-				onProgress?.({
-					percent: Math.round((progress.percent ?? 0) * 100) / 200 + 50,
-					targetSize: progress.targetSize ?? 0
-				});
-			}).on("end", () => {
-				node_fs.default.promises.unlink(tmpPath).catch(() => {});
-				resolve({
-					success: true,
-					outputPath
-				});
-			}).on("error", (err) => {
-				logger_default.error("MP4 audio mux failed:", err.message);
-				node_fs.default.promises.rename(tmpPath, outputPath).then(() => resolve({
-					success: true,
-					outputPath
-				})).catch(() => {
-					node_fs.default.promises.unlink(tmpPath).catch(() => {});
-					resolve({
+	return new Promise(async (resolve) => {
+		const hwEncoder = await getH264Encoder(ffmpegBinPath);
+		function runPass1(encoder) {
+			return new Promise((res) => {
+				const pass1 = (0, fluent_ffmpeg.default)(inputPath);
+				const taskId = registerConversion(() => pass1.kill("SIGKILL"));
+				pass1.outputOptions([
+					...buildEncodeOptions(encoder, "23", NUM_THREADS),
+					"-vf",
+					`${cropFilter}pad=ceil(iw/2)*2:ceil(ih/2)*2,format=yuv420p`,
+					"-an",
+					"-movflags +faststart"
+				]).output(tmpPath).on("progress", (progress) => {
+					onProgress?.({
+						percent: Math.round((progress.percent ?? 0) * 100) / 200,
+						targetSize: progress.targetSize ?? 0
+					});
+				}).on("end", () => {
+					unregisterConversion(taskId);
+					res({ success: true });
+				}).on("error", (err) => {
+					unregisterConversion(taskId);
+					logger_default.error(`MP4 pass1 failed (${encoder}):`, err.message);
+					res({
 						success: false,
-						outputPath: "",
 						error: err.message
 					});
-				});
-			}).run();
-		}).on("error", (err) => {
-			logger_default.error("MP4 conversion failed:", err.message);
+				}).run();
+			});
+		}
+		let p1 = await runPass1(hwEncoder);
+		if (!p1.success && hwEncoder !== "libx264") {
+			logger_default.warn(`MP4 pass1: ${hwEncoder} failed, retrying with libx264`);
+			await node_fs.default.promises.unlink(tmpPath).catch(() => {});
+			p1 = await runPass1("libx264");
+		}
+		if (!p1.success) {
 			resolve({
 				success: false,
 				outputPath: "",
-				error: err.message
+				error: p1.error
+			});
+			return;
+		}
+		const pass2 = (0, fluent_ffmpeg.default)(tmpPath);
+		const pass2Task = registerConversion(() => pass2.kill("SIGKILL"));
+		pass2.addInput(inputPath).outputOptions([
+			"-c:v",
+			"copy",
+			"-c:a",
+			"aac",
+			"-b:a",
+			"128k",
+			"-map",
+			"0:v",
+			"-map",
+			"1:a?",
+			"-shortest",
+			"-movflags",
+			"+faststart"
+		]).output(outputPath).on("progress", (progress) => {
+			onProgress?.({
+				percent: Math.round((progress.percent ?? 0) * 100) / 200 + 50,
+				targetSize: progress.targetSize ?? 0
+			});
+		}).on("end", () => {
+			unregisterConversion(pass2Task);
+			node_fs.default.promises.unlink(tmpPath).catch(() => {});
+			resolve({
+				success: true,
+				outputPath
+			});
+		}).on("error", (err) => {
+			unregisterConversion(pass2Task);
+			logger_default.error("MP4 audio mux failed:", err.message);
+			node_fs.default.promises.rename(tmpPath, outputPath).then(() => resolve({
+				success: true,
+				outputPath
+			})).catch(() => {
+				node_fs.default.promises.unlink(tmpPath).catch(() => {});
+				resolve({
+					success: false,
+					outputPath: "",
+					error: err.message
+				});
 			});
 		}).run();
 	});
@@ -2034,40 +2201,49 @@ function cropVideo(inputPath, outputPath, crop, onProgress) {
 	const h = Math.round(crop.height / 2) * 2;
 	const cx = Math.round(crop.x / 2) * 2;
 	const cy = Math.round(crop.y / 2) * 2;
-	return new Promise((resolve) => {
-		(0, fluent_ffmpeg.default)(inputPath).outputOptions([
-			"-c:v",
-			"libx264",
-			"-preset",
-			"ultrafast",
-			"-crf",
-			"18",
-			"-threads",
-			String(NUM_THREADS),
-			"-vf",
-			`crop=${w}:${h}:${cx}:${cy},format=yuv420p`,
-			"-c:a",
-			"copy",
-			"-movflags",
-			"+faststart"
-		]).output(outputPath).on("progress", (progress) => {
-			onProgress?.({
-				percent: Math.round((progress.percent ?? 0) * 100),
-				targetSize: progress.targetSize ?? 0
+	return new Promise(async (resolve) => {
+		const vf = `crop=${w}:${h}:${cx}:${cy},format=yuv420p`;
+		const hwEncoder = await getH264Encoder(ffmpegBinPath);
+		function runOnce(encoder, crf) {
+			return new Promise((res) => {
+				const cmd = (0, fluent_ffmpeg.default)(inputPath);
+				const taskId = registerConversion(() => cmd.kill("SIGKILL"));
+				cmd.outputOptions([
+					...buildEncodeOptions(encoder, crf, NUM_THREADS),
+					"-vf",
+					vf,
+					"-c:a",
+					"copy",
+					"-movflags",
+					"+faststart"
+				]).output(outputPath).on("progress", (progress) => {
+					onProgress?.({
+						percent: Math.round((progress.percent ?? 0) * 100),
+						targetSize: progress.targetSize ?? 0
+					});
+				}).on("end", () => {
+					unregisterConversion(taskId);
+					res({
+						success: true,
+						outputPath
+					});
+				}).on("error", (err) => {
+					unregisterConversion(taskId);
+					logger_default.error(`Crop failed (${encoder}):`, err.message);
+					res({
+						success: false,
+						outputPath: "",
+						error: err.message
+					});
+				}).run();
 			});
-		}).on("end", () => {
-			resolve({
-				success: true,
-				outputPath
-			});
-		}).on("error", (err) => {
-			logger_default.error("Crop failed:", err.message);
-			resolve({
-				success: false,
-				outputPath: "",
-				error: err.message
-			});
-		}).run();
+		}
+		let result = await runOnce(hwEncoder, "18");
+		if (!result.success && hwEncoder !== "libx264") {
+			logger_default.warn(`Crop: ${hwEncoder} failed, retrying with libx264`);
+			result = await runOnce("libx264", "18");
+		}
+		resolve(result);
 	});
 }
 function mergeMultiScreen(inputs, outputPath, onProgress) {
@@ -2081,26 +2257,37 @@ function mergeMultiScreen(inputs, outputPath, onProgress) {
 		logger_default.info("Merge canvas size:", cw, "x", ch);
 		logger_default.info("Merge inputs:", inputs.map((inp, i) => `[${i}] ${inp.filePath} bounds=${JSON.stringify(inp.bounds)}`).join(", "));
 		const remuxedPaths = [];
-		let remuxDone = 0;
 		const totalInputs = inputs.length;
-		for (let i = 0; i < totalInputs; i++) {
-			const remuxedPath = inputs[i].filePath.replace(/\.webm$/i, "_remux.mp4");
-			remuxedPaths.push(remuxedPath);
-			(0, fluent_ffmpeg.default)(inputs[i].filePath).outputOptions(["-c", "copy"]).output(remuxedPath).on("end", () => {
-				logger_default.info(`Merge remux ${i + 1}/${totalInputs} done`);
-				remuxDone++;
-				if (remuxDone === totalInputs) doMerge();
-			}).on("error", (err) => {
-				logger_default.error(`Merge remux ${i + 1} failed:`, err.message);
-				remuxDone++;
-				if (remuxDone === totalInputs) doMerge();
-			}).run();
+		function remuxOne(filePath, index) {
+			const remuxedPath = filePath.replace(/\.webm$/i, "_remux.mp4");
+			return new Promise((resolve) => {
+				const remux = (0, fluent_ffmpeg.default)(filePath);
+				const taskId = registerConversion(() => remux.kill("SIGKILL"));
+				remux.outputOptions(["-c", "copy"]).output(remuxedPath).on("end", () => {
+					unregisterConversion(taskId);
+					logger_default.info(`Merge remux ${index + 1}/${totalInputs} done`);
+					resolve({
+						success: true,
+						remuxedPath
+					});
+				}).on("error", (err) => {
+					unregisterConversion(taskId);
+					logger_default.error(`Merge remux ${index + 1} failed:`, err.message);
+					resolve({
+						success: false,
+						remuxedPath,
+						error: err.message
+					});
+				}).run();
+			});
 		}
-		function doMerge() {
-			const cmd = (0, fluent_ffmpeg.default)();
-			for (const p of remuxedPaths) cmd.addInput(p);
-			const filters = [];
-			filters.push(`color=c=black:s=${cw}x${ch}[bg]`);
+		async function cleanupTempFiles() {
+			for (const p of remuxedPaths) await node_fs.default.promises.unlink(p).catch(() => {});
+			for (const inp of inputs) await node_fs.default.promises.unlink(inp.filePath).catch(() => {});
+		}
+		async function doMerge() {
+			const hwEncoder = await getH264Encoder(ffmpegBinPath);
+			const filters = [`color=c=black:s=${cw}x${ch}[bg]`];
 			let prevLabel = "[bg]";
 			for (let i = 0; i < inputs.length; i++) {
 				const inp = inputs[i];
@@ -2116,43 +2303,75 @@ function mergeMultiScreen(inputs, outputPath, onProgress) {
 			}
 			filters.push("[out]format=yuv420p");
 			logger_default.info("Merge filter_complex:", filters.join(";"));
-			cmd.complexFilter(filters).outputOptions([
-				"-c:v",
-				"libx264",
-				"-preset",
-				"ultrafast",
-				"-crf",
-				"23",
-				"-threads",
-				String(NUM_THREADS),
-				"-movflags",
-				"+faststart"
-			]).output(outputPath).on("start", (cmdLine) => {
-				logger_default.info("Merge ffmpeg command started");
-			}).on("progress", (progress) => {
-				onProgress?.({
-					percent: Math.round(progress.percent ?? 0),
-					targetSize: progress.targetSize ?? 0
+			function runMergeOnce(encoder) {
+				return new Promise((resolve) => {
+					const cmd = (0, fluent_ffmpeg.default)();
+					const taskId = registerConversion(() => cmd.kill("SIGKILL"));
+					for (const p of remuxedPaths) cmd.addInput(p);
+					cmd.complexFilter(filters).outputOptions([
+						...buildEncodeOptions(encoder, "23", NUM_THREADS),
+						"-movflags",
+						"+faststart"
+					]).output(outputPath).on("start", () => {
+						logger_default.info(`Merge ffmpeg command started (${encoder})`);
+					}).on("progress", (progress) => {
+						const pct = Math.round(progress.percent ?? 0);
+						onProgress?.({
+							percent: Math.min(30 + pct * .7, 100),
+							targetSize: progress.targetSize ?? 0
+						});
+					}).on("end", () => {
+						unregisterConversion(taskId);
+						logger_default.info("Merge completed successfully");
+						for (const inp of inputs) node_fs.default.promises.unlink(inp.filePath).catch(() => {});
+						for (const p of remuxedPaths) node_fs.default.promises.unlink(p).catch(() => {});
+						resolve({
+							success: true,
+							outputPath
+						});
+					}).on("error", (err) => {
+						unregisterConversion(taskId);
+						logger_default.error(`Multi-screen merge failed (${encoder}):`, err.message);
+						for (const inp of inputs) node_fs.default.promises.unlink(inp.filePath).catch(() => {});
+						for (const p of remuxedPaths) node_fs.default.promises.unlink(p).catch(() => {});
+						resolve({
+							success: false,
+							outputPath: "",
+							error: err.message
+						});
+					}).run();
 				});
-			}).on("end", () => {
-				logger_default.info("Merge completed successfully");
-				for (const inp of inputs) node_fs.default.promises.unlink(inp.filePath).catch(() => {});
-				for (const p of remuxedPaths) node_fs.default.promises.unlink(p).catch(() => {});
-				resolve({
-					success: true,
-					outputPath
-				});
-			}).on("error", (err) => {
-				logger_default.error("Multi-screen merge failed:", err.message);
-				for (const inp of inputs) node_fs.default.promises.unlink(inp.filePath).catch(() => {});
-				for (const p of remuxedPaths) node_fs.default.promises.unlink(p).catch(() => {});
-				resolve({
-					success: false,
-					outputPath: "",
-					error: err.message
-				});
-			}).run();
+			}
+			let result = await runMergeOnce(hwEncoder);
+			if (!result.success && hwEncoder !== "libx264") {
+				logger_default.warn(`Merge: ${hwEncoder} failed, retrying with libx264`);
+				await node_fs.default.promises.unlink(outputPath).catch(() => {});
+				result = await runMergeOnce("libx264");
+			}
+			return result;
 		}
+		(async () => {
+			for (let i = 0; i < totalInputs; i++) {
+				const r = await remuxOne(inputs[i].filePath, i);
+				if (!r.success) {
+					logger_default.error(`Merge aborted: remux ${i + 1}/${totalInputs} failed, short-circuiting`);
+					await node_fs.default.promises.unlink(r.remuxedPath).catch(() => {});
+					await cleanupTempFiles();
+					resolve({
+						success: false,
+						outputPath: "",
+						error: r.error
+					});
+					return;
+				}
+				remuxedPaths.push(r.remuxedPath);
+				onProgress?.({
+					percent: Math.round((i + 1) / totalInputs * 30),
+					targetSize: 0
+				});
+			}
+			resolve(await doMerge());
+		})();
 	});
 }
 function convertToGif(inputPath, outputPath, options, onProgress) {
@@ -2171,7 +2390,10 @@ function convertToGif(inputPath, outputPath, options, onProgress) {
 		palettePath
 	];
 	return new Promise((resolve) => {
-		execFile(ffmpegBin, args1, (err1) => {
+		let task1Id = "";
+		let task2Id = "";
+		const proc1 = execFile(ffmpegBin, args1, (err1) => {
+			unregisterConversion(task1Id);
 			if (err1) {
 				logger_default.error("GIF palette gen failed:", err1.message);
 				resolve({
@@ -2192,6 +2414,7 @@ function convertToGif(inputPath, outputPath, options, onProgress) {
 				`[0:v]fps=${fps},scale=${width}:-1:flags=lanczos[x];[x][1:v]paletteuse`,
 				outputPath
 			], (err2) => {
+				unregisterConversion(task2Id);
 				node_fs.default.promises.unlink(palettePath).catch(() => {});
 				if (err2) {
 					logger_default.error("GIF creation failed:", err2.message);
@@ -2205,6 +2428,7 @@ function convertToGif(inputPath, outputPath, options, onProgress) {
 					outputPath
 				});
 			});
+			task2Id = registerConversion(() => proc.kill("SIGKILL"));
 			if (proc.stdout) proc.stdout.on("data", (data) => {
 				const match = data.toString().match(/time=(\d+:\d+:\d+\.\d+)/);
 				if (match && options?.duration) {
@@ -2221,6 +2445,7 @@ function convertToGif(inputPath, outputPath, options, onProgress) {
 				});
 			});
 		});
+		task1Id = registerConversion(() => proc1.kill("SIGKILL"));
 	});
 }
 //#endregion
@@ -2291,7 +2516,6 @@ var require_region_selector = /* @__PURE__ */ __commonJSMin(((exports, module) =
 	}
 	var borderWindow = null;
 	var toolbarWindow = null;
-	var keepTopInterval = null;
 	var savedRegion = null;
 	var savedToolbarPos = null;
 	var cameraPreviewWindow = null;
@@ -2414,10 +2638,9 @@ var require_region_selector = /* @__PURE__ */ __commonJSMin(((exports, module) =
 html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif}
 .island{
   width:fit-content;height:100%;
-  background:rgba(20,20,40,0.88);
+  background:rgba(20,20,40,0.96);
   border-radius:22px;
   display:flex;align-items:center;justify-content:center;gap:8px;
-  backdrop-filter:blur(12px);
   border:1px solid rgba(255,255,255,0.08);
   padding:0 10px;
   transition:opacity 0.3s,transform 0.3s;
@@ -2695,7 +2918,7 @@ function showAiDetail(){}
 				if (floatingIsland && !floatingIsland.isDestroyed()) floatingIsland.webContents.send("island-state", "hide");
 				hideIslandTimer = null;
 			}, 500);
-		}, 250);
+		}, 500);
 	}
 	var TOOLBAR_HEIGHT = 44;
 	var BORDER_WIDTH = 3;
@@ -2751,11 +2974,10 @@ function showAiDetail(){}
 html,body{width:100%;height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif}
 .toolbar{
   width:100%;height:${TOOLBAR_HEIGHT}px;
-  background:rgba(20,20,40,0.92);
+  background:rgba(20,20,40,0.97);
   border-radius:8px 8px 0 0;
   display:flex;align-items:center;justify-content:center;gap:6px;
   padding:0 10px;
-  backdrop-filter:blur(8px);
 }
 .toolbar button{
   width:32px;height:32px;border:none;border-radius:6px;
@@ -2791,7 +3013,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Segoe UI',system-u
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
 .toolbar[data-pos="bottom"]{border-radius:0 0 8px 8px}
 .toolbar[data-pos="inside"]{border-radius:8px}
-.toolbar.minimal{width:fit-content;height:40px!important;border-radius:22px;background:rgba(20,20,40,0.88);border:1px solid rgba(255,255,255,0.08);backdrop-filter:blur(12px);padding:0 10px}
+.toolbar.minimal{width:fit-content;height:40px!important;border-radius:22px;background:rgba(20,20,40,0.96);border:1px solid rgba(255,255,255,0.08);padding:0 10px}
 .toolbar.minimal .audio-toggle,.toolbar.minimal .meter-group,.toolbar.minimal .sep,.toolbar.minimal .size-label,.toolbar.minimal .close-btn{display:none!important}
 </style></head><body>
 <div class="toolbar" id="toolbar" data-pos="${tbPos}">
@@ -2960,12 +3182,9 @@ html,body{width:100%;height:100%;overflow:hidden}
 		logger_default.info("Region border+toolbar shown (split windows):", region);
 		currentPreviewArea = region;
 		if (audioState?.cameraEnabled) showCameraPreview(region, audioState.cameraDeviceId);
-		if (keepTopInterval) clearInterval(keepTopInterval);
-		keepTopInterval = setInterval(() => {
-			if (borderWindow && !borderWindow.isDestroyed()) borderWindow.setAlwaysOnTop(true, "screen-saver");
-			if (toolbarWindow && !toolbarWindow.isDestroyed()) toolbarWindow.setAlwaysOnTop(true, "screen-saver");
-			if (cameraPreviewWindow && !cameraPreviewWindow.isDestroyed()) cameraPreviewWindow.setAlwaysOnTop(true, "screen-saver");
-		}, 5e3);
+		if (borderWindow && !borderWindow.isDestroyed()) borderWindow.setAlwaysOnTop(true, "screen-saver");
+		if (toolbarWindow && !toolbarWindow.isDestroyed()) toolbarWindow.setAlwaysOnTop(true, "screen-saver");
+		if (cameraPreviewWindow && !cameraPreviewWindow.isDestroyed()) cameraPreviewWindow.setAlwaysOnTop(true, "screen-saver");
 	}
 	function updateToolbarState(state, elapsedSeconds) {
 		if (toolbarWindow && !toolbarWindow.isDestroyed()) {
@@ -2985,10 +3204,6 @@ html,body{width:100%;height:100%;overflow:hidden}
 		}
 	}
 	function hideRegionBorder() {
-		if (keepTopInterval) {
-			clearInterval(keepTopInterval);
-			keepTopInterval = null;
-		}
 		hideBorderOnly();
 		if (toolbarWindow && !toolbarWindow.isDestroyed()) {
 			toolbarWindow.close();
@@ -3659,12 +3874,10 @@ function buildAiIslandHtml() {
 html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif}
 .island{
   width:fit-content;height:fit-content;
-  background:rgba(20,20,40,0.92);
-  border-radius:14px;
+  background:rgba(20,20,40,0.96);
+  border-radius:22px;
   display:flex;flex-direction:column;
-  backdrop-filter:blur(16px);
   border:1px solid rgba(255,255,255,0.1);
-  box-shadow:0 8px 32px rgba(0,0,0,0.4);
   transition:opacity 0.3s,transform 0.3s;
   overflow:hidden;
 }
@@ -3748,17 +3961,16 @@ function resizeIsland(){
 const ro=new ResizeObserver(()=>resizeIsland())
 ro.observe(document.getElementById('island'))
 const aiLabels={idle:'AI 待机',thinking:'AI 思考中',working:'AI 工作中',error:'AI 出错了',notification:'等待审批',done:'任务完成'}
-ipcRenderer.on('agent-state-update',(e,data)=>{
+function applyState(data){
   const ind=document.getElementById('aiIndicator'),dot=document.getElementById('aiDot'),lb=document.getElementById('aiLabel')
   if(!data||(data.state==='idle'&&(!data.sessions||!data.sessions.length))){ind.style.display='flex';dot.className='ai-dot idle';lb.textContent='AI 待机';lb.classList.remove('active');setTimeout(resizeIsland,50);return}
   ind.style.display='flex';dot.className='ai-dot '+data.state;lb.textContent=aiLabels[data.state]||'AI '+data.state;lb.classList.toggle('active',data.state!=='idle')
   setTimeout(resizeIsland,50)
-})
-ipcRenderer.on('agent-permission-request',(e,data)=>{
+}
+function applyPermission(data){
   try{
     document.getElementById('permCard').classList.add('show')
     document.getElementById('permTool').textContent=data.toolName||'未知操作'
-    // 格式化显示工具参数
     const inputRow=document.getElementById('permInputRow')
     const inputEl=document.getElementById('permInput')
     const ti=data.toolInput
@@ -3776,7 +3988,17 @@ ipcRenderer.on('agent-permission-request',(e,data)=>{
     console.error('perm render error:',err)
   }
   setTimeout(resizeIsland,50)
-})
+}
+ipcRenderer.on('agent-state-update',(e,data)=>applyState(data))
+ipcRenderer.on('agent-permission-request',(e,data)=>applyPermission(data))
+// 懒创建的岛加载后主动拉取一次当前状态/权限，避免错过创建前的广播
+function initStatus(){
+  ipcRenderer.invoke('agent-get-status').then(s=>{
+    if(!s) return
+    applyState({state:s.displayState,sessions:[]})
+    if(s.pendingPermission) applyPermission(s.pendingPermission)
+  }).catch(()=>{})
+}
 function formatToolInput(input){
   try{
     // 常用字段优先展示
@@ -3804,6 +4026,7 @@ function doAlwaysAllow(){resolvePerm('always')}
 function resolvePerm(b){ipcRenderer.invoke('agent-resolve-permission',b);document.getElementById('permCard').classList.remove('show');setTimeout(resizeIsland,50)}
 function showAiDetail(){ipcRenderer.invoke('show-ai-window')}
 resizeIsland()
+initStatus()
 <\/script>
 </body></html>`;
 }
@@ -4197,6 +4420,7 @@ function registerIpcHandlers(agentBridge) {
 	});
 	if (agentBridge) {
 		agentBridge.setStateListener((state, sessions) => {
+			if (state !== "idle" || sessions && sessions.length > 0) showAiIsland();
 			const wins = electron.BrowserWindow.getAllWindows();
 			for (const win of wins) if (!win.isDestroyed()) try {
 				win.webContents.send("agent-state-update", {
@@ -4206,6 +4430,7 @@ function registerIpcHandlers(agentBridge) {
 			} catch {}
 		});
 		agentBridge.setPermissionListener((perm) => {
+			showAiIsland();
 			const safePerm = {
 				sessionId: perm.sessionId,
 				toolName: perm.toolName,
@@ -4561,11 +4786,21 @@ function createAgentServer(stateMachine) {
 	let pendingPermission = null;
 	let permissionTimeout = null;
 	let onPermissionRequest = null;
+	const MAX_BODY_BYTES = 1 * 1024 * 1024;
+	class BodyTooLargeError extends Error {
+		code = "PAYLOAD_TOO_LARGE";
+	}
 	function parseBody(req) {
 		return new Promise((resolve, reject) => {
 			let body = "";
 			req.on("data", (c) => {
 				body += c;
+				if (Buffer.byteLength(body) > MAX_BODY_BYTES) {
+					try {
+						req.destroy();
+					} catch {}
+					reject(new BodyTooLargeError("Body exceeds 1MB limit"));
+				}
 			});
 			req.on("end", () => {
 				try {
@@ -4671,11 +4906,11 @@ function createAgentServer(stateMachine) {
 		logger_default.info(`[AgentServer] ${req.method} ${req.url}`);
 		if (req.method === "POST" && req.url === "/state") parseBody(req).then((d) => handleState(d, res)).catch((e) => {
 			logger_default.error("[AgentServer] parseBody error:", e);
-			sendJson(res, 400, { error: "Invalid JSON" });
+			sendJson(res, e?.code === "PAYLOAD_TOO_LARGE" ? 413 : 400, { error: e?.code === "PAYLOAD_TOO_LARGE" ? "Payload too large" : "Invalid JSON" });
 		});
 		else if (req.method === "POST" && req.url === "/permission") parseBody(req).then((d) => handlePermission(d, res)).catch((e) => {
 			logger_default.error("[AgentServer] parseBody error:", e);
-			sendJson(res, 400, { error: "Invalid JSON" });
+			sendJson(res, e?.code === "PAYLOAD_TOO_LARGE" ? 413 : 400, { error: e?.code === "PAYLOAD_TOO_LARGE" ? "Payload too large" : "Invalid JSON" });
 		});
 		else if (req.method === "GET" && req.url === "/health") handleHealth(res);
 		else sendJson(res, 404, { error: "Not found" });
@@ -5022,7 +5257,7 @@ function createAgentBridge(config = {}) {
 				if (result.added) logger_default.info("Claude Code hooks installed");
 				if (result.updated) logger_default.info("Claude Code hooks updated");
 			}
-			if (config.autoStartWatcher !== false) hookManager.startWatcher();
+			if (config.autoStartWatcher !== false && hookManager.isInstalled()) hookManager.startWatcher();
 		}
 	}
 	function stop() {
@@ -5061,16 +5296,23 @@ function createAgentBridge(config = {}) {
 	function getAutoAllow() {
 		return autoAllow;
 	}
+	let claudeRunningCache = null;
+	let claudeRunningCacheAt = 0;
+	const CLAUDE_RUNNING_TTL = 3e4;
 	function checkClaudeRunning() {
+		const now = Date.now();
+		if (claudeRunningCache !== null && now - claudeRunningCacheAt < CLAUDE_RUNNING_TTL) return claudeRunningCache;
 		try {
 			const { execSync } = require("child_process");
-			return execSync("tasklist /NH /FI \"IMAGENAME eq claude.exe\"", {
+			claudeRunningCache = execSync("tasklist /NH /FI \"IMAGENAME eq claude.exe\"", {
 				encoding: "utf8",
 				timeout: 2e3
 			}).includes("claude.exe");
 		} catch {
-			return false;
+			claudeRunningCache = false;
 		}
+		claudeRunningCacheAt = now;
+		return claudeRunningCache;
 	}
 	function getStatus() {
 		const sessionsRaw = stateMachine.getSessions();
@@ -5107,11 +5349,72 @@ function createAgentBridge(config = {}) {
 	};
 }
 //#endregion
+//#region electron/main/local-video-protocol.ts
+var SCHEME = "local-video";
+/** 必须在 app.ready 之前调用：注册 scheme 为 privileged（支持流式/Range/cookie）。 */
+function registerLocalVideoScheme() {
+	electron.protocol.registerSchemesAsPrivileged([{
+		scheme: SCHEME,
+		privileges: {
+			standard: true,
+			secure: true,
+			supportFetchAPI: true,
+			stream: true
+		}
+	}]);
+}
+/** 在 app.ready 之后调用：实现协议 handler，按 Range 返回文件流。 */
+function registerLocalVideoProtocol() {
+	electron.protocol.handle(SCHEME, (request) => {
+		const url = new URL(request.url);
+		let filePath = decodeURIComponent(url.pathname).replace(/^\//, "");
+		const range = request.headers.get("range");
+		let size = 0;
+		try {
+			size = (0, node_fs.statSync)(filePath).size;
+		} catch {
+			return new Response("File not found: " + filePath, { status: 404 });
+		}
+		const ext = (0, node_path.extname)(filePath).toLowerCase();
+		const mime = ext === ".mp4" ? "video/mp4" : ext === ".webm" ? "video/webm" : "application/octet-stream";
+		if (range) {
+			const m = /bytes=(\d*)-(\d*)/.exec(range);
+			const start = m && m[1] ? parseInt(m[1], 10) : 0;
+			const end = m && m[2] ? parseInt(m[2], 10) : size - 1;
+			const cappedEnd = Math.min(end, size - 1);
+			const stream = (0, node_fs.createReadStream)(filePath, {
+				start,
+				end: cappedEnd
+			});
+			return new Response(node_stream.Readable.toWeb(stream), {
+				status: 206,
+				headers: {
+					"Content-Range": `bytes ${start}-${cappedEnd}/${size}`,
+					"Accept-Ranges": "bytes",
+					"Content-Length": String(cappedEnd - start + 1),
+					"Content-Type": mime
+				}
+			});
+		}
+		const stream = (0, node_fs.createReadStream)(filePath);
+		return new Response(node_stream.Readable.toWeb(stream), {
+			status: 200,
+			headers: {
+				"Content-Length": String(size),
+				"Content-Type": mime,
+				"Accept-Ranges": "bytes"
+			}
+		});
+	});
+}
+//#endregion
 //#region electron/main/index.ts
 init_logger();
+registerLocalVideoScheme();
 var mainWindow = null;
 var aiWindow = null;
 var agentBridge = null;
+var retryPendingTimer = null;
 var VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 function getIcon() {
 	const iconPath = electron.app.isPackaged ? (0, node_path.join)(process.resourcesPath, "logo.ico") : (0, node_path.join)(__dirname, "../../public/logo.ico");
@@ -5152,15 +5455,18 @@ electron.app.on("gpu-process-crashed", (_event, details) => {
 electron.app.whenReady().then(() => {
 	process.env.DIST = (0, node_path.join)(__dirname, "../../dist");
 	process.env.VITE_PUBLIC = electron.app.isPackaged ? process.env.DIST : (0, node_path.join)(__dirname, "../../public");
+	registerLocalVideoProtocol();
 	ensureLogPath();
 	logger_default.info("App starting...");
+	setRegistryLogger(logger_default);
+	setHwEncoderLogger(logger_default);
 	const preloadPath = (0, node_path.join)(__dirname, "..", "preload", "index.cjs");
 	agentBridge = createAgentBridge({
 		autoInstallHooks: true,
 		autoStartWatcher: true
 	});
-	agentBridge.start().then(() => {
-		showAiIsland();
+	agentBridge.start().catch((err) => {
+		logger_default.error("Agent bridge start failed:", err?.message ?? err);
 	});
 	registerIpcHandlers(agentBridge);
 	createWindow(preloadPath);
@@ -5187,7 +5493,7 @@ electron.app.whenReady().then(() => {
 	process.on("clawd-show-ai-window", () => {
 		showAiWindow();
 	});
-	setInterval(retryPending, 3e4);
+	retryPendingTimer = setInterval(retryPending, 3e4);
 	electron.app.on("activate", () => {
 		if (electron.BrowserWindow.getAllWindows().length === 0) createWindow(preloadPath);
 	});
@@ -5195,8 +5501,22 @@ electron.app.whenReady().then(() => {
 electron.app.on("window-all-closed", () => {});
 electron.app.on("before-quit", () => {
 	electron.app.isQuitting = true;
+	for (const win of electron.BrowserWindow.getAllWindows()) if (!win.isDestroyed()) try {
+		win.webContents.send("app-before-quit");
+	} catch {}
+	(0, import_region_selector.hideRegionBorder)();
+	(0, import_region_selector.hideFloatingIsland)();
+	(0, import_region_selector.hideCameraPreview)();
+	hideFloatingBall();
+	agentBridge?.stop();
+	hideAiIsland();
+	killAllConversions();
 	unregisterGlobalShortcuts();
 	(0, import_tray.destroyTray)();
+	if (retryPendingTimer) {
+		clearInterval(retryPendingTimer);
+		retryPendingTimer = null;
+	}
 	mainWindow = null;
 	aiWindow = null;
 });
@@ -5223,8 +5543,7 @@ function showAiWindow() {
 			preload: preloadPath,
 			contextIsolation: true,
 			nodeIntegration: false,
-			sandbox: false,
-			backgroundThrottling: false
+			sandbox: false
 		}
 	});
 	if (VITE_DEV_SERVER_URL) aiWindow.loadURL(`${VITE_DEV_SERVER_URL}#/ai?t=${Date.now()}`);

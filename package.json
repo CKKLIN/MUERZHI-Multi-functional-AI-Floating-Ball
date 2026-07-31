@@ -1,5 +1,5 @@
 {
-  "name": "erzhi-recording",
+  "name": "MUERZHI",
   "private": true,
   "version": "1.0.0",
   "main": "dist-electron/main/index.cjs",
@@ -10,8 +10,8 @@
     "preview": "vite preview"
   },
   "build": {
-    "appId": "com.erzhi.recording",
-    "productName": "二支录制",
+    "appId": "com.muerzhi.aiball",
+    "productName": "MUERZHI",
     "directories": {
       "output": "release"
     },
@@ -49,7 +49,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "二支录制"
+      "shortcutName": "MUERZHI"
     }
   },
   "dependencies": {

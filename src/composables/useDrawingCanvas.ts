@@ -82,6 +82,34 @@ export function useDrawingCanvas() {
     strokes.value = []
   }
 
+  function drawCurrent(ctx: CanvasRenderingContext2D) {
+    const stroke = currentStroke.value
+    if (!stroke) return
+    ctx.save()
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    if (stroke.tool === 'eraser') ctx.globalCompositeOperation = 'destination-out'
+    ctx.strokeStyle = stroke.color
+    ctx.fillStyle = stroke.color
+    ctx.lineWidth = stroke.width
+
+    if (stroke.tool === 'pen' || stroke.tool === 'eraser') {
+      if (stroke.points.length < 2) {
+        ctx.beginPath()
+        ctx.arc(stroke.points[0].x, stroke.points[0].y, stroke.width / 2, 0, Math.PI * 2)
+        ctx.fill()
+      } else {
+        ctx.beginPath()
+        ctx.moveTo(stroke.points[0].x, stroke.points[0].y)
+        for (let i = 1; i < stroke.points.length; i++) {
+          ctx.lineTo(stroke.points[i].x, stroke.points[i].y)
+        }
+        ctx.stroke()
+      }
+    }
+    ctx.restore()
+  }
+
   function redraw(ctx: CanvasRenderingContext2D) {
     const allStrokes = currentStroke.value
       ? [...strokes.value, currentStroke.value]
@@ -154,6 +182,7 @@ export function useDrawingCanvas() {
     endStroke,
     undoLastStroke,
     clearStrokes,
+    drawCurrent,
     redraw,
   }
 }

@@ -2,19 +2,26 @@ import { join } from 'node:path'
 import { app, BrowserWindow, nativeImage, ipcMain } from 'electron'
 import log, { ensureLogPath } from './logger'
 import { registerIpcHandlers } from './ipc-handlers'
-import { setMainWindow } from './region-selector'
+import { setMainWindow, hideRegionBorder, hideFloatingIsland, hideCameraPreview } from './region-selector'
 import { registerGlobalShortcuts, unregisterGlobalShortcuts } from './global-shortcuts'
 import { createTray, destroyTray } from './tray'
 import { reportIP, retryPending } from './ip-reporter'
-import { showFloatingBall } from './floating-ball'
+import { showFloatingBall, hideFloatingBall } from './floating-ball'
 import { createAgentBridge, type AgentBridge } from './agent-bridge'
-import { showAiIsland } from './ai-island'
+import { hideAiIsland } from './ai-island'
+import { setRegistryLogger, killAllConversions } from './conversion-registry'
+import { setHwEncoderLogger } from './hw-encoder'
+import { registerLocalVideoScheme, registerLocalVideoProtocol } from './local-video-protocol'
 
 declare const __dirname: string
+
+// 必须在 app.ready 前注册 scheme 为 privileged
+registerLocalVideoScheme()
 
 let mainWindow: BrowserWindow | null = null
 let aiWindow: BrowserWindow | null = null
 let agentBridge: AgentBridge | null = null
+let retryPendingTimer: NodeJS.Timeout | null = null
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 
 function getIcon() {
@@ -41,6 +48,9 @@ function createWindow(preloadPath: string) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // 录制中主窗口会被 minimize，必须关节流否则 MediaRecorder / captureStream(0)
+      // / 50ms 音频采样被降到 ~1Hz 破坏录制。idle 隐藏的开销已由 drawFrame 只录制时
+      // 跑 + audio document.hidden 跳过 守卫到最小。
       backgroundThrottling: false,
     },
   })
@@ -69,18 +79,22 @@ app.whenReady().then(() => {
     ? process.env.DIST
     : join(__dirname, '../../public')
 
+  // 注册 local-video:// 协议 handler（流式播放本地视频，支持 Range seek）
+  registerLocalVideoProtocol()
+
   ensureLogPath()
   log.info('App starting...')
+  setRegistryLogger(log)
+  setHwEncoderLogger(log)
   const preloadPath = join(__dirname, '..', 'preload', 'index.cjs')
 
-  // 先启动 Agent Bridge，再注册 IPC
+  // 先启动 Agent Bridge（HTTP server + 状态机 + hooks），AI 岛改为按需懒创建
   agentBridge = createAgentBridge({
     autoInstallHooks: true,
     autoStartWatcher: true,
   })
-  agentBridge.start().then(() => {
-    // 启动后显示 AI 迷你悬浮岛
-    showAiIsland()
+  agentBridge.start().catch((err) => {
+    log.error('Agent bridge start failed:', err?.message ?? err)
   })
 
   registerIpcHandlers(agentBridge)
@@ -113,8 +127,7 @@ app.whenReady().then(() => {
     showAiWindow()
   })
 
-  setInterval(retryPending, 30_000)
-
+  retryPendingTimer = setInterval(retryPending, 30_000)
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow(preloadPath)
@@ -128,8 +141,29 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   ;(app as any).isQuitting = true
+  // 通知渲染层：应用即将退出，请停止 MediaRecorder / 释放流
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      try { win.webContents.send('app-before-quit') } catch { /* webContents may be gone */ }
+    }
+  }
+  // 关闭录制相关的 overlay 窗口并清其定时器（这些 hide* 只在正常停止录制时调用，
+  // quit 时若不显式调用，其内部 setInterval 会一直跑到进程死亡）
+  hideRegionBorder()
+  hideFloatingIsland()
+  hideCameraPreview()
+  hideFloatingBall()
+  // 停止 AI 子系统（HTTP 服务器 + 状态机/监听器定时器 + runtime.json 清理）
+  agentBridge?.stop()
+  hideAiIsland()
+  // kill 所有在途 ffmpeg 转换，避免 ffmpeg.exe 成为孤儿进程继续吃 CPU
+  killAllConversions()
   unregisterGlobalShortcuts()
   destroyTray()
+  if (retryPendingTimer) {
+    clearInterval(retryPendingTimer)
+    retryPendingTimer = null
+  }
   mainWindow = null
   aiWindow = null
 })
@@ -158,7 +192,6 @@ function showAiWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      backgroundThrottling: false,
     },
   })
   if (VITE_DEV_SERVER_URL) {

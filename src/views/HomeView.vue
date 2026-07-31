@@ -430,6 +430,8 @@ onMounted(() => {
   // 定时将音频电平转发给工具栏窗口（仅在音频激活时）
   const audioLevelInterval = setInterval(() => {
     if (store.state === 'idle' && !store.isMicrophoneEnabled && !store.isSystemAudioEnabled) return
+    // 主窗口最小化/隐藏时（录制中常见），转发电平无意义，跳过
+    if (document.hidden) return
     window.electronAPI.updateAudioLevels(
       store.isMicrophoneEnabled ? audio.micLevel.value : -1,
       store.isSystemAudioEnabled ? audio.sysLevel.value : -1

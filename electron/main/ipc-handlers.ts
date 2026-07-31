@@ -358,6 +358,10 @@ export function registerIpcHandlers(agentBridge?: AgentBridge) {
   // Agent Bridge handlers
   if (agentBridge) {
     agentBridge.setStateListener((state, sessions) => {
+      // 非 idle 或有活跃会话时按需创建 AI 岛；idle 且无会话时不创建，
+      // 避免常驻一个透明 always-on-top 渲染进程（#7 轻量化）
+      const hasActivity = state !== 'idle' || (sessions && sessions.length > 0)
+      if (hasActivity) showAiIsland()
       const wins = BrowserWindow.getAllWindows()
       for (const win of wins) {
         if (!win.isDestroyed()) {
@@ -367,6 +371,8 @@ export function registerIpcHandlers(agentBridge?: AgentBridge) {
     })
 
     agentBridge.setPermissionListener((perm) => {
+      // 权限请求必须显示 AI 岛（权限卡片）
+      showAiIsland()
       // IPC 无法序列化函数，只发送纯数据字段
       const safePerm = {
         sessionId: perm.sessionId,

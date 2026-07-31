@@ -36,10 +36,23 @@ export function createAgentServer(stateMachine: ReturnType<typeof createAgentSta
   let permissionTimeout: ReturnType<typeof setTimeout> | null = null
   let onPermissionRequest: ((perm: PendingPermission) => void) | null = null
 
+  const MAX_BODY_BYTES = 1 * 1024 * 1024 // 1MB：防止本地进程发超大 body OOM 主进程
+
+  class BodyTooLargeError extends Error {
+    code = "PAYLOAD_TOO_LARGE" as const
+  }
+
   function parseBody(req: http.IncomingMessage): Promise<any> {
     return new Promise((resolve, reject) => {
       let body = ""
-      req.on("data", (c) => { body += c })
+      req.on("data", (c: Buffer) => {
+        body += c
+        if (Buffer.byteLength(body) > MAX_BODY_BYTES) {
+          // 超限：立即中止连接，停止累积，防止 OOM
+          try { req.destroy() } catch {}
+          reject(new BodyTooLargeError("Body exceeds 1MB limit"))
+        }
+      })
       req.on("end", () => {
         try { resolve(JSON.parse(body)) } catch { reject(new Error("Invalid JSON")) }
       })
@@ -153,9 +166,15 @@ export function createAgentServer(stateMachine: ReturnType<typeof createAgentSta
     res.setHeader("Access-Control-Allow-Origin", "*")
     log.info(`[AgentServer] ${req.method} ${req.url}`)
     if (req.method === "POST" && req.url === "/state") {
-      parseBody(req).then(d => handleState(d, res)).catch((e) => { log.error('[AgentServer] parseBody error:', e); sendJson(res, 400, { error: "Invalid JSON" }) })
+      parseBody(req).then(d => handleState(d, res)).catch((e) => {
+        log.error('[AgentServer] parseBody error:', e)
+        sendJson(res, e?.code === "PAYLOAD_TOO_LARGE" ? 413 : 400, { error: e?.code === "PAYLOAD_TOO_LARGE" ? "Payload too large" : "Invalid JSON" })
+      })
     } else if (req.method === "POST" && req.url === "/permission") {
-      parseBody(req).then(d => handlePermission(d, res)).catch((e) => { log.error('[AgentServer] parseBody error:', e); sendJson(res, 400, { error: "Invalid JSON" }) })
+      parseBody(req).then(d => handlePermission(d, res)).catch((e) => {
+        log.error('[AgentServer] parseBody error:', e)
+        sendJson(res, e?.code === "PAYLOAD_TOO_LARGE" ? 413 : 400, { error: e?.code === "PAYLOAD_TOO_LARGE" ? "Payload too large" : "Invalid JSON" })
+      })
     } else if (req.method === "GET" && req.url === "/health") {
       handleHealth(res)
     } else {

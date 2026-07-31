@@ -81,7 +81,6 @@ function cleanupRegionSelector(result: { x: number; y: number; width: number; he
 // === 录制区域边框窗口 + 工具栏窗口（分离） ===
 let borderWindow: BrowserWindow | null = null
 let toolbarWindow: BrowserWindow | null = null
-let keepTopInterval: ReturnType<typeof setInterval> | null = null
 let savedRegion: { x: number; y: number; width: number; height: number } | null = null
 let savedToolbarPos: 'top' | 'bottom' | 'inside' | null = null
 
@@ -232,10 +231,9 @@ function showFloatingIsland(audioState?: { micEnabled: boolean; sysEnabled: bool
 html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif}
 .island{
   width:fit-content;height:100%;
-  background:rgba(20,20,40,0.88);
+  background:rgba(20,20,40,0.96);
   border-radius:22px;
   display:flex;align-items:center;justify-content:center;gap:8px;
-  backdrop-filter:blur(12px);
   border:1px solid rgba(255,255,255,0.08);
   padding:0 10px;
   transition:opacity 0.3s,transform 0.3s;
@@ -512,7 +510,8 @@ function setFloatingIslandState(state: 'idle' | 'recording' | 'paused' | 'show' 
     hideIslandTimer = null
   }
   if (state === 'recording') {
-    // 录制中：追踪鼠标，鼠标离开后 0.5 秒隐藏
+    // 录制中：追踪鼠标，鼠标离开后 0.5 秒隐藏。500ms 粒度足够检测进出
+    // （配合 500ms 的 hideIslandTimer），降低同步 getCursorScreenPoint 主线程唤醒
     islandMouseCheckInterval = setInterval(() => {
       if (!floatingIsland || floatingIsland.isDestroyed()) return
       const pos = screen.getCursorScreenPoint()
@@ -531,7 +530,7 @@ function setFloatingIslandState(state: 'idle' | 'recording' | 'paused' | 'show' 
           }, 500)
         }
       }
-    }, 250)
+    }, 500)
   }
 }
 
@@ -597,11 +596,10 @@ function showRegionBorder(region: { x: number; y: number; width: number; height:
 html,body{width:100%;height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif}
 .toolbar{
   width:100%;height:${TOOLBAR_HEIGHT}px;
-  background:rgba(20,20,40,0.92);
+  background:rgba(20,20,40,0.97);
   border-radius:8px 8px 0 0;
   display:flex;align-items:center;justify-content:center;gap:6px;
   padding:0 10px;
-  backdrop-filter:blur(8px);
 }
 .toolbar button{
   width:32px;height:32px;border:none;border-radius:6px;
@@ -637,7 +635,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Segoe UI',system-u
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
 .toolbar[data-pos="bottom"]{border-radius:0 0 8px 8px}
 .toolbar[data-pos="inside"]{border-radius:8px}
-.toolbar.minimal{width:fit-content;height:40px!important;border-radius:22px;background:rgba(20,20,40,0.88);border:1px solid rgba(255,255,255,0.08);backdrop-filter:blur(12px);padding:0 10px}
+.toolbar.minimal{width:fit-content;height:40px!important;border-radius:22px;background:rgba(20,20,40,0.96);border:1px solid rgba(255,255,255,0.08);padding:0 10px}
 .toolbar.minimal .audio-toggle,.toolbar.minimal .meter-group,.toolbar.minimal .sep,.toolbar.minimal .size-label,.toolbar.minimal .close-btn{display:none!important}
 </style></head><body>
 <div class="toolbar" id="toolbar" data-pos="${tbPos}">
@@ -813,13 +811,10 @@ html,body{width:100%;height:100%;overflow:hidden}
     showCameraPreview(region, audioState.cameraDeviceId)
   }
 
-  // 定期刷新置顶状态，防止被其他窗口覆盖
-  if (keepTopInterval) clearInterval(keepTopInterval)
-  keepTopInterval = setInterval(() => {
-    if (borderWindow && !borderWindow.isDestroyed()) borderWindow.setAlwaysOnTop(true, 'screen-saver')
-    if (toolbarWindow && !toolbarWindow.isDestroyed()) toolbarWindow.setAlwaysOnTop(true, 'screen-saver')
-    if (cameraPreviewWindow && !cameraPreviewWindow.isDestroyed()) cameraPreviewWindow.setAlwaysOnTop(true, 'screen-saver')
-  }, 5000)
+  // 一次性提升 z 序到 screen-saver 层级（setAlwaysOnTop 是粘性的，无需轮询）
+  if (borderWindow && !borderWindow.isDestroyed()) borderWindow.setAlwaysOnTop(true, 'screen-saver')
+  if (toolbarWindow && !toolbarWindow.isDestroyed()) toolbarWindow.setAlwaysOnTop(true, 'screen-saver')
+  if (cameraPreviewWindow && !cameraPreviewWindow.isDestroyed()) cameraPreviewWindow.setAlwaysOnTop(true, 'screen-saver')
 }
 
 function updateToolbarState(state: 'idle' | 'recording' | 'paused', elapsedSeconds?: number) {
@@ -844,10 +839,6 @@ function hideBorderOnly() {
 }
 
 function hideRegionBorder() {
-  if (keepTopInterval) {
-    clearInterval(keepTopInterval)
-    keepTopInterval = null
-  }
   hideBorderOnly()
   if (toolbarWindow && !toolbarWindow.isDestroyed()) {
     toolbarWindow.close()

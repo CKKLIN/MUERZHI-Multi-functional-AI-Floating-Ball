@@ -77,7 +77,8 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
         if (result.added) log.info("Claude Code hooks installed")
         if (result.updated) log.info("Claude Code hooks updated")
       }
-      if (config.autoStartWatcher !== false) {
+      // watcher 仅在 hook 实际已安装时启动，否则每 5min 的健康检查无意义
+      if (config.autoStartWatcher !== false && hookManager.isInstalled()) {
         hookManager.startWatcher()
       }
     }
@@ -110,14 +111,26 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
   function setAutoAllow(enabled: boolean) { autoAllow = enabled; log.info(`[AgentBridge] autoAllow=${enabled}`) }
   function getAutoAllow() { return autoAllow }
 
+  // checkClaudeRunning 结果缓存：避免高频同步 tasklist spawn 阻塞主线程。
+  // getStatus 每 5s 被调用，但 claude 进程启停不需要秒级精度，缓存 30s 足够。
+  let claudeRunningCache: boolean | null = null
+  let claudeRunningCacheAt = 0
+  const CLAUDE_RUNNING_TTL = 30_000
+
   function checkClaudeRunning(): boolean {
+    const now = Date.now()
+    if (claudeRunningCache !== null && now - claudeRunningCacheAt < CLAUDE_RUNNING_TTL) {
+      return claudeRunningCache
+    }
     try {
       const { execSync } = require("child_process")
       const result = execSync("tasklist /NH /FI \"IMAGENAME eq claude.exe\"", { encoding: "utf8", timeout: 2000 })
-      return result.includes("claude.exe")
+      claudeRunningCache = result.includes("claude.exe")
     } catch {
-      return false
+      claudeRunningCache = false
     }
+    claudeRunningCacheAt = now
+    return claudeRunningCache!
   }
 
   function getStatus(): AgentBridgeStatus {

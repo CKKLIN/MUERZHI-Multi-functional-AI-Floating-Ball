@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import type { Recording } from '../stores/recording'
 
 const props = defineProps<{
@@ -11,34 +11,31 @@ const emit = defineEmits<{
 }>()
 
 const videoRef = ref<HTMLVideoElement | null>(null)
-const blobUrl = ref('')
-const isLoading = ref(true)
+// 用 local-video:// 协议流式播放本地文件，不读整文件进内存
+const videoUrl = ref(window.electronAPI.toLocalVideoUrl(props.recording.filePath))
 
-onMounted(async () => {
-  try {
-    const buffer = await window.electronAPI.readFile(props.recording.filePath)
-    const ext = props.recording.filePath.split('.').pop()?.toLowerCase()
-    const mime = ext === 'mp4' ? 'video/mp4' : 'video/webm'
-    blobUrl.value = URL.createObjectURL(new Blob([buffer], { type: mime }))
-  } catch (err) {
-    console.error('无法加载视频:', err)
-  } finally {
-    isLoading.value = false
-  }
+onMounted(() => {
+  // 协议 URL 同步可用，无需加载等待
 })
 
-watch([videoRef, blobUrl], ([el, url]) => {
-  if (el && url) {
-    el.src = url
+function cleanup() {
+  const el = videoRef.value
+  if (el) {
+    el.pause()
+    el.removeAttribute('src')
+    el.load()
   }
-})
+}
 
 function onClose() {
-  if (blobUrl.value) {
-    URL.revokeObjectURL(blobUrl.value)
-  }
+  cleanup()
   emit('close')
 }
+
+// 父组件 v-if 切换关闭时不触发 onClose，必须在此清理 video 解码器
+onUnmounted(() => {
+  cleanup()
+})
 </script>
 
 <template>
@@ -53,10 +50,9 @@ function onClose() {
         </button>
       </div>
       <div class="video-container">
-        <div v-if="isLoading" class="loading">加载视频...</div>
         <video
-          v-else
           ref="videoRef"
+          :src="videoUrl"
           controls
           autoplay
           class="video-player"

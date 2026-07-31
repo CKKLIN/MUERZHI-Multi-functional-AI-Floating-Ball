@@ -21,6 +21,10 @@ export function useRecording() {
   let combinedStream: MediaStream | null = null
   let chunks: Blob[] = []
   let drawRafId: number | null = null
+  // requestVideoFrameCallback 句柄（rVFC 驱动的合成路径）；rVFC 不可用时为 null
+  let drawRvfcId: number | null = null
+  // canvas 流的视频 track；captureStream(0) 模式下手动 requestFrame() 推帧
+  let canvasTrack: CanvasCaptureMediaStreamTrack | null = null
   let countInterval: ReturnType<typeof setInterval> | null = null
   let compositeCanvas: HTMLCanvasElement | null = null
   let compositeCtx: CanvasRenderingContext2D | null = null
@@ -141,13 +145,13 @@ export function useRecording() {
     if (!compositeCtx || !screenVideo) return
 
     if (captureRegion) {
-      if (captureRegion) {
-        compositeCtx.drawImage(screenVideo, captureRegion.x * captureScaleFactor, captureRegion.y * captureScaleFactor, captureRegion.width * captureScaleFactor, captureRegion.height * captureScaleFactor, 0, 0, captureVideoWidth, captureVideoHeight)
-      } else {
-        compositeCtx.drawImage(screenVideo, 0, 0, captureVideoWidth, captureVideoHeight)
-      }
+      compositeCtx.drawImage(screenVideo, captureRegion.x * captureScaleFactor, captureRegion.y * captureScaleFactor, captureRegion.width * captureScaleFactor, captureRegion.height * captureScaleFactor, 0, 0, captureVideoWidth, captureVideoHeight)
+    } else {
+      compositeCtx.drawImage(screenVideo, 0, 0, captureVideoWidth, captureVideoHeight)
     }
 
+    // 摄像头叠加：当前 cameraVideo 从未赋值（见 startCamera 未接进 canvas 路径），
+    // 此分支保持兼容；若将来接通，应以 cameraVideo 推进新帧为门控避免每帧重画。
     if (cameraVideo?.srcObject && store.isCameraEnabled) {
       const { x, y, width, height } = cameraPosition.value
       compositeCtx.save()
@@ -170,11 +174,61 @@ export function useRecording() {
     }
   }
 
+  // 合成绘制循环：优先用 requestVideoFrameCallback 驱动，只在屏幕视频真正有新帧时
+  // 重绘 + 推帧给 canvas 流；120Hz 屏上不再每帧唤醒 rAF 做空判断。
+  // rVFC 不可用时回退到固定 fps 的 rAF 节流（旧逻辑）。
+  function hasRvfc(): boolean {
+    return typeof HTMLVideoElement !== 'undefined' &&
+      'requestVideoFrameCallback' in HTMLVideoElement.prototype
+  }
+
+  function startDrawLoop() {
+    stopDrawLoop()
+    if (!compositeCtx || !screenVideo) return
+
+    if (hasRvfc()) {
+      const onFrame = () => {
+        if (!store.isRecording) { drawRvfcId = null; return }
+        drawFrame()
+        canvasTrack?.requestFrame()
+        drawRvfcId = (screenVideo as any).requestVideoFrameCallback(onFrame)
+      }
+      drawFrame()
+      canvasTrack?.requestFrame()
+      drawRvfcId = (screenVideo as any).requestVideoFrameCallback(onFrame)
+    } else {
+      // 回退：固定 fps 的 rAF 节流
+      const fps = settingsStore.maxFps
+      const targetIntervalMs = 1000 / fps
+      let lastDrawTime = performance.now()
+      const drawLoop = () => {
+        if (!store.isRecording) { drawRafId = null; return }
+        const now = performance.now()
+        if (now - lastDrawTime >= targetIntervalMs * 0.9) {
+          drawFrame()
+          lastDrawTime = now - ((now - lastDrawTime) % targetIntervalMs)
+        }
+        drawRafId = requestAnimationFrame(drawLoop)
+      }
+      drawRafId = requestAnimationFrame(drawLoop)
+    }
+  }
+
+  function stopDrawLoop() {
+    if (drawRvfcId !== null && screenVideo && 'cancelVideoFrameCallback' in screenVideo) {
+      ;(screenVideo as any).cancelVideoFrameCallback(drawRvfcId)
+    }
+    drawRvfcId = null
+    if (drawRafId !== null) {
+      cancelAnimationFrame(drawRafId)
+      drawRafId = null
+    }
+  }
+
   async function startCapture(sourceId: string, region?: Region, audioTracks?: MediaStreamTrack[], multiScreenSources?: { sourceId: string; bounds: { x: number; y: number; width: number; height: number } }[]) {
     if (isStarting) return
     isStarting = true
     try {
-      const fps = settingsStore.maxFps
       const needsCanvas = store.isDrawingEnabled || !!multiScreenSources
       useDirectMp4 = false
       multiRecorders = []
@@ -329,7 +383,10 @@ export function useRecording() {
           compositeCanvas.height = canvasHeight
           compositeCtx = compositeCanvas.getContext('2d', { alpha: false })!
 
-          canvasStream = compositeCanvas.captureStream(fps)
+          // captureStream(0): canvas 流不自动采样，由 startDrawLoop 在每帧 drawFrame 后
+          // 手动 requestFrame() 推帧，避免双时钟采样 + 120Hz 空唤醒
+          canvasStream = compositeCanvas.captureStream(0)
+          canvasTrack = canvasStream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack | null
 
           if (audioTracks && audioTracks.length > 0) {
             audioTracks.forEach(track => canvasStream!.addTrack(track))
@@ -347,25 +404,11 @@ export function useRecording() {
             handleRecordingStop().finally(() => { stopResolve?.(); stopResolve = null })
           }
 
-          for (let i = 0; i < 10; i++) {
-            drawFrame()
-            await new Promise<void>(r => setTimeout(r, 50))
-          }
-
-          mediaRecorder.start(1000)
-          const targetIntervalMs = 1000 / fps
-          let lastDrawTime = performance.now()
-          const drawLoop = () => {
-            if (!store.isRecording) { drawRafId = null; return }
-            const now = performance.now()
-            if (now - lastDrawTime >= targetIntervalMs * 0.9) {
-              drawFrame()
-              lastDrawTime = now - ((now - lastDrawTime) % targetIntervalMs)
-            }
-            drawRafId = requestAnimationFrame(drawLoop)
-          }
-          drawRafId = requestAnimationFrame(drawLoop)
+          // 少量预热帧确保首帧不为空，然后启动 rVFC 驱动的绘制循环
           drawFrame()
+          canvasTrack?.requestFrame()
+          mediaRecorder.start(1000)
+          startDrawLoop()
         }
       }
 
@@ -410,7 +453,7 @@ export function useRecording() {
           tempInputs.push({ filePath: tmpPath, bounds: multiDisplayBounds[i] })
         }
 
-        const mp4FileName = `Erzhi-${timestamp}.mp4`
+        const mp4FileName = `MUERZHI-${timestamp}.mp4`
         const mp4Path = `${settingsStore.outputDir}\\${mp4FileName}`
 
         store.conversionProgress = 0
@@ -452,7 +495,7 @@ export function useRecording() {
 
         const isAlreadyMp4 = useDirectMp4 || mediaRecorder!.mimeType.startsWith('video/mp4')
         const ext = isAlreadyMp4 ? 'mp4' : 'webm'
-        const fileName = `Erzhi-${timestamp}.${ext}`
+        const fileName = `MUERZHI-${timestamp}.${ext}`
         const filePath = `${settingsStore.outputDir}\\${fileName}`
 
         await window.electronAPI.writeFile(buffer, filePath)
@@ -466,7 +509,7 @@ export function useRecording() {
         log.info('[handleRecordingStop] needCrop:', needCrop, 'needConvert:', needConvert)
 
         if (needCrop && needConvert) {
-          const mp4FileName = `Erzhi-${timestamp}.mp4`
+          const mp4FileName = `MUERZHI-${timestamp}.mp4`
           const mp4Path = `${settingsStore.outputDir}\\${mp4FileName}`
           const cropParams = {
             x: Math.round(captureRegion!.x * captureScaleFactor),
@@ -493,7 +536,7 @@ export function useRecording() {
           }
         } else if (needCrop) {
           const cropExt = isAlreadyMp4 ? 'mp4' : 'webm'
-          const cropFileName = `Erzhi-${timestamp}_cropped.${cropExt}`
+          const cropFileName = `MUERZHI-${timestamp}_cropped.${cropExt}`
           const cropPath = `${settingsStore.outputDir}\\${cropFileName}`
           const cropParams = {
             x: Math.round(captureRegion!.x * captureScaleFactor),
@@ -519,7 +562,7 @@ export function useRecording() {
             finalFileName = fileName
           }
         } else if (needConvert) {
-          const mp4FileName = `Erzhi-${timestamp}.mp4`
+          const mp4FileName = `MUERZHI-${timestamp}.mp4`
           const mp4Path = `${settingsStore.outputDir}\\${mp4FileName}`
 
           store.conversionProgress = 0
@@ -631,20 +674,8 @@ export function useRecording() {
       mediaRecorder.resume()
       startTimer()
       // 恢复绘制循环
-      if (compositeCtx && screenVideo && drawRafId === null) {
-        const fps = settingsStore.maxFps
-        const targetIntervalMs = 1000 / fps
-        let lastDrawTime = performance.now()
-        const drawLoop = () => {
-          if (!store.isRecording) { drawRafId = null; return }
-          const now = performance.now()
-          if (now - lastDrawTime >= targetIntervalMs * 0.9) {
-            drawFrame()
-            lastDrawTime = now - ((now - lastDrawTime) % targetIntervalMs)
-          }
-          drawRafId = requestAnimationFrame(drawLoop)
-        }
-        drawRafId = requestAnimationFrame(drawLoop)
+      if (compositeCtx && screenVideo) {
+        startDrawLoop()
       }
       store.setState('recording')
       log.info('Recording resumed')
@@ -679,10 +710,8 @@ export function useRecording() {
   }
 
   function cleanupStreams() {
-    if (drawRafId !== null) {
-      cancelAnimationFrame(drawRafId)
-      drawRafId = null
-    }
+    // 停止绘制循环（rVFC 句柄需在 screenVideo 置空前取消）
+    stopDrawLoop()
     if (countInterval) {
       clearInterval(countInterval)
       countInterval = null
@@ -695,6 +724,7 @@ export function useRecording() {
     audioStream = null
     combinedStream = null
     canvasStream = null
+    canvasTrack = null
     if (screenVideo) {
       screenVideo.srcObject = null
       screenVideo = null

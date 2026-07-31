@@ -14,12 +14,10 @@ function buildAiIslandHtml(): string {
 html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif}
 .island{
   width:fit-content;height:fit-content;
-  background:rgba(20,20,40,0.92);
-  border-radius:14px;
+  background:rgba(20,20,40,0.96);
+  border-radius:22px;
   display:flex;flex-direction:column;
-  backdrop-filter:blur(16px);
   border:1px solid rgba(255,255,255,0.1);
-  box-shadow:0 8px 32px rgba(0,0,0,0.4);
   transition:opacity 0.3s,transform 0.3s;
   overflow:hidden;
 }
@@ -103,17 +101,16 @@ function resizeIsland(){
 const ro=new ResizeObserver(()=>resizeIsland())
 ro.observe(document.getElementById('island'))
 const aiLabels={idle:'AI 待机',thinking:'AI 思考中',working:'AI 工作中',error:'AI 出错了',notification:'等待审批',done:'任务完成'}
-ipcRenderer.on('agent-state-update',(e,data)=>{
+function applyState(data){
   const ind=document.getElementById('aiIndicator'),dot=document.getElementById('aiDot'),lb=document.getElementById('aiLabel')
   if(!data||(data.state==='idle'&&(!data.sessions||!data.sessions.length))){ind.style.display='flex';dot.className='ai-dot idle';lb.textContent='AI 待机';lb.classList.remove('active');setTimeout(resizeIsland,50);return}
   ind.style.display='flex';dot.className='ai-dot '+data.state;lb.textContent=aiLabels[data.state]||'AI '+data.state;lb.classList.toggle('active',data.state!=='idle')
   setTimeout(resizeIsland,50)
-})
-ipcRenderer.on('agent-permission-request',(e,data)=>{
+}
+function applyPermission(data){
   try{
     document.getElementById('permCard').classList.add('show')
     document.getElementById('permTool').textContent=data.toolName||'未知操作'
-    // 格式化显示工具参数
     const inputRow=document.getElementById('permInputRow')
     const inputEl=document.getElementById('permInput')
     const ti=data.toolInput
@@ -131,7 +128,17 @@ ipcRenderer.on('agent-permission-request',(e,data)=>{
     console.error('perm render error:',err)
   }
   setTimeout(resizeIsland,50)
-})
+}
+ipcRenderer.on('agent-state-update',(e,data)=>applyState(data))
+ipcRenderer.on('agent-permission-request',(e,data)=>applyPermission(data))
+// 懒创建的岛加载后主动拉取一次当前状态/权限，避免错过创建前的广播
+function initStatus(){
+  ipcRenderer.invoke('agent-get-status').then(s=>{
+    if(!s) return
+    applyState({state:s.displayState,sessions:[]})
+    if(s.pendingPermission) applyPermission(s.pendingPermission)
+  }).catch(()=>{})
+}
 function formatToolInput(input){
   try{
     // 常用字段优先展示
@@ -159,6 +166,7 @@ function doAlwaysAllow(){resolvePerm('always')}
 function resolvePerm(b){ipcRenderer.invoke('agent-resolve-permission',b);document.getElementById('permCard').classList.remove('show');setTimeout(resizeIsland,50)}
 function showAiDetail(){ipcRenderer.invoke('show-ai-window')}
 resizeIsland()
+initStatus()
 </script>
 </body></html>`
 }

@@ -1,4 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import { writeFile as fsWriteFile, mkdir } from 'node:fs/promises'
+import { dirname } from 'node:path'
 
 const electronAPI = {
   // Screen capture
@@ -19,9 +21,21 @@ const electronAPI = {
   }) => ipcRenderer.invoke('show-open-dialog', options),
   getDefaultSaveDir: () => ipcRenderer.invoke('get-default-save-dir'),
 
-  // File I/O
-  writeFile: (data: ArrayBuffer, filePath: string) =>
-    ipcRenderer.invoke('write-file', Buffer.from(data), filePath),
+  // File I/O —— 直接在 preload 用 fs 写，绕过 IPC（避免 ArrayBuffer 跨进程复制
+  // ≥2 次及主进程堆尖峰）。sandbox=false 允许 preload 使用 node 模块。
+  writeFile: async (data: ArrayBuffer, filePath: string) => {
+    try {
+      await mkdir(dirname(filePath), { recursive: true })
+      await fsWriteFile(filePath, new Uint8Array(data))
+      return { success: true, filePath }
+    } catch (err: any) {
+      console.error('保存文件失败', filePath, err?.message)
+      return { success: false, filePath, error: err?.message }
+    }
+  },
+  // 本地视频流式播放 URL（local-video:// 协议，主进程注册），避免读整文件进内存
+  toLocalVideoUrl: (filePath: string) =>
+    `local-video:///${filePath.replace(/\\/g, '/')}`,
   readFile: (filePath: string) =>
     ipcRenderer.invoke('read-file', filePath),
   fileExists: (filePath: string) =>
