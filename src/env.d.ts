@@ -6,6 +6,12 @@ export interface CaptureSource {
   thumbnail: string
 }
 
+export interface FloatingBallSettings {
+  visible: boolean
+  alwaysOnTop: boolean
+  openAtLogin: boolean
+}
+
 export interface ConversionProgress {
   percent: number
   targetSize: number
@@ -127,7 +133,11 @@ export interface ElectronAPI {
   onAgentStateUpdate: (callback: (data: AgentStatePayload) => void) => () => void
   onAgentPermissionRequest: (callback: (data: AgentPermissionPayload) => void) => () => void
   showAiWindow: () => Promise<void>
+  showSettingsWindow: () => Promise<void>
   showMainWindow: () => Promise<void>
+  getFloatingBallSettings: () => Promise<FloatingBallSettings>
+  setFloatingBallSettings: (patch: Partial<FloatingBallSettings>) => Promise<FloatingBallSettings>
+  resetFloatingBallPosition: () => Promise<void>
   showAiIsland: () => Promise<void>
   hideAiIsland: () => Promise<void>
 }

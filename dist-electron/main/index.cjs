@@ -3269,10 +3269,11 @@ html,body{width:100%;height:100%;overflow:hidden}
 		});
 		electron.ipcMain.on("resize-island", (_event, contentWidth, contentHeight) => {
 			if (floatingIsland && !floatingIsland.isDestroyed()) {
+				if (!Number.isFinite(contentWidth)) return;
 				const bounds = islandTargetBounds || electron.screen.getPrimaryDisplay().bounds;
 				const totalW = contentWidth + 20;
 				const newX = Math.round(bounds.x + (bounds.width - totalW) / 2);
-				const h = contentHeight || 44;
+				const h = Number.isFinite(contentHeight) ? contentHeight : 44;
 				floatingIsland.setBounds({
 					x: newX,
 					y: bounds.y + 4,
@@ -3325,6 +3326,70 @@ function saveBallPosition(pos) {
 		node_fs.default.writeFileSync(ballPosFilePath(), JSON.stringify(pos), "utf-8");
 	} catch {}
 }
+var BALL_SETTINGS_FILE = "floating-ball-settings.json";
+var DEFAULT_SETTINGS = {
+	visible: true,
+	alwaysOnTop: true,
+	openAtLogin: false
+};
+var cachedSettings = null;
+function ballSettingsFilePath() {
+	return (0, node_path.join)(electron.app.isPackaged ? electron.app.getPath("userData") : (0, node_path.join)(__dirname, "..", ".."), BALL_SETTINGS_FILE);
+}
+function loadBallSettings() {
+	try {
+		const data = node_fs.default.readFileSync(ballSettingsFilePath(), "utf-8");
+		const parsed = JSON.parse(data);
+		return {
+			visible: typeof parsed.visible === "boolean" ? parsed.visible : DEFAULT_SETTINGS.visible,
+			alwaysOnTop: typeof parsed.alwaysOnTop === "boolean" ? parsed.alwaysOnTop : DEFAULT_SETTINGS.alwaysOnTop,
+			openAtLogin: typeof parsed.openAtLogin === "boolean" ? parsed.openAtLogin : DEFAULT_SETTINGS.openAtLogin
+		};
+	} catch {}
+	return { ...DEFAULT_SETTINGS };
+}
+function saveBallSettings(settings) {
+	try {
+		node_fs.default.writeFileSync(ballSettingsFilePath(), JSON.stringify(settings), "utf-8");
+	} catch {}
+}
+/** 读取设置（带模块级缓存，避免每次 show 都重读磁盘） */
+function getBallSettings() {
+	if (cachedSettings) return cachedSettings;
+	cachedSettings = loadBallSettings();
+	return cachedSettings;
+}
+/** 主进程内部唯一变更入口：合并→save→刷新缓存→返回新值 */
+function updateBallSettings(patch) {
+	const next = {
+		...getBallSettings(),
+		...patch
+	};
+	saveBallSettings(next);
+	cachedSettings = next;
+	return next;
+}
+/** 清空位置缓存 + 删 pos 文件，下次 show 回屏幕中心 */
+function clearBallPosition() {
+	ballPos = null;
+	try {
+		node_fs.default.unlinkSync(ballPosFilePath());
+	} catch {}
+}
+/** 仅在设置允许时才显示悬浮球（启动时按持久化的 visible 决定） */
+function showFloatingBallIfVisible() {
+	if (getBallSettings().visible) showFloatingBall();
+}
+/** 活动窗口即时切换置顶层级；隐藏态下次 show 自然从缓存读 */
+function setFloatingBallAlwaysOnTop(value) {
+	if (floatingBallWindow && !floatingBallWindow.isDestroyed()) floatingBallWindow.setAlwaysOnTop(value, "screen-saver");
+}
+/** 把设置作用到活动悬浮球（visible 切换显隐，alwaysOnTop 切层级） */
+function applyFloatingBallSettings(s) {
+	if (s.visible) showFloatingBall();
+	else hideFloatingBall();
+	setFloatingBallAlwaysOnTop(s.alwaysOnTop);
+}
 function showFloatingBall() {
 	if (floatingBallWindow && !floatingBallWindow.isDestroyed()) {
 		floatingBallWindow.show();
@@ -3351,7 +3416,7 @@ function showFloatingBall() {
 		transparent: true,
 		backgroundColor: "#00000000",
 		resizable: false,
-		alwaysOnTop: true,
+		alwaysOnTop: getBallSettings().alwaysOnTop,
 		skipTaskbar: true,
 		hasShadow: false,
 		show: false,
@@ -3361,15 +3426,16 @@ function showFloatingBall() {
 		}
 	});
 	floatingBallWindow.setVisibleOnAllWorkspaces(true);
-	floatingBallWindow.setAlwaysOnTop(true, "screen-saver");
+	floatingBallWindow.setAlwaysOnTop(getBallSettings().alwaysOnTop, "screen-saver");
 	const html = buildFloatingBallHtml();
 	floatingBallWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
 	floatingBallWindow.once("ready-to-show", () => {
 		floatingBallWindow?.show();
 		if (floatingBallWindow && !floatingBallWindow.isDestroyed()) floatingBallWindow.webContents.executeJavaScript("ensureMenu()").catch(() => {});
 	});
+	const self = floatingBallWindow;
 	floatingBallWindow.on("closed", () => {
-		floatingBallWindow = null;
+		if (floatingBallWindow === self) floatingBallWindow = null;
 	});
 	floatingBallWindow.on("move", () => {
 		if (floatingBallWindow && !floatingBallWindow.isDestroyed()) {
@@ -3393,8 +3459,9 @@ function hideFloatingBall() {
 			y: by
 		};
 		saveBallPosition(ballPos);
-		floatingBallWindow.close();
+		const win = floatingBallWindow;
 		floatingBallWindow = null;
+		win.destroy();
 		logger_default.info("Floating ball hidden");
 	}
 }
@@ -3455,6 +3522,7 @@ async function collapseBall() {
 function forwardAction(action) {
 	if (action === "record") process.emit("clawd-show-record-window");
 	else if (action === "ai") process.emit("clawd-show-ai-window");
+	else if (action === "settings") process.emit("clawd-show-settings-window");
 	else {
 		const mainWindow = electron.BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w !== floatingBallWindow);
 		if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("on-floating-ball-action", action);
@@ -3600,6 +3668,7 @@ const {ipcRenderer} = require('electron')
 const ITEMS = [
   {label:'录屏',icon:'●',action:'record'},
   {label:'AI助手',icon:'✦',action:'ai'},
+  {label:'设置',icon:'⚙',action:'settings'},
 ]
 
 let isExpanded = false
@@ -3764,6 +3833,7 @@ function registerFloatingBallHandlers() {
 	});
 	electron.ipcMain.on("floating-ball-move", (_event, sx, sy) => {
 		if (!floatingBallWindow || floatingBallWindow.isDestroyed() || !dragOrigin || !dragSize) return;
+		if (!Number.isFinite(sx) || !Number.isFinite(sy)) return;
 		const dx = sx - dragOrigin.scrX;
 		const dy = sy - dragOrigin.scrY;
 		const nx = Math.round(dragOrigin.winX + dx);
@@ -3785,7 +3855,80 @@ function registerFloatingBallHandlers() {
 	electron.ipcMain.on("floating-ball-drag-end", () => {
 		dragOrigin = null;
 		dragSize = null;
+		if (floatingBallWindow && !floatingBallWindow.isDestroyed()) {
+			const [x, y] = floatingBallWindow.getPosition();
+			const [w, h] = floatingBallWindow.getSize();
+			const b = electron.screen.getDisplayMatching(floatingBallWindow.getBounds()).bounds;
+			const SNAP = 40;
+			let nx = x, ny = y;
+			if (x - b.x < SNAP) nx = b.x;
+			else if (b.x + b.width - (x + w) < SNAP) nx = b.x + b.width - w;
+			if (y - b.y < SNAP) ny = b.y;
+			else if (b.y + b.height - (y + h) < SNAP) ny = b.y + b.height - h;
+			if (nx !== x || ny !== y) {
+				floatingBallWindow.setBounds({
+					x: nx,
+					y: ny,
+					width: w,
+					height: h
+				});
+				const [ax, ay] = floatingBallWindow.getPosition();
+				floatingBallWindow.setBounds({
+					x: nx + (nx - ax),
+					y: ny + (ny - ay),
+					width: w,
+					height: h
+				});
+				if (ballPos) {
+					ballPos = {
+						x: nx,
+						y: ny
+					};
+					saveBallPosition(ballPos);
+				}
+				logger_default.info("Floating ball snapped to edge:", [nx, ny]);
+			}
+		}
 		if (ballPos) saveBallPosition(ballPos);
+	});
+	electron.ipcMain.handle("get-floating-ball-settings", () => getBallSettings());
+	electron.ipcMain.handle("set-floating-ball-settings", (_event, patch) => {
+		const next = updateBallSettings(patch);
+		applyFloatingBallSettings(next);
+		if (patch.openAtLogin !== void 0) try {
+			electron.app.setLoginItemSettings({ openAtLogin: patch.openAtLogin });
+		} catch (e) {
+			logger_default.error("setLoginItemSettings failed:", e);
+		}
+		return next;
+	});
+	electron.ipcMain.handle("reset-floating-ball-position", () => {
+		clearBallPosition();
+		if (floatingBallWindow && !floatingBallWindow.isDestroyed()) {
+			const display = electron.screen.getPrimaryDisplay().bounds;
+			const nx = Math.round(display.x + (display.width - BALL_SIZE) / 2);
+			const ny = Math.round(display.y + (display.height - BALL_SIZE) / 2);
+			try {
+				floatingBallWindow.webContents.executeJavaScript(`document.body.classList.remove('expanded'); var s=document.getElementById('ringSvg');if(s){while(s.firstChild){s.removeChild(s.firstChild)}} menuCreated=false; isExpanded=false; void 0;`).catch(() => {});
+			} catch {}
+			floatingBallWindow.setBounds({
+				x: nx,
+				y: ny,
+				width: BALL_SIZE,
+				height: BALL_SIZE
+			});
+			ballPos = {
+				x: nx,
+				y: ny
+			};
+			const [ax, ay] = floatingBallWindow.getPosition();
+			if (ax !== nx || ay !== ny) floatingBallWindow.setBounds({
+				x: nx + (nx - ax),
+				y: ny + (ny - ay),
+				width: BALL_SIZE,
+				height: BALL_SIZE
+			});
+		}
 	});
 }
 //#endregion
@@ -3815,13 +3958,9 @@ var import_tray = (/* @__PURE__ */ __commonJSMin(((exports, module) => {
 		tray.setToolTip("二支录制");
 		const contextMenu = electron.Menu.buildFromTemplate([
 			{
-				label: "显示主窗口",
+				label: "显示设置窗口",
 				click: () => {
-					const win = electron.BrowserWindow.getAllWindows()[0];
-					if (win) {
-						win.show();
-						win.focus();
-					}
+					process.emit("clawd-show-settings-window");
 				}
 			},
 			{ type: "separator" },
@@ -3835,11 +3974,7 @@ var import_tray = (/* @__PURE__ */ __commonJSMin(((exports, module) => {
 		]);
 		tray.setContextMenu(contextMenu);
 		tray.on("click", () => {
-			const win = electron.BrowserWindow.getAllWindows()[0];
-			if (win) {
-				win.show();
-				win.focus();
-			}
+			process.emit("clawd-show-settings-window");
 		});
 		logger_default.info("System tray created");
 	}
@@ -3867,6 +4002,11 @@ var import_tray = (/* @__PURE__ */ __commonJSMin(((exports, module) => {
 })))();
 init_logger();
 var aiIsland = null;
+/** AI 岛拖动的基准（绝对增量 + setBounds，仿悬浮球）；用户拖过后锁定位置不再被 resize 拉回 */
+var aiDragOrigin = null;
+var aiIslandUserMoved = false;
+/** 透明空白区鼠标穿透状态：true 时 setIgnoreMouseEvents，让窗口右侧多余透明区不拦截下方点击 */
+var aiIslandMouseIgnored = false;
 function buildAiIslandHtml() {
 	return `<!DOCTYPE html>
 <html><head><style>
@@ -3882,7 +4022,7 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
   overflow:hidden;
 }
 .island.hidden{opacity:0;transform:translateY(-8px) scaleY(0.5);pointer-events:none}
-.island-row{display:flex;align-items:center;gap:8px;height:40px;padding:0 14px;justify-content:center}
+.island-row{display:flex;align-items:center;gap:8px;height:40px;padding:0 14px;justify-content:center;cursor:grab;-webkit-user-select:none;user-select:none;touch-action:none}
 /* AI 状态指示器 */
 .ai-indicator{display:flex;align-items:center;gap:7px;flex-shrink:0;padding:0 4px;cursor:pointer;border-radius:6px;transition:background 0.15s}
 .ai-indicator:hover{background:rgba(255,255,255,0.08)}
@@ -3922,7 +4062,7 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
 .perm-btn.always:hover{background:rgba(52,211,153,0.18);border-color:rgba(52,211,153,0.5)}
 </style></head><body>
 <div class="island" id="island">
-  <div class="island-row">
+  <div class="island-row" id="islandRow">
     <div class="ai-indicator" id="aiIndicator" onclick="showAiDetail()" title="点击查看详情">
       <span class="ai-dot idle" id="aiDot"></span>
       <span class="ai-label" id="aiLabel">AI 待机</span>
@@ -4025,6 +4165,41 @@ function doDeny(){resolvePerm('deny')}
 function doAlwaysAllow(){resolvePerm('always')}
 function resolvePerm(b){ipcRenderer.invoke('agent-resolve-permission',b);document.getElementById('permCard').classList.remove('show');setTimeout(resizeIsland,50)}
 function showAiDetail(){ipcRenderer.invoke('show-ai-window')}
+// === AI 岛拖动（整条状态条含 padding，4px 阈值区分点击 vs 拖动） ===
+// 复用悬浮球的 pointer 拖动模式：pointerdown 记录起点，超过 4px 才算拖动，
+// 这样 .ai-indicator 的"点击查看详情"不受影响（真拖动不触发 click）
+const row=document.getElementById('islandRow')
+let dsX=0, dsY=0, dragging=false
+row.addEventListener('pointerdown',function(e){
+  dsX=e.screenX; dsY=e.screenY; dragging=false
+  row.setPointerCapture(e.pointerId)
+  ipcRenderer.send('ai-island-drag-start', e.screenX, e.screenY)
+})
+row.addEventListener('pointermove',function(e){
+  if(e.buttons!==1) return
+  if(!dragging){
+    if(Math.abs(e.screenX-dsX)<=4 && Math.abs(e.screenY-dsY)<=4) return
+    dragging=true
+  }
+  ipcRenderer.send('ai-island-drag-move', e.screenX, e.screenY)
+})
+row.addEventListener('pointerup',function(e){
+  if(row.hasPointerCapture&&row.hasPointerCapture(e.pointerId)) row.releasePointerCapture(e.pointerId)
+  if(dragging){ dragging=false; ipcRenderer.send('ai-island-drag-end') }
+})
+row.addEventListener('pointercancel',function(e){
+  if(dragging){ dragging=false; ipcRenderer.send('ai-island-drag-end') }
+})
+// === 透明空白区鼠标穿透 ===
+// 窗口比可见胶囊宽（width = 内容宽 + 20），右侧多余透明区若不处理会拦截下方应用的点击。
+// 鼠标不在 .island 内容上时就通知主进程 setIgnoreMouseEvents(true, {forward:true}) 穿透；
+// forward 保证忽略时仍能收到 mousemove，移回内容时恢复可交互。
+function updateMouseMode(e){
+  const onIsland = e.target && e.target.closest && !!e.target.closest('.island')
+  ipcRenderer.send('set-ai-island-mouse-mode', onIsland)
+}
+document.addEventListener('mousemove', updateMouseMode)
+ipcRenderer.send('set-ai-island-mouse-mode', true) // 初始视为内容区可交互
 resizeIsland()
 initStatus()
 <\/script>
@@ -4066,17 +4241,62 @@ function hideAiIsland() {
 }
 function registerAiIslandHandlers() {
 	electron.ipcMain.on("resize-ai-island", (_event, contentWidth, contentHeight) => {
-		if (aiIsland && !aiIsland.isDestroyed()) {
+		if (!aiIsland || aiIsland.isDestroyed()) return;
+		if (!Number.isFinite(contentWidth)) return;
+		const totalW = contentWidth + 20;
+		const h = Number.isFinite(contentHeight) ? contentHeight : 44;
+		if (aiIslandUserMoved) {
+			const [x, y] = aiIsland.getPosition();
+			aiIsland.setBounds({
+				x,
+				y,
+				width: totalW,
+				height: h
+			});
+		} else {
 			const bounds = electron.screen.getPrimaryDisplay().bounds;
-			const totalW = contentWidth + 20;
 			const newX = Math.round(bounds.x + (bounds.width - totalW) / 2);
-			const h = contentHeight || 44;
 			aiIsland.setBounds({
 				x: newX,
 				y: bounds.y + 4,
 				width: totalW,
 				height: h
 			});
+		}
+	});
+	electron.ipcMain.on("ai-island-drag-start", (_event, sx, sy) => {
+		if (!aiIsland || aiIsland.isDestroyed()) return;
+		const [wx, wy] = aiIsland.getPosition();
+		aiDragOrigin = {
+			winX: wx,
+			winY: wy,
+			scrX: sx,
+			scrY: sy
+		};
+	});
+	electron.ipcMain.on("ai-island-drag-move", (_event, sx, _sy) => {
+		if (!aiIsland || aiIsland.isDestroyed() || !aiDragOrigin) return;
+		if (!Number.isFinite(sx)) return;
+		const dx = sx - aiDragOrigin.scrX;
+		const nx = Math.round(aiDragOrigin.winX + dx);
+		const [w, h] = aiIsland.getSize();
+		aiIsland.setBounds({
+			x: nx,
+			y: aiDragOrigin.winY,
+			width: w,
+			height: h
+		});
+	});
+	electron.ipcMain.on("ai-island-drag-end", () => {
+		aiDragOrigin = null;
+		aiIslandUserMoved = true;
+	});
+	electron.ipcMain.on("set-ai-island-mouse-mode", (_event, interactive) => {
+		if (!aiIsland || aiIsland.isDestroyed()) return;
+		const ignore = !interactive;
+		if (ignore !== aiIslandMouseIgnored) {
+			aiIslandMouseIgnored = ignore;
+			aiIsland.setIgnoreMouseEvents(ignore, { forward: true });
 		}
 	});
 }
@@ -4366,6 +4586,7 @@ function registerIpcHandlers(agentBridge) {
 				width: 360,
 				height: 400,
 				resizable: false,
+				skipTaskbar: true,
 				frame: false,
 				modal: true,
 				parent,
@@ -5413,6 +5634,7 @@ init_logger();
 registerLocalVideoScheme();
 var mainWindow = null;
 var aiWindow = null;
+var settingsWindow = null;
 var agentBridge = null;
 var retryPendingTimer = null;
 var VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
@@ -5428,6 +5650,7 @@ function createWindow(preloadPath) {
 		minWidth: 420,
 		minHeight: 340,
 		show: false,
+		skipTaskbar: true,
 		frame: false,
 		titleBarStyle: "hidden",
 		title: "二支录制",
@@ -5473,10 +5696,19 @@ electron.app.whenReady().then(() => {
 	(0, import_region_selector.setMainWindow)(mainWindow);
 	(0, import_tray.createTray)();
 	registerGlobalShortcuts(mainWindow);
-	showFloatingBall();
+	showFloatingBallIfVisible();
 	reportIP();
+	try {
+		const ballSettings = getBallSettings();
+		electron.app.setLoginItemSettings({ openAtLogin: ballSettings.openAtLogin });
+	} catch (e) {
+		logger_default.error("Sync openAtLogin on startup failed:", e);
+	}
 	electron.ipcMain.handle("show-ai-window", () => {
 		showAiWindow();
+	});
+	electron.ipcMain.handle("show-settings-window", () => {
+		showSettingsWindow();
 	});
 	electron.ipcMain.handle("show-main-window", () => {
 		if (mainWindow && !mainWindow.isDestroyed()) {
@@ -5492,6 +5724,9 @@ electron.app.whenReady().then(() => {
 	});
 	process.on("clawd-show-ai-window", () => {
 		showAiWindow();
+	});
+	process.on("clawd-show-settings-window", () => {
+		showSettingsWindow();
 	});
 	retryPendingTimer = setInterval(retryPending, 3e4);
 	electron.app.on("activate", () => {
@@ -5519,6 +5754,7 @@ electron.app.on("before-quit", () => {
 	}
 	mainWindow = null;
 	aiWindow = null;
+	settingsWindow = null;
 });
 function showAiWindow() {
 	if (aiWindow && !aiWindow.isDestroyed()) {
@@ -5535,6 +5771,7 @@ function showAiWindow() {
 		minWidth: 400,
 		minHeight: 400,
 		show: false,
+		skipTaskbar: true,
 		frame: false,
 		titleBarStyle: "hidden",
 		title: "AI 助手",
@@ -5553,6 +5790,41 @@ function showAiWindow() {
 	});
 	aiWindow.on("closed", () => {
 		aiWindow = null;
+	});
+}
+function showSettingsWindow() {
+	if (settingsWindow && !settingsWindow.isDestroyed()) {
+		settingsWindow.show();
+		settingsWindow.focus();
+		return;
+	}
+	const preloadPath = (0, node_path.join)(__dirname, "..", "preload", "index.cjs");
+	settingsWindow = new electron.BrowserWindow({
+		icon: getIcon(),
+		width: 420,
+		height: 480,
+		minWidth: 380,
+		minHeight: 420,
+		show: false,
+		skipTaskbar: true,
+		frame: false,
+		titleBarStyle: "hidden",
+		title: "设置",
+		backgroundColor: "#eaeaec",
+		webPreferences: {
+			preload: preloadPath,
+			contextIsolation: true,
+			nodeIntegration: false,
+			sandbox: false
+		}
+	});
+	if (VITE_DEV_SERVER_URL) settingsWindow.loadURL(`${VITE_DEV_SERVER_URL}#/settings?t=${Date.now()}`);
+	else settingsWindow.loadFile((0, node_path.join)(process.env.DIST, "index.html"), { hash: "/settings" });
+	settingsWindow.once("ready-to-show", () => {
+		settingsWindow?.show();
+	});
+	settingsWindow.on("closed", () => {
+		settingsWindow = null;
 	});
 }
 //#endregion

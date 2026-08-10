@@ -929,10 +929,13 @@ function registerRegionSelectorHandlers() {
 
   ipcMain.on('resize-island', (_event: any, contentWidth: number, contentHeight?: number) => {
     if (floatingIsland && !floatingIsland.isDestroyed()) {
+      // 防御：渲染层销毁瞬间的回调可能传来 NaN/undefined 宽高，参与 totalW 会让
+      // setBounds 抛 "conversion failure" —— 非有限数时丢弃本次调整
+      if (!Number.isFinite(contentWidth)) return
       const bounds = islandTargetBounds || screen.getPrimaryDisplay().bounds
       const totalW = contentWidth + 20 // padding
       const newX = Math.round(bounds.x + (bounds.width - totalW) / 2)
-      const h = contentHeight || 44
+      const h = Number.isFinite(contentHeight) ? contentHeight : 44
       floatingIsland.setBounds({ x: newX, y: bounds.y + 4, width: totalW, height: h })
     }
   })

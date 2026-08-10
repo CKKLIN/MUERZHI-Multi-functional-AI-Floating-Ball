@@ -6,6 +6,11 @@ import { BrowserWindow, screen, ipcMain } from 'electron'
 import log from './logger'
 
 let aiIsland: BrowserWindow | null = null
+/** AI 岛拖动的基准（绝对增量 + setBounds，仿悬浮球）；用户拖过后锁定位置不再被 resize 拉回 */
+let aiDragOrigin: { winX: number; winY: number; scrX: number; scrY: number } | null = null
+let aiIslandUserMoved = false
+/** 透明空白区鼠标穿透状态：true 时 setIgnoreMouseEvents，让窗口右侧多余透明区不拦截下方点击 */
+let aiIslandMouseIgnored = false
 
 function buildAiIslandHtml(): string {
   return `<!DOCTYPE html>
@@ -22,7 +27,7 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
   overflow:hidden;
 }
 .island.hidden{opacity:0;transform:translateY(-8px) scaleY(0.5);pointer-events:none}
-.island-row{display:flex;align-items:center;gap:8px;height:40px;padding:0 14px;justify-content:center}
+.island-row{display:flex;align-items:center;gap:8px;height:40px;padding:0 14px;justify-content:center;cursor:grab;-webkit-user-select:none;user-select:none;touch-action:none}
 /* AI 状态指示器 */
 .ai-indicator{display:flex;align-items:center;gap:7px;flex-shrink:0;padding:0 4px;cursor:pointer;border-radius:6px;transition:background 0.15s}
 .ai-indicator:hover{background:rgba(255,255,255,0.08)}
@@ -62,7 +67,7 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
 .perm-btn.always:hover{background:rgba(52,211,153,0.18);border-color:rgba(52,211,153,0.5)}
 </style></head><body>
 <div class="island" id="island">
-  <div class="island-row">
+  <div class="island-row" id="islandRow">
     <div class="ai-indicator" id="aiIndicator" onclick="showAiDetail()" title="点击查看详情">
       <span class="ai-dot idle" id="aiDot"></span>
       <span class="ai-label" id="aiLabel">AI 待机</span>
@@ -165,6 +170,41 @@ function doDeny(){resolvePerm('deny')}
 function doAlwaysAllow(){resolvePerm('always')}
 function resolvePerm(b){ipcRenderer.invoke('agent-resolve-permission',b);document.getElementById('permCard').classList.remove('show');setTimeout(resizeIsland,50)}
 function showAiDetail(){ipcRenderer.invoke('show-ai-window')}
+// === AI 岛拖动（整条状态条含 padding，4px 阈值区分点击 vs 拖动） ===
+// 复用悬浮球的 pointer 拖动模式：pointerdown 记录起点，超过 4px 才算拖动，
+// 这样 .ai-indicator 的"点击查看详情"不受影响（真拖动不触发 click）
+const row=document.getElementById('islandRow')
+let dsX=0, dsY=0, dragging=false
+row.addEventListener('pointerdown',function(e){
+  dsX=e.screenX; dsY=e.screenY; dragging=false
+  row.setPointerCapture(e.pointerId)
+  ipcRenderer.send('ai-island-drag-start', e.screenX, e.screenY)
+})
+row.addEventListener('pointermove',function(e){
+  if(e.buttons!==1) return
+  if(!dragging){
+    if(Math.abs(e.screenX-dsX)<=4 && Math.abs(e.screenY-dsY)<=4) return
+    dragging=true
+  }
+  ipcRenderer.send('ai-island-drag-move', e.screenX, e.screenY)
+})
+row.addEventListener('pointerup',function(e){
+  if(row.hasPointerCapture&&row.hasPointerCapture(e.pointerId)) row.releasePointerCapture(e.pointerId)
+  if(dragging){ dragging=false; ipcRenderer.send('ai-island-drag-end') }
+})
+row.addEventListener('pointercancel',function(e){
+  if(dragging){ dragging=false; ipcRenderer.send('ai-island-drag-end') }
+})
+// === 透明空白区鼠标穿透 ===
+// 窗口比可见胶囊宽（width = 内容宽 + 20），右侧多余透明区若不处理会拦截下方应用的点击。
+// 鼠标不在 .island 内容上时就通知主进程 setIgnoreMouseEvents(true, {forward:true}) 穿透；
+// forward 保证忽略时仍能收到 mousemove，移回内容时恢复可交互。
+function updateMouseMode(e){
+  const onIsland = e.target && e.target.closest && !!e.target.closest('.island')
+  ipcRenderer.send('set-ai-island-mouse-mode', onIsland)
+}
+document.addEventListener('mousemove', updateMouseMode)
+ipcRenderer.send('set-ai-island-mouse-mode', true) // 初始视为内容区可交互
 resizeIsland()
 initStatus()
 </script>
@@ -216,12 +256,54 @@ export function isAiIslandVisible(): boolean {
 
 export function registerAiIslandHandlers() {
   ipcMain.on('resize-ai-island', (_event: any, contentWidth: number, contentHeight?: number) => {
-    if (aiIsland && !aiIsland.isDestroyed()) {
+    if (!aiIsland || aiIsland.isDestroyed()) return
+    // 防御：渲染层在窗口被销毁/隐藏瞬间的 ResizeObserver 或迟到的 setTimeout 回调可能
+    // 传来 NaN/undefined 宽高，直接参与 totalW 会让 setBounds 抛 "conversion failure"
+    if (!Number.isFinite(contentWidth)) return
+    const totalW = contentWidth + 20
+    const h = Number.isFinite(contentHeight) ? contentHeight : 44
+    if (aiIslandUserMoved) {
+      // 用户拖过：保留当前位置，只按内容调整宽高，避免被拉回居中/顶部
+      const [x, y] = aiIsland.getPosition()
+      aiIsland.setBounds({ x, y, width: totalW, height: h })
+    } else {
+      // 未拖过：水平居中 + 顶部（初始定位行为）
       const bounds = screen.getPrimaryDisplay().bounds
-      const totalW = contentWidth + 20
       const newX = Math.round(bounds.x + (bounds.width - totalW) / 2)
-      const h = contentHeight || 44
       aiIsland.setBounds({ x: newX, y: bounds.y + 4, width: totalW, height: h })
+    }
+  })
+
+  // AI 岛拖动：垂直固定顶部，只水平移动
+  ipcMain.on('ai-island-drag-start', (_event: any, sx: number, sy: number) => {
+    if (!aiIsland || aiIsland.isDestroyed()) return
+    const [wx, wy] = aiIsland.getPosition()
+    aiDragOrigin = { winX: wx, winY: wy, scrX: sx, scrY: sy }
+  })
+
+  ipcMain.on('ai-island-drag-move', (_event: any, sx: number, _sy: number) => {
+    if (!aiIsland || aiIsland.isDestroyed() || !aiDragOrigin) return
+    // 防御 NaN（无有效屏幕坐标的 pointer 事件），避免 setBounds 抛 conversion failure
+    if (!Number.isFinite(sx)) return
+    const dx = sx - aiDragOrigin.scrX
+    const nx = Math.round(aiDragOrigin.winX + dx)
+    const [w, h] = aiIsland.getSize()
+    aiIsland.setBounds({ x: nx, y: aiDragOrigin.winY, width: w, height: h })
+  })
+
+  ipcMain.on('ai-island-drag-end', () => {
+    aiDragOrigin = null
+    aiIslandUserMoved = true
+  })
+
+  // 透明空白区鼠标穿透：鼠标不在内容上时忽略鼠标事件，让窗口右侧多余透明区不拦截下方点击
+  ipcMain.on('set-ai-island-mouse-mode', (_event: any, interactive: boolean) => {
+    if (!aiIsland || aiIsland.isDestroyed()) return
+    const ignore = !interactive
+    if (ignore !== aiIslandMouseIgnored) {
+      aiIslandMouseIgnored = ignore
+      // forward:true 让忽略时仍能收到 mousemove，鼠标移回内容时恢复可交互
+      aiIsland.setIgnoreMouseEvents(ignore, { forward: true })
     }
   })
 }

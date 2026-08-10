@@ -6,7 +6,7 @@ import { setMainWindow, hideRegionBorder, hideFloatingIsland, hideCameraPreview 
 import { registerGlobalShortcuts, unregisterGlobalShortcuts } from './global-shortcuts'
 import { createTray, destroyTray } from './tray'
 import { reportIP, retryPending } from './ip-reporter'
-import { showFloatingBall, hideFloatingBall } from './floating-ball'
+import { hideFloatingBall, showFloatingBallIfVisible, getBallSettings } from './floating-ball'
 import { createAgentBridge, type AgentBridge } from './agent-bridge'
 import { hideAiIsland } from './ai-island'
 import { setRegistryLogger, killAllConversions } from './conversion-registry'
@@ -20,6 +20,7 @@ registerLocalVideoScheme()
 
 let mainWindow: BrowserWindow | null = null
 let aiWindow: BrowserWindow | null = null
+let settingsWindow: BrowserWindow | null = null
 let agentBridge: AgentBridge | null = null
 let retryPendingTimer: NodeJS.Timeout | null = null
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
@@ -39,6 +40,7 @@ function createWindow(preloadPath: string) {
     minWidth: 420,
     minHeight: 340,
     show: false,
+    skipTaskbar: true, // 常驻托盘 + 悬浮球的应用不进任务栏，避免占用任务栏槽位
     frame: false,
     titleBarStyle: 'hidden',
     title: '二支录制',
@@ -102,12 +104,23 @@ app.whenReady().then(() => {
   setMainWindow(mainWindow!)
   createTray()
   registerGlobalShortcuts(mainWindow!)
-  showFloatingBall()
+  showFloatingBallIfVisible()
   reportIP()
+
+  // 启动时按持久化设置对齐系统开机自启状态（防止用户在系统层面手动改过）
+  try {
+    const ballSettings = getBallSettings()
+    app.setLoginItemSettings({ openAtLogin: ballSettings.openAtLogin })
+  } catch (e) {
+    log.error('Sync openAtLogin on startup failed:', e)
+  }
 
   // AI 助手窗口 IPC
   ipcMain.handle('show-ai-window', () => {
     showAiWindow()
+  })
+  ipcMain.handle('show-settings-window', () => {
+    showSettingsWindow()
   })
   ipcMain.handle('show-main-window', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -125,6 +138,9 @@ app.whenReady().then(() => {
   })
   process.on('clawd-show-ai-window' as any, () => {
     showAiWindow()
+  })
+  process.on('clawd-show-settings-window' as any, () => {
+    showSettingsWindow()
   })
 
   retryPendingTimer = setInterval(retryPending, 30_000)
@@ -166,6 +182,7 @@ app.on('before-quit', () => {
   }
   mainWindow = null
   aiWindow = null
+  settingsWindow = null
 })
 
 function showAiWindow() {
@@ -183,6 +200,7 @@ function showAiWindow() {
     minWidth: 400,
     minHeight: 400,
     show: false,
+    skipTaskbar: true, // 与主窗口一致，不进任务栏
     frame: false,
     titleBarStyle: 'hidden',
     title: 'AI 助手',
@@ -203,4 +221,43 @@ function showAiWindow() {
     aiWindow?.show()
   })
   aiWindow.on('closed', () => { aiWindow = null })
+}
+
+// 设置窗口（悬浮球专属设置：显示/隐藏、置顶、开机自启、重置位置）
+// 范式与 showAiWindow 完全一致：独立 BrowserWindow + Vue hash 路由 /settings
+function showSettingsWindow() {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.show()
+    settingsWindow.focus()
+    return
+  }
+  const preloadPath = join(__dirname, '..', 'preload', 'index.cjs')
+  settingsWindow = new BrowserWindow({
+    icon: getIcon(),
+    width: 420,
+    height: 480,
+    minWidth: 380,
+    minHeight: 420,
+    show: false,
+    skipTaskbar: true, // 与主窗口一致，不进任务栏
+    frame: false,
+    titleBarStyle: 'hidden',
+    title: '设置',
+    backgroundColor: '#eaeaec',
+    webPreferences: {
+      preload: preloadPath,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  })
+  if (VITE_DEV_SERVER_URL) {
+    settingsWindow.loadURL(`${VITE_DEV_SERVER_URL}#/settings?t=${Date.now()}`)
+  } else {
+    settingsWindow.loadFile(join(process.env.DIST!, 'index.html'), { hash: '/settings' })
+  }
+  settingsWindow.once('ready-to-show', () => {
+    settingsWindow?.show()
+  })
+  settingsWindow.on('closed', () => { settingsWindow = null })
 }

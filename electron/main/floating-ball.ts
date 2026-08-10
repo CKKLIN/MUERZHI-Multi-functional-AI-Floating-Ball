@@ -35,6 +35,91 @@ function saveBallPosition(pos: { x: number; y: number }) {
   } catch {}
 }
 
+// === 悬浮球设置（主进程文件为唯一真相源，渲染层经 IPC get/set） ===
+const BALL_SETTINGS_FILE = 'floating-ball-settings.json'
+
+export interface FloatingBallSettings {
+  visible: boolean
+  alwaysOnTop: boolean
+  openAtLogin: boolean
+}
+
+const DEFAULT_SETTINGS: FloatingBallSettings = {
+  visible: true,
+  alwaysOnTop: true,
+  openAtLogin: false,
+}
+
+let cachedSettings: FloatingBallSettings | null = null
+
+function ballSettingsFilePath(): string {
+  const dir = app.isPackaged ? app.getPath('userData') : join(__dirname, '..', '..')
+  return join(dir, BALL_SETTINGS_FILE)
+}
+
+function loadBallSettings(): FloatingBallSettings {
+  try {
+    const data = nodeFs.readFileSync(ballSettingsFilePath(), 'utf-8')
+    const parsed = JSON.parse(data)
+    // 与默认值合并，缺字段补默认（容错老版本/手改坏文件）
+    return {
+      visible: typeof parsed.visible === 'boolean' ? parsed.visible : DEFAULT_SETTINGS.visible,
+      alwaysOnTop: typeof parsed.alwaysOnTop === 'boolean' ? parsed.alwaysOnTop : DEFAULT_SETTINGS.alwaysOnTop,
+      openAtLogin: typeof parsed.openAtLogin === 'boolean' ? parsed.openAtLogin : DEFAULT_SETTINGS.openAtLogin,
+    }
+  } catch {}
+  return { ...DEFAULT_SETTINGS }
+}
+
+function saveBallSettings(settings: FloatingBallSettings) {
+  try {
+    nodeFs.writeFileSync(ballSettingsFilePath(), JSON.stringify(settings), 'utf-8')
+  } catch {}
+}
+
+/** 读取设置（带模块级缓存，避免每次 show 都重读磁盘） */
+export function getBallSettings(): FloatingBallSettings {
+  if (cachedSettings) return cachedSettings
+  cachedSettings = loadBallSettings()
+  return cachedSettings
+}
+
+/** 主进程内部唯一变更入口：合并→save→刷新缓存→返回新值 */
+export function updateBallSettings(patch: Partial<FloatingBallSettings>): FloatingBallSettings {
+  const next = { ...getBallSettings(), ...patch }
+  saveBallSettings(next)
+  cachedSettings = next
+  return next
+}
+
+/** 清空位置缓存 + 删 pos 文件，下次 show 回屏幕中心 */
+function clearBallPosition() {
+  ballPos = null
+  try { nodeFs.unlinkSync(ballPosFilePath()) } catch {}
+}
+
+/** 仅在设置允许时才显示悬浮球（启动时按持久化的 visible 决定） */
+export function showFloatingBallIfVisible() {
+  if (getBallSettings().visible) showFloatingBall()
+}
+
+/** 活动窗口即时切换置顶层级；隐藏态下次 show 自然从缓存读 */
+export function setFloatingBallAlwaysOnTop(value: boolean) {
+  if (floatingBallWindow && !floatingBallWindow.isDestroyed()) {
+    floatingBallWindow.setAlwaysOnTop(value, 'screen-saver')
+  }
+}
+
+/** 把设置作用到活动悬浮球（visible 切换显隐，alwaysOnTop 切层级） */
+function applyFloatingBallSettings(s: FloatingBallSettings) {
+  if (s.visible) {
+    showFloatingBall()
+  } else {
+    hideFloatingBall()
+  }
+  setFloatingBallAlwaysOnTop(s.alwaysOnTop)
+}
+
 export function showFloatingBall() {
   if (floatingBallWindow && !floatingBallWindow.isDestroyed()) {
     floatingBallWindow.show()
@@ -65,7 +150,7 @@ export function showFloatingBall() {
     transparent: true,
     backgroundColor: '#00000000',
     resizable: false,
-    alwaysOnTop: true,
+    alwaysOnTop: getBallSettings().alwaysOnTop,
     skipTaskbar: true,
     hasShadow: false,
     show: false,
@@ -78,7 +163,7 @@ export function showFloatingBall() {
   // DWM 边框剥离（Electron 28 不支持 setWindowStyle，跳过）
 
   floatingBallWindow.setVisibleOnAllWorkspaces(true)
-  floatingBallWindow.setAlwaysOnTop(true, 'screen-saver')
+  floatingBallWindow.setAlwaysOnTop(getBallSettings().alwaysOnTop, 'screen-saver')
 
   const html = buildFloatingBallHtml()
   floatingBallWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
@@ -91,8 +176,11 @@ export function showFloatingBall() {
     }
   })
 
+  // 仅当 closed 时引用仍指向自己（未被 hideFloatingBall 提前置空、也未被
+  // showFloatingBall 重新赋值为新窗口）才置 null，防止异步 closed 事件清掉新窗口
+  const self = floatingBallWindow
   floatingBallWindow.on('closed', () => {
-    floatingBallWindow = null
+    if (floatingBallWindow === self) floatingBallWindow = null
   })
 
   // 原生拖拽时持续保存位置
@@ -115,8 +203,11 @@ export function hideFloatingBall() {
     const [bx, by] = floatingBallWindow.getPosition()
     ballPos = { x: bx, y: by }
     saveBallPosition(ballPos!)
-    floatingBallWindow.close()
+    // 用 destroy() 同步销毁并立即置 null，避免 close() 异步触发 'closed' 事件时
+    // floatingBallWindow 已被 showFloatingBall 重新赋值为新窗口，导致新窗口引用被清成 null
+    const win = floatingBallWindow
     floatingBallWindow = null
+    win.destroy()
     log.info('Floating ball hidden')
   }
 }
@@ -184,6 +275,8 @@ function forwardAction(action: string) {
     process.emit('clawd-show-record-window' as any)
   } else if (action === 'ai') {
     process.emit('clawd-show-ai-window' as any)
+  } else if (action === 'settings') {
+    process.emit('clawd-show-settings-window' as any)
   } else {
     const mainWindow = BrowserWindow.getAllWindows().find(w =>
       !w.isDestroyed() && w !== floatingBallWindow
@@ -340,6 +433,7 @@ const {ipcRenderer} = require('electron')
 const ITEMS = [
   {label:'录屏',icon:'●',action:'record'},
   {label:'AI助手',icon:'✦',action:'ai'},
+  {label:'设置',icon:'⚙',action:'settings'},
 ]
 
 let isExpanded = false
@@ -507,6 +601,8 @@ export function registerFloatingBallHandlers() {
 
   ipcMain.on('floating-ball-move', (_event: any, sx: number, sy: number) => {
     if (!floatingBallWindow || floatingBallWindow.isDestroyed() || !dragOrigin || !dragSize) return
+    // 防御 NaN（无有效屏幕坐标的 pointer/mouse 事件），避免 setBounds 抛 conversion failure
+    if (!Number.isFinite(sx) || !Number.isFinite(sy)) return
     const dx = sx - dragOrigin.scrX
     const dy = sy - dragOrigin.scrY
     const nx = Math.round(dragOrigin.winX + dx)
@@ -522,6 +618,73 @@ export function registerFloatingBallHandlers() {
   ipcMain.on('floating-ball-drag-end', () => {
     dragOrigin = null
     dragSize = null
+    // 屏幕边缘磁吸：松手时若球靠近屏幕某边缘（阈值内）则吸附贴边。
+    // 吸附放在 drag-end 而不是 move，保证拖动全程纯跟手（不触发反向漂移）。
+    if (floatingBallWindow && !floatingBallWindow.isDestroyed()) {
+      const [x, y] = floatingBallWindow.getPosition()
+      const [w, h] = floatingBallWindow.getSize()
+      // 用球当前所在显示器（而非固定主屏）做磁吸，否则多屏下拖到副屏会被
+      // 误判为"距主屏右缘很负"而拉回主屏——即"拖不到分屏"。
+      const b = screen.getDisplayMatching(floatingBallWindow.getBounds()).bounds
+      const SNAP = 40 // 吸附阈值（px）
+      let nx = x, ny = y
+      if (x - b.x < SNAP) nx = b.x
+      else if ((b.x + b.width) - (x + w) < SNAP) nx = b.x + b.width - w
+      if (y - b.y < SNAP) ny = b.y
+      else if ((b.y + b.height) - (y + h) < SNAP) ny = b.y + b.height - h
+      if (nx !== x || ny !== y) {
+        floatingBallWindow.setBounds({ x: nx, y: ny, width: w, height: h })
+        // 读回修正 DWM 1px 偏移（与 drag-move 一致）
+        const [ax, ay] = floatingBallWindow.getPosition()
+        floatingBallWindow.setBounds({ x: nx + (nx - ax), y: ny + (ny - ay), width: w, height: h })
+        if (ballPos) {
+          ballPos = { x: nx, y: ny }
+          saveBallPosition(ballPos)
+        }
+        log.info('Floating ball snapped to edge:', [nx, ny])
+      }
+    }
     if (ballPos) saveBallPosition(ballPos)
+  })
+
+  // === 悬浮球设置 IPC（渲染层 get/set，主进程文件为真相源） ===
+  ipcMain.handle('get-floating-ball-settings', () => getBallSettings())
+
+  ipcMain.handle('set-floating-ball-settings', (_event, patch: Partial<FloatingBallSettings>) => {
+    const next = updateBallSettings(patch)
+    // 把变更实时作用到悬浮球（显隐 / 置顶层级）
+    applyFloatingBallSettings(next)
+    // 开机自启由主进程直接调系统 API（渲染层无权限）
+    if (patch.openAtLogin !== undefined) {
+      try { app.setLoginItemSettings({ openAtLogin: patch.openAtLogin }) } catch (e) {
+        log.error('setLoginItemSettings failed:', e)
+      }
+    }
+    return next
+  })
+
+  ipcMain.handle('reset-floating-ball-position', () => {
+    // 重置到屏幕中心：直接对活动窗口 setBounds，不销毁/重建窗口
+    // （hide→close→立即 show 会让旧窗口的 'closed' 事件把新窗口引用清成 null，
+    //  导致悬浮球"消失"——见 closed handler 的异步陷阱）
+    clearBallPosition()
+    if (floatingBallWindow && !floatingBallWindow.isDestroyed()) {
+      const display = screen.getPrimaryDisplay().bounds
+      const nx = Math.round(display.x + (display.width - BALL_SIZE) / 2)
+      const ny = Math.round(display.y + (display.height - BALL_SIZE) / 2)
+      // 若当前是展开态（240×240），先收起 DOM 再 setBounds，避免大窗口跳到中心
+      try {
+        floatingBallWindow.webContents.executeJavaScript(
+          `document.body.classList.remove('expanded'); var s=document.getElementById('ringSvg');if(s){while(s.firstChild){s.removeChild(s.firstChild)}} menuCreated=false; isExpanded=false; void 0;`
+        ).catch(() => {})
+      } catch {}
+      floatingBallWindow.setBounds({ x: nx, y: ny, width: BALL_SIZE, height: BALL_SIZE })
+      ballPos = { x: nx, y: ny }
+      // 读回修正 DWM 1px 偏移
+      const [ax, ay] = floatingBallWindow.getPosition()
+      if (ax !== nx || ay !== ny) {
+        floatingBallWindow.setBounds({ x: nx + (nx - ax), y: ny + (ny - ay), width: BALL_SIZE, height: BALL_SIZE })
+      }
+    }
   })
 }

@@ -293,6 +293,7 @@ export function registerIpcHandlers(agentBridge?: AgentBridge) {
         width: 360,
         height: 400,
         resizable: false,
+        skipTaskbar: true, // 跟随应用整体不进任务栏
         frame: false,
         modal: true,
         parent,

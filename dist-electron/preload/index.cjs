@@ -123,6 +123,10 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
 		return () => electron.ipcRenderer.removeListener("agent-permission-request", handler);
 	},
 	showAiWindow: () => electron.ipcRenderer.invoke("show-ai-window"),
-	showMainWindow: () => electron.ipcRenderer.invoke("show-main-window")
+	showSettingsWindow: () => electron.ipcRenderer.invoke("show-settings-window"),
+	showMainWindow: () => electron.ipcRenderer.invoke("show-main-window"),
+	getFloatingBallSettings: () => electron.ipcRenderer.invoke("get-floating-ball-settings"),
+	setFloatingBallSettings: (patch) => electron.ipcRenderer.invoke("set-floating-ball-settings", patch),
+	resetFloatingBallPosition: () => electron.ipcRenderer.invoke("reset-floating-ball-position")
 });
 //#endregion

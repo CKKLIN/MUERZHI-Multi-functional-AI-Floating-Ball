@@ -1,4 +1,4 @@
-import { Tray, Menu, nativeImage, BrowserWindow, app } from 'electron'
+import { Tray, Menu, nativeImage, app } from 'electron'
 import { join } from 'node:path'
 import log from './logger'
 
@@ -34,13 +34,10 @@ function createTray() {
 
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: '显示主窗口',
+      label: '显示设置窗口',
       click: () => {
-        const win = BrowserWindow.getAllWindows()[0]
-        if (win) {
-          win.show()
-          win.focus()
-        }
+        // 走 process 通道由 index.ts 统一处理，避免与 index 循环依赖
+        process.emit('clawd-show-settings-window' as any)
       },
     },
     { type: 'separator' },
@@ -55,11 +52,7 @@ function createTray() {
   tray.setContextMenu(contextMenu)
 
   tray.on('click', () => {
-    const win = BrowserWindow.getAllWindows()[0]
-    if (win) {
-      win.show()
-      win.focus()
-    }
+    process.emit('clawd-show-settings-window' as any)
   })
 
   log.info('System tray created')
