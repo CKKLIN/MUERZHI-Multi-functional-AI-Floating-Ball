@@ -162,12 +162,16 @@ export interface AgentPermissionPayload {
   suggestions: string[] | null
 }
 
+export type AgentCardPayload =
+  | ({ kind: 'permission' } & AgentPermissionPayload)
+  | { kind: 'question'; sessionId: string; toolName: string; toolInput: any; questions: any[] | null }
+
 export interface AgentBridgeStatus {
   serverRunning: boolean
   port: number | null
   hookInstalled: boolean | null
   displayState: string
-  pendingPermission: AgentPermissionPayload | null
+  currentCard: AgentCardPayload | null
   sessionCount: number
   claudeRunning: boolean
 }

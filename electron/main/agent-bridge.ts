@@ -2,12 +2,12 @@
 // Agent Bridge — orchestrates the state machine, HTTP server, and hook manager
 
 import { createAgentStateMachine } from "./agent-state-machine"
-import { createAgentServer, type PendingPermission } from "./agent-server"
+import { createAgentServer, type CardItem, type SafeCard } from "./agent-server"
 import { createClaudeHookManager, type HookManagerStatus } from "./claude-hook-manager"
 import { execSync } from "child_process"
 import log from "./logger"
 
-export type { PendingPermission, HookManagerStatus }
+export type { CardItem, SafeCard, HookManagerStatus }
 export type DisplayState = import("./agent-state-machine").DisplayState
 export type AgentSession = import("./agent-state-machine").AgentSession
 
@@ -24,7 +24,7 @@ export interface AgentBridgeStatus {
   hookInstalled: boolean | null
   hookManagerStatus: HookManagerStatus | null
   displayState: DisplayState
-  pendingPermission: PendingPermission | null
+  currentCard: SafeCard | null
   sessionCount: number
   claudeRunning: boolean
 }
@@ -37,8 +37,9 @@ export interface AgentBridge {
   getHookManager: () => ReturnType<typeof createClaudeHookManager>
   getStatus: () => AgentBridgeStatus
   setStateListener: (listener: (state: DisplayState, sessions: AgentSession[]) => void) => void
-  setPermissionListener: (listener: (perm: PendingPermission) => void) => void
+  setCardListener: (listener: (card: CardItem | null) => void) => void
   resolvePermission: (behavior: string) => void
+  dismissQuestion: () => void
   installHooks: () => void
   uninstallHooks: () => void
   setAutoAllow: (enabled: boolean) => void
@@ -51,21 +52,21 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
   const hookManager = createClaudeHookManager(() => server.getPort())
 
   let stateListener: ((state: DisplayState, sessions: AgentSession[]) => void) | null = null
-  let permissionListener: ((perm: PendingPermission) => void) | null = null
+  let cardListener: ((card: CardItem | null) => void) | null = null
   let autoAllow = false
 
   stateMachine.subscribe((state, sessions) => {
     if (stateListener) stateListener(state, sessions)
   })
 
-  server.setOnPermissionRequest((perm) => {
-    // 自动允许模式：直接通过权限，不弹悬浮岛
-    if (autoAllow) {
-      log.info(`[AgentBridge] auto-allow permission: tool=${perm.toolName}`)
+  server.setOnCardChange((card) => {
+    // 自动允许模式：权限卡一旦成队首就放行，直接跳过悬浮岛（自动允许只作用于权限，不影响提问）
+    if (autoAllow && card && card.kind === "permission") {
+      log.info(`[AgentBridge] auto-allow permission: tool=${card.toolName}`)
       server.resolvePendingPermission("allow")
       return
     }
-    if (permissionListener) permissionListener(perm)
+    if (cardListener) cardListener(card)
   })
 
   async function start() {
@@ -98,12 +99,16 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
     stateListener = listener
   }
 
-  function setPermissionListener(listener: (perm: PendingPermission) => void) {
-    permissionListener = listener
+  function setCardListener(listener: (card: CardItem | null) => void) {
+    cardListener = listener
   }
 
   function resolvePermission(behavior: string) {
     server.resolvePendingPermission(behavior)
+  }
+
+  function dismissQuestion() {
+    server.dismissQuestion()
   }
 
   function installHooks() { hookManager.install() }
@@ -146,7 +151,7 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
       hookInstalled: hookManager.isInstalled(),
       hookManagerStatus: hookManager.getStatus(),
       displayState,
-      pendingPermission: server.getPendingPermission(),
+      currentCard: server.getSafeCurrentCard(),
       sessionCount,
       claudeRunning: checkClaudeRunning(),
     }
@@ -154,8 +159,8 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
 
   return {
     start, stop, getServer, getStateMachine, getHookManager, getStatus,
-    setStateListener, setPermissionListener,
-    resolvePermission, installHooks, uninstallHooks,
+    setStateListener, setCardListener,
+    resolvePermission, dismissQuestion, installHooks, uninstallHooks,
     setAutoAllow, getAutoAllow,
   }
 }

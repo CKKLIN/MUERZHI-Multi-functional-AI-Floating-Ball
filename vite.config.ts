@@ -16,6 +16,7 @@ function copyHtmlFiles() {
   try { copyFileSync('electron/screenshot-selector.html', 'dist-electron/main/screenshot-selector.html') } catch {}
   try { copyFileSync('electron/pin-window.html', 'dist-electron/main/pin-window.html') } catch {}
   try { copyFileSync('electron/main/clawd-hook.js', 'dist-electron/main/clawd-hook.js') } catch {}
+  try { copyFileSync('electron/main/question-card-utils.js', 'dist-electron/main/question-card-utils.js') } catch {}
 }
 
 function srcHtmlNewer() {
@@ -71,8 +72,9 @@ export default defineConfig({
         server.watcher.add('electron/screenshot-selector.html')
         server.watcher.add('electron/pin-window.html')
         server.watcher.add('electron/main/clawd-hook.js')
+        server.watcher.add('electron/main/question-card-utils.js')
         server.watcher.on('change', (file) => {
-          if (file.includes('camera-preview.html') || file.includes('region-selector.html') || file.includes('screenshot-selector.html') || file.includes('pin-window.html') || file.includes('clawd-hook.js')) {
+          if (file.includes('camera-preview.html') || file.includes('region-selector.html') || file.includes('screenshot-selector.html') || file.includes('pin-window.html') || file.includes('clawd-hook.js') || file.includes('question-card-utils.js')) {
             copyHtmlFiles()
           }
         })

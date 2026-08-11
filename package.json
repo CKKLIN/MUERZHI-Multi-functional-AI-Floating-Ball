@@ -31,6 +31,10 @@
       {
         "from": "electron/main/clawd-hook.js",
         "to": "clawd-hook.js"
+      },
+      {
+        "from": "electron/main/question-card-utils.js",
+        "to": "question-card-utils.js"
       }
     ],
     "win": {

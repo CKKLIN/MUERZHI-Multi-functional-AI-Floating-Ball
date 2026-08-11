@@ -371,23 +371,24 @@ export function registerIpcHandlers(agentBridge?: AgentBridge) {
       }
     })
 
-    agentBridge.setPermissionListener((perm) => {
-      // 权限请求必须显示 AI 岛（权限卡片）
-      showAiIsland()
+    agentBridge.setCardListener((card) => {
+      // 有卡片（权限/提问，队首）时展示 AI 岛；卡片清空时广播 null 收起
+      if (card) showAiIsland()
       // IPC 无法序列化函数，只发送纯数据字段
-      const safePerm = {
-        sessionId: perm.sessionId,
-        toolName: perm.toolName,
-        toolInput: perm.toolInput,
-        suggestions: perm.suggestions,
-        createdAt: perm.createdAt,
+      let safe
+      if (!card) {
+        safe = null
+      } else if (card.kind === 'permission') {
+        safe = { kind: 'permission', sessionId: card.sessionId, toolName: card.toolName, toolInput: card.toolInput, suggestions: card.suggestions, createdAt: card.createdAt }
+      } else {
+        safe = { kind: 'question', sessionId: card.sessionId, toolName: card.toolName, toolInput: card.toolInput, questions: card.questions, createdAt: card.createdAt }
       }
-      log.info(`[IPC] broadcast permission: tool=${perm.toolName}, wins=${BrowserWindow.getAllWindows().length}`)
+      log.info(`[IPC] broadcast card: kind=${card ? card.kind : 'null'}, wins=${BrowserWindow.getAllWindows().length}`)
       const wins = BrowserWindow.getAllWindows()
       for (const win of wins) {
         if (!win.isDestroyed()) {
-          try { win.webContents.send('agent-permission-request', safePerm) } catch (e:any) {
-            log.error(`[IPC] send permission to window failed: ${e.message}`)
+          try { win.webContents.send('agent-card-update', safe) } catch (e:any) {
+            log.error(`[IPC] send card to window failed: ${e.message}`)
           }
         }
       }
@@ -401,6 +402,7 @@ export function registerIpcHandlers(agentBridge?: AgentBridge) {
     ipcMain.handle('agent-install-hooks', () => { agentBridge?.installHooks(); return agentBridge?.getStatus() })
     ipcMain.handle('agent-uninstall-hooks', () => { agentBridge?.uninstallHooks(); return agentBridge?.getStatus() })
     ipcMain.handle('agent-resolve-permission', (_event, behavior: string) => agentBridge?.resolvePermission(behavior))
+    ipcMain.handle('agent-dismiss-question', () => agentBridge?.dismissQuestion())
     ipcMain.handle('agent-set-auto-allow', (_event, enabled: boolean) => agentBridge?.setAutoAllow(enabled))
     ipcMain.handle('agent-get-auto-allow', () => agentBridge?.getAutoAllow() ?? false)
   }

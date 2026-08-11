@@ -2,7 +2,8 @@
 // 迷你 AI 悬浮岛 — 不录制时显示 AI 状态和权限请求
 // 复用录制悬浮岛的 AI 部分 HTML/CSS/JS
 
-import { BrowserWindow, screen, ipcMain } from 'electron'
+import { BrowserWindow, screen, ipcMain, app } from 'electron'
+import * as path from 'path'
 import log from './logger'
 
 let aiIsland: BrowserWindow | null = null
@@ -11,6 +12,14 @@ let aiDragOrigin: { winX: number; winY: number; scrX: number; scrY: number } | n
 let aiIslandUserMoved = false
 /** 透明空白区鼠标穿透状态：true 时 setIgnoreMouseEvents，让窗口右侧多余透明区不拦截下方点击 */
 let aiIslandMouseIgnored = false
+
+/** 定位提问卡纯逻辑文件（question-card-utils.js）：dev 下随 vite 复制进 dist-electron/main/，打包后走 extraResources。
+ *  岛窗口用 data: URL 加载内联 HTML，内联 <script> 须在运行时 require() 这个文件（同 clawd-hook.js 的发布链路）。 */
+function questionCardUtilsPath(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'question-card-utils.js')
+    : path.join(__dirname, 'question-card-utils.js')
+}
 
 function buildAiIslandHtml(): string {
   return `<!DOCTYPE html>
@@ -43,8 +52,8 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
 @keyframes ai-flash{0%,100%{opacity:1}50%{opacity:0.2;transform:scale(1.3)}}
 .ai-label{font-size:11px;color:rgba(255,255,255,0.75);white-space:nowrap;font-weight:500;letter-spacing:0.3px}
 .ai-label.active{color:#fff}
-/* 权限卡片 */
-.perm-card{width:300px;padding:0;display:none;flex-direction:column}
+/* 权限卡片：宽度按内容自适应，最窄 300 / 最宽 420（超出在 420 内换行） */
+.perm-card{width:max-content;min-width:300px;max-width:420px;padding:0;display:none;flex-direction:column;word-break:break-word}
 .perm-card.show{display:flex;animation:perm-in 0.22s cubic-bezier(0.4,0,0.2,1)}
 @keyframes perm-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
 .perm-banner{display:flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(255,255,255,0.04);border-top:1px solid rgba(255,255,255,0.1);border-bottom:1px solid rgba(255,255,255,0.06)}
@@ -54,9 +63,7 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
 .perm-row{display:flex;flex-direction:column;gap:4px}
 .perm-row-label{font-size:9px;color:rgba(255,255,255,0.38);text-transform:uppercase;letter-spacing:0.6px;font-weight:600}
 .perm-tool{font-size:13px;color:#34d399;font-weight:600;font-family:Consolas,'Courier New',monospace}
-.perm-input{font-size:10.5px;color:rgba(255,255,255,0.78);font-family:Consolas,'Courier New',monospace;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.06);border-radius:5px;padding:6px 8px;max-height:72px;overflow:auto;word-break:break-all;line-height:1.5;white-space:pre-wrap}
-.perm-input::-webkit-scrollbar{width:4px}
-.perm-input::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:2px}
+.perm-input{font-size:10.5px;color:rgba(255,255,255,0.78);font-family:Consolas,'Courier New',monospace;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.06);border-radius:5px;padding:6px 8px;word-break:normal;overflow-wrap:anywhere;line-height:1.5;white-space:pre-wrap}
 .perm-actions{display:flex;gap:6px;padding:0 14px 12px}
 .perm-btn{flex:1;padding:7px 8px;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.15s;letter-spacing:0.3px}
 .perm-btn.allow{background:#34d399;color:#0a0a14}
@@ -65,6 +72,26 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
 .perm-btn.deny:hover{background:rgba(248,113,113,0.18);color:#fca5a5;border-color:rgba(248,113,113,0.4)}
 .perm-btn.always{background:rgba(52,211,153,0.1);color:#6ee7b7;border:1px solid rgba(52,211,153,0.28)}
 .perm-btn.always:hover{background:rgba(52,211,153,0.18);border-color:rgba(52,211,153,0.5)}
+/* 提问卡片（AskUserQuestion 只读通知——Claude 的 hook 无法注入答案，答案须回主界面作答）：宽度按内容自适应，最窄 300 / 最宽 420；word-break 继承让长选项在卡宽内换行而非溢出裁剪 */
+.question-card{width:max-content;min-width:300px;max-width:420px;padding:0;display:none;flex-direction:column;word-break:break-word}
+.question-card.show{display:flex;animation:perm-in 0.22s cubic-bezier(0.4,0,0.2,1)}
+.question-banner{display:flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(255,255,255,0.04);border-top:1px solid rgba(255,255,255,0.1);border-bottom:1px solid rgba(255,255,255,0.06)}
+.question-banner-dot{width:7px;height:7px;border-radius:50%;background:#fbbf24;animation:ai-breathe 1.2s ease-in-out infinite;box-shadow:0 0 8px rgba(251,191,36,0.6);flex-shrink:0}
+.question-banner-text{font-size:11px;font-weight:600;color:#fde68a;letter-spacing:0.4px}
+/* 逐题推进的进度：右对齐，单题时隐藏 */
+.question-progress{margin-left:auto;font-size:10px;font-weight:600;color:rgba(253,230,138,0.9);letter-spacing:0.3px}
+.question-body{display:flex;flex-direction:column;gap:8px;padding:12px 14px 10px}
+.question-text{font-size:12px;color:#fff;font-weight:600;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.question-opt{display:flex;flex-direction:column;gap:3px;padding:6px 8px;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.06);border-radius:6px}
+.question-opt-label{font-size:11.5px;color:#6ee7b7;font-weight:600}
+.question-opt-desc{font-size:10.5px;color:rgba(255,255,255,0.72);line-height:1.4;white-space:pre-wrap;word-break:break-word}
+.question-hint{font-size:9.5px;color:rgba(255,255,255,0.4);line-height:1.4}
+.question-actions{display:flex;padding:0 14px 12px}
+.question-btn{flex:1;padding:7px 8px;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.15s;letter-spacing:0.3px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.8);border:1px solid rgba(255,255,255,0.1)}
+.question-btn:hover{background:rgba(251,191,36,0.14);color:#fde68a;border-color:rgba(251,191,36,0.4)}
+/* 上一题在首题时禁用（无题可回） */
+.question-btn:disabled{opacity:0.35;cursor:default}
+.question-btn:disabled:hover{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.8);border-color:rgba(255,255,255,0.1)}
 </style></head><body>
 <div class="island" id="island">
   <div class="island-row" id="islandRow">
@@ -94,14 +121,41 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
       <button class="perm-btn deny" onclick="doDeny()">拒绝</button>
     </div>
   </div>
+  <div class="question-card" id="questionCard">
+    <div class="question-banner">
+      <span class="question-banner-dot"></span>
+      <span class="question-banner-text">AI 正在提问</span>
+      <span class="question-progress" id="questionProgress"></span>
+    </div>
+    <div class="question-body" id="questionBody"></div>
+    <div class="question-actions">
+      <button class="question-btn" id="questionPrevBtn" onclick="prevQuestion()">上一题</button>
+      <button class="question-btn" id="questionBtn" onclick="stepQuestion()">知道了</button>
+    </div>
+  </div>
 </div>
 <script>
+const __QCU_UTILS_PATH__=${JSON.stringify(questionCardUtilsPath())}
+const quiz=require(__QCU_UTILS_PATH__)
+const {resolveQuestionList,toQuestionItem,buttonLabel,progressText}=quiz
 const {ipcRenderer}=require('electron')
 function resizeIsland(){
   const island=document.getElementById('island')
   const w=island.scrollWidth
   const h=island.scrollHeight
   ipcRenderer.send('resize-ai-island',w,h)
+}
+// 卡片宽度自适应：按当前展示卡的内容理想宽度钳制到 [300,420]，并把岛宽设为该值，
+// 让窗口贴合卡片（避免 .island 的 fit-content 取卡片未钳制理想宽度导致窗口过宽、透明区挡点击）。
+function fitIslandWidth(){
+  const island=document.getElementById('island')
+  const q=document.getElementById('questionCard'), p=document.getElementById('permCard')
+  const card=q.classList.contains('show')?q:(p.classList.contains('show')?p:null)
+  if(!card){ island.style.width=''; return }
+  let w=card.scrollWidth
+  if(w<300) w=300
+  if(w>420) w=420
+  island.style.width=w+'px'
 }
 const ro=new ResizeObserver(()=>resizeIsland())
 ro.observe(document.getElementById('island'))
@@ -113,6 +167,8 @@ function applyState(data){
   setTimeout(resizeIsland,50)
 }
 function applyPermission(data){
+  // 权限卡与提问卡互斥：展示权限时收起提问卡，同一时刻只显示一张卡
+  document.getElementById('questionCard').classList.remove('show')
   try{
     document.getElementById('permCard').classList.add('show')
     document.getElementById('permTool').textContent=data.toolName||'未知操作'
@@ -124,7 +180,7 @@ function applyPermission(data){
       inputEl.textContent=formatted
       inputRow.style.display='flex'
     }else if(typeof ti==='string'&&ti.length>0){
-      inputEl.textContent=truncate(ti,200)
+      inputEl.textContent=String(ti)
       inputRow.style.display='flex'
     }else{
       inputRow.style.display='none'
@@ -132,16 +188,84 @@ function applyPermission(data){
   }catch(err){
     console.error('perm render error:',err)
   }
+  fitIslandWidth()
   setTimeout(resizeIsland,50)
 }
+// 提问卡「逐题推进」：qList 持整卡题目数组，qIndex 持当前题下标（只存岛上；卡片重新应用/清空即重置回第 1 题）
+let qList=[], qIndex=0
+function renderCurrentQuestion(){
+  const body=document.getElementById('questionBody'); body.innerHTML=''
+  const total=qList.length
+  const view=toQuestionItem(qList[qIndex]||qList[0], qIndex)
+  // 进度：单题隐藏，多题显示「第 X/N 题」
+  const prog=document.getElementById('questionProgress')
+  const pt=progressText(qIndex,total)
+  prog.style.display=pt?'inline':'none'; prog.textContent=pt||''
+  // 当前题标题
+  const t=document.createElement('div');t.className='question-text';t.textContent=view.text
+  body.appendChild(t)
+  // 当前题选项
+  view.options.forEach(function(opt){
+    const row=document.createElement('div');row.className='question-opt'
+    const lab=document.createElement('div');lab.className='question-opt-label';lab.textContent=opt.label
+    row.appendChild(lab)
+    if(opt.desc){
+      const d=document.createElement('div');d.className='question-opt-desc';d.textContent=opt.desc
+      row.appendChild(d)
+    }
+    body.appendChild(row)
+  })
+  const hint=document.createElement('div');hint.className='question-hint'
+  hint.textContent='请到 Claude Code 界面作答，这里仅作提醒。'
+  body.appendChild(hint)
+  // 按钮：末题/单题「知道了」，其余「下一题」；首题时「上一题」禁用
+  document.getElementById('questionBtn').textContent=buttonLabel(qIndex,total)
+  document.getElementById('questionPrevBtn').disabled=qIndex<=0
+  fitIslandWidth()
+  resizeIsland()
+}
+function applyQuestion(q){
+  const card=document.getElementById('questionCard')
+  if(!q){ qList=[]; qIndex=0; card.classList.remove('show');setTimeout(resizeIsland,50);return }
+  // 提问卡与权限卡互斥：展示提问时收起权限卡，避免残留的"允许/拒绝"按钮与提问叠在一起
+  document.getElementById('permCard').classList.remove('show')
+  // 重新应用卡片 → 一律从第 1 题开始（进度只存岛上，跨卡片/窗口不存活）
+  qList=resolveQuestionList(q); qIndex=0
+  renderCurrentQuestion()
+  card.classList.add('show')
+  fitIslandWidth()
+  setTimeout(resizeIsland,50)
+}
+// 非末题：「下一题」仅本地推进（不触发 IPC、不动队列）；末题才真正关闭整张卡
+function stepQuestion(){
+  if(qIndex<qList.length-1){ qIndex++; renderCurrentQuestion(); return }
+  dismissQuestion()
+}
+// 「上一题」：纯本地回退一题，永不关卡（首题时按钮 disabled）
+function prevQuestion(){
+  if(qIndex>0){ qIndex--; renderCurrentQuestion() }
+}
+function applyCard(card){
+  // 权限卡与提问卡互斥：只渲染队首卡（applyPermission/applyQuestion 内部也会收起另一张）
+  if(!card){
+    document.getElementById('permCard').classList.remove('show')
+    document.getElementById('questionCard').classList.remove('show')
+    qList=[]; qIndex=0
+    fitIslandWidth()
+    setTimeout(resizeIsland,50)
+    return
+  }
+  if(card.kind==='permission'){ applyPermission(card); return }
+  applyQuestion(card)
+}
 ipcRenderer.on('agent-state-update',(e,data)=>applyState(data))
-ipcRenderer.on('agent-permission-request',(e,data)=>applyPermission(data))
-// 懒创建的岛加载后主动拉取一次当前状态/权限，避免错过创建前的广播
+ipcRenderer.on('agent-card-update',(e,data)=>applyCard(data))
+// 懒创建的岛加载后主动拉取一次当前状态/队首卡，避免错过创建前的广播
 function initStatus(){
   ipcRenderer.invoke('agent-get-status').then(s=>{
     if(!s) return
     applyState({state:s.displayState,sessions:[]})
-    if(s.pendingPermission) applyPermission(s.pendingPermission)
+    if(s.currentCard) applyCard(s.currentCard)
   }).catch(()=>{})
 }
 function formatToolInput(input){
@@ -151,24 +275,24 @@ function formatToolInput(input){
     const lines=[]
     for(const k of priorityKeys){
       if(input[k]!==undefined){
-        lines.push(k+': '+truncate(String(input[k]),100))
+        lines.push(k+': '+String(input[k]))
       }
     }
-    // 其余字段
+    // 其余字段：全部展示，不做行数/长度截断（岛按内容自动长大）
     for(const k of Object.keys(input)){
       if(priorityKeys.includes(k)) continue
       const v=input[k]
       const vs=typeof v==='object'?JSON.stringify(v):String(v)
-      lines.push(k+': '+truncate(vs,80))
+      lines.push(k+': '+vs)
     }
-    return lines.slice(0,6).join('\\n')
-  }catch{ return JSON.stringify(input).slice(0,200) }
+    return lines.join('\\n')
+  }catch{ return JSON.stringify(input) }
 }
-function truncate(s,n){return s.length>n?s.slice(0,n)+'…':s}
 function doAllow(){resolvePerm('allow')}
 function doDeny(){resolvePerm('deny')}
 function doAlwaysAllow(){resolvePerm('always')}
 function resolvePerm(b){ipcRenderer.invoke('agent-resolve-permission',b);document.getElementById('permCard').classList.remove('show');setTimeout(resizeIsland,50)}
+function dismissQuestion(){ipcRenderer.invoke('agent-dismiss-question');document.getElementById('questionCard').classList.remove('show');setTimeout(resizeIsland,50)}
 function showAiDetail(){ipcRenderer.invoke('show-ai-window')}
 // === AI 岛拖动（整条状态条含 padding，4px 阈值区分点击 vs 拖动） ===
 // 复用悬浮球的 pointer 拖动模式：pointerdown 记录起点，超过 4px 才算拖动，
@@ -262,31 +386,39 @@ export function registerAiIslandHandlers() {
     if (!Number.isFinite(contentWidth)) return
     const totalW = contentWidth + 20
     const h = Number.isFinite(contentHeight) ? contentHeight : 44
+    // 兜底：传播后的 totalW/h 若异常（理论上不会，但防御不到位仍会抛 conversion failure），直接丢弃
+    if (!Number.isFinite(totalW) || !Number.isFinite(h)) return
     if (aiIslandUserMoved) {
       // 用户拖过：保留当前位置，只按内容调整宽高，避免被拉回居中/顶部
       const [x, y] = aiIsland.getPosition()
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return
       aiIsland.setBounds({ x, y, width: totalW, height: h })
     } else {
       // 未拖过：水平居中 + 顶部（初始定位行为）
       const bounds = screen.getPrimaryDisplay().bounds
       const newX = Math.round(bounds.x + (bounds.width - totalW) / 2)
-      aiIsland.setBounds({ x: newX, y: bounds.y + 4, width: totalW, height: h })
+      const newY = bounds.y + 4
+      if (!Number.isFinite(newX) || !Number.isFinite(newY)) return
+      aiIsland.setBounds({ x: newX, y: newY, width: totalW, height: h })
     }
   })
 
   // AI 岛拖动：垂直固定顶部，只水平移动
   ipcMain.on('ai-island-drag-start', (_event: any, sx: number, sy: number) => {
     if (!aiIsland || aiIsland.isDestroyed()) return
+    // 防御：pointerdown 可能给出无有效屏幕坐标的 NaN，先丢弃，避免污染基准后被 drag-move 算出 NaN 抛 conversion failure
+    if (!Number.isFinite(sx) || !Number.isFinite(sy)) return
     const [wx, wy] = aiIsland.getPosition()
     aiDragOrigin = { winX: wx, winY: wy, scrX: sx, scrY: sy }
   })
 
   ipcMain.on('ai-island-drag-move', (_event: any, sx: number, _sy: number) => {
     if (!aiIsland || aiIsland.isDestroyed() || !aiDragOrigin) return
-    // 防御 NaN（无有效屏幕坐标的 pointer 事件），避免 setBounds 抛 conversion failure
-    if (!Number.isFinite(sx)) return
+    // 防御 NaN（无有效屏幕坐标的 pointer 事件，或 drag-start 曾存了坏基准），避免 setBounds 抛 conversion failure
+    if (!Number.isFinite(sx) || !Number.isFinite(aiDragOrigin.scrX) || !Number.isFinite(aiDragOrigin.winX) || !Number.isFinite(aiDragOrigin.winY)) return
     const dx = sx - aiDragOrigin.scrX
     const nx = Math.round(aiDragOrigin.winX + dx)
+    if (!Number.isFinite(nx)) return
     const [w, h] = aiIsland.getSize()
     aiIsland.setBounds({ x: nx, y: aiDragOrigin.winY, width: w, height: h })
   })

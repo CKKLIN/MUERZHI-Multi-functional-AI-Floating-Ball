@@ -2852,10 +2852,12 @@ ipcRenderer.on('agent-state-update',(e,data)=>{
   dot.className='ai-dot '+data.state;lb.textContent=aiLabels[data.state]||'AI '+data.state;lb.classList.toggle('active',data.state!=='idle')
   setTimeout(resizeIsland,50)
 })
-ipcRenderer.on('agent-permission-request',(e,data)=>{
+// 录制悬浮岛也展示权限卡：只关心队首为权限卡的情况（提问卡无对应 UI，忽略）
+ipcRenderer.on('agent-card-update',(e,card)=>{
+  if(!card||card.kind!=='permission'){ document.getElementById('permCard').classList.remove('show'); setTimeout(resizeIsland,50); return }
   document.getElementById('permCard').classList.add('show')
-  document.getElementById('permTool').textContent=data.toolName||'未知操作'
-  const istr=data.toolInput?JSON.stringify(data.toolInput).slice(0,80):''
+  document.getElementById('permTool').textContent=card.toolName||'未知操作'
+  const istr=card.toolInput?JSON.stringify(card.toolInput).slice(0,80):''
   document.getElementById('permTarget').textContent=istr?': '+istr:''
   setTimeout(resizeIsland,50)
 })
@@ -4007,6 +4009,11 @@ var aiDragOrigin = null;
 var aiIslandUserMoved = false;
 /** 透明空白区鼠标穿透状态：true 时 setIgnoreMouseEvents，让窗口右侧多余透明区不拦截下方点击 */
 var aiIslandMouseIgnored = false;
+/** 定位提问卡纯逻辑文件（question-card-utils.js）：dev 下随 vite 复制进 dist-electron/main/，打包后走 extraResources。
+*  岛窗口用 data: URL 加载内联 HTML，内联 <script> 须在运行时 require() 这个文件（同 clawd-hook.js 的发布链路）。 */
+function questionCardUtilsPath() {
+	return electron.app.isPackaged ? path.join(process.resourcesPath, "question-card-utils.js") : path.join(__dirname, "question-card-utils.js");
+}
 function buildAiIslandHtml() {
 	return `<!DOCTYPE html>
 <html><head><style>
@@ -4038,8 +4045,8 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
 @keyframes ai-flash{0%,100%{opacity:1}50%{opacity:0.2;transform:scale(1.3)}}
 .ai-label{font-size:11px;color:rgba(255,255,255,0.75);white-space:nowrap;font-weight:500;letter-spacing:0.3px}
 .ai-label.active{color:#fff}
-/* 权限卡片 */
-.perm-card{width:300px;padding:0;display:none;flex-direction:column}
+/* 权限卡片：宽度按内容自适应，最窄 300 / 最宽 420（超出在 420 内换行） */
+.perm-card{width:max-content;min-width:300px;max-width:420px;padding:0;display:none;flex-direction:column;word-break:break-word}
 .perm-card.show{display:flex;animation:perm-in 0.22s cubic-bezier(0.4,0,0.2,1)}
 @keyframes perm-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
 .perm-banner{display:flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(255,255,255,0.04);border-top:1px solid rgba(255,255,255,0.1);border-bottom:1px solid rgba(255,255,255,0.06)}
@@ -4049,9 +4056,7 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
 .perm-row{display:flex;flex-direction:column;gap:4px}
 .perm-row-label{font-size:9px;color:rgba(255,255,255,0.38);text-transform:uppercase;letter-spacing:0.6px;font-weight:600}
 .perm-tool{font-size:13px;color:#34d399;font-weight:600;font-family:Consolas,'Courier New',monospace}
-.perm-input{font-size:10.5px;color:rgba(255,255,255,0.78);font-family:Consolas,'Courier New',monospace;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.06);border-radius:5px;padding:6px 8px;max-height:72px;overflow:auto;word-break:break-all;line-height:1.5;white-space:pre-wrap}
-.perm-input::-webkit-scrollbar{width:4px}
-.perm-input::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:2px}
+.perm-input{font-size:10.5px;color:rgba(255,255,255,0.78);font-family:Consolas,'Courier New',monospace;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.06);border-radius:5px;padding:6px 8px;word-break:normal;overflow-wrap:anywhere;line-height:1.5;white-space:pre-wrap}
 .perm-actions{display:flex;gap:6px;padding:0 14px 12px}
 .perm-btn{flex:1;padding:7px 8px;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.15s;letter-spacing:0.3px}
 .perm-btn.allow{background:#34d399;color:#0a0a14}
@@ -4060,6 +4065,26 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
 .perm-btn.deny:hover{background:rgba(248,113,113,0.18);color:#fca5a5;border-color:rgba(248,113,113,0.4)}
 .perm-btn.always{background:rgba(52,211,153,0.1);color:#6ee7b7;border:1px solid rgba(52,211,153,0.28)}
 .perm-btn.always:hover{background:rgba(52,211,153,0.18);border-color:rgba(52,211,153,0.5)}
+/* 提问卡片（AskUserQuestion 只读通知——Claude 的 hook 无法注入答案，答案须回主界面作答）：宽度按内容自适应，最窄 300 / 最宽 420；word-break 继承让长选项在卡宽内换行而非溢出裁剪 */
+.question-card{width:max-content;min-width:300px;max-width:420px;padding:0;display:none;flex-direction:column;word-break:break-word}
+.question-card.show{display:flex;animation:perm-in 0.22s cubic-bezier(0.4,0,0.2,1)}
+.question-banner{display:flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(255,255,255,0.04);border-top:1px solid rgba(255,255,255,0.1);border-bottom:1px solid rgba(255,255,255,0.06)}
+.question-banner-dot{width:7px;height:7px;border-radius:50%;background:#fbbf24;animation:ai-breathe 1.2s ease-in-out infinite;box-shadow:0 0 8px rgba(251,191,36,0.6);flex-shrink:0}
+.question-banner-text{font-size:11px;font-weight:600;color:#fde68a;letter-spacing:0.4px}
+/* 逐题推进的进度：右对齐，单题时隐藏 */
+.question-progress{margin-left:auto;font-size:10px;font-weight:600;color:rgba(253,230,138,0.9);letter-spacing:0.3px}
+.question-body{display:flex;flex-direction:column;gap:8px;padding:12px 14px 10px}
+.question-text{font-size:12px;color:#fff;font-weight:600;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.question-opt{display:flex;flex-direction:column;gap:3px;padding:6px 8px;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.06);border-radius:6px}
+.question-opt-label{font-size:11.5px;color:#6ee7b7;font-weight:600}
+.question-opt-desc{font-size:10.5px;color:rgba(255,255,255,0.72);line-height:1.4;white-space:pre-wrap;word-break:break-word}
+.question-hint{font-size:9.5px;color:rgba(255,255,255,0.4);line-height:1.4}
+.question-actions{display:flex;padding:0 14px 12px}
+.question-btn{flex:1;padding:7px 8px;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.15s;letter-spacing:0.3px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.8);border:1px solid rgba(255,255,255,0.1)}
+.question-btn:hover{background:rgba(251,191,36,0.14);color:#fde68a;border-color:rgba(251,191,36,0.4)}
+/* 上一题在首题时禁用（无题可回） */
+.question-btn:disabled{opacity:0.35;cursor:default}
+.question-btn:disabled:hover{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.8);border-color:rgba(255,255,255,0.1)}
 </style></head><body>
 <div class="island" id="island">
   <div class="island-row" id="islandRow">
@@ -4089,14 +4114,41 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
       <button class="perm-btn deny" onclick="doDeny()">拒绝</button>
     </div>
   </div>
+  <div class="question-card" id="questionCard">
+    <div class="question-banner">
+      <span class="question-banner-dot"></span>
+      <span class="question-banner-text">AI 正在提问</span>
+      <span class="question-progress" id="questionProgress"></span>
+    </div>
+    <div class="question-body" id="questionBody"></div>
+    <div class="question-actions">
+      <button class="question-btn" id="questionPrevBtn" onclick="prevQuestion()">上一题</button>
+      <button class="question-btn" id="questionBtn" onclick="stepQuestion()">知道了</button>
+    </div>
+  </div>
 </div>
 <script>
+const __QCU_UTILS_PATH__=${JSON.stringify(questionCardUtilsPath())}
+const quiz=require(__QCU_UTILS_PATH__)
+const {resolveQuestionList,toQuestionItem,buttonLabel,progressText}=quiz
 const {ipcRenderer}=require('electron')
 function resizeIsland(){
   const island=document.getElementById('island')
   const w=island.scrollWidth
   const h=island.scrollHeight
   ipcRenderer.send('resize-ai-island',w,h)
+}
+// 卡片宽度自适应：按当前展示卡的内容理想宽度钳制到 [300,420]，并把岛宽设为该值，
+// 让窗口贴合卡片（避免 .island 的 fit-content 取卡片未钳制理想宽度导致窗口过宽、透明区挡点击）。
+function fitIslandWidth(){
+  const island=document.getElementById('island')
+  const q=document.getElementById('questionCard'), p=document.getElementById('permCard')
+  const card=q.classList.contains('show')?q:(p.classList.contains('show')?p:null)
+  if(!card){ island.style.width=''; return }
+  let w=card.scrollWidth
+  if(w<300) w=300
+  if(w>420) w=420
+  island.style.width=w+'px'
 }
 const ro=new ResizeObserver(()=>resizeIsland())
 ro.observe(document.getElementById('island'))
@@ -4108,6 +4160,8 @@ function applyState(data){
   setTimeout(resizeIsland,50)
 }
 function applyPermission(data){
+  // 权限卡与提问卡互斥：展示权限时收起提问卡，同一时刻只显示一张卡
+  document.getElementById('questionCard').classList.remove('show')
   try{
     document.getElementById('permCard').classList.add('show')
     document.getElementById('permTool').textContent=data.toolName||'未知操作'
@@ -4119,7 +4173,7 @@ function applyPermission(data){
       inputEl.textContent=formatted
       inputRow.style.display='flex'
     }else if(typeof ti==='string'&&ti.length>0){
-      inputEl.textContent=truncate(ti,200)
+      inputEl.textContent=String(ti)
       inputRow.style.display='flex'
     }else{
       inputRow.style.display='none'
@@ -4127,16 +4181,84 @@ function applyPermission(data){
   }catch(err){
     console.error('perm render error:',err)
   }
+  fitIslandWidth()
   setTimeout(resizeIsland,50)
 }
+// 提问卡「逐题推进」：qList 持整卡题目数组，qIndex 持当前题下标（只存岛上；卡片重新应用/清空即重置回第 1 题）
+let qList=[], qIndex=0
+function renderCurrentQuestion(){
+  const body=document.getElementById('questionBody'); body.innerHTML=''
+  const total=qList.length
+  const view=toQuestionItem(qList[qIndex]||qList[0], qIndex)
+  // 进度：单题隐藏，多题显示「第 X/N 题」
+  const prog=document.getElementById('questionProgress')
+  const pt=progressText(qIndex,total)
+  prog.style.display=pt?'inline':'none'; prog.textContent=pt||''
+  // 当前题标题
+  const t=document.createElement('div');t.className='question-text';t.textContent=view.text
+  body.appendChild(t)
+  // 当前题选项
+  view.options.forEach(function(opt){
+    const row=document.createElement('div');row.className='question-opt'
+    const lab=document.createElement('div');lab.className='question-opt-label';lab.textContent=opt.label
+    row.appendChild(lab)
+    if(opt.desc){
+      const d=document.createElement('div');d.className='question-opt-desc';d.textContent=opt.desc
+      row.appendChild(d)
+    }
+    body.appendChild(row)
+  })
+  const hint=document.createElement('div');hint.className='question-hint'
+  hint.textContent='请到 Claude Code 界面作答，这里仅作提醒。'
+  body.appendChild(hint)
+  // 按钮：末题/单题「知道了」，其余「下一题」；首题时「上一题」禁用
+  document.getElementById('questionBtn').textContent=buttonLabel(qIndex,total)
+  document.getElementById('questionPrevBtn').disabled=qIndex<=0
+  fitIslandWidth()
+  resizeIsland()
+}
+function applyQuestion(q){
+  const card=document.getElementById('questionCard')
+  if(!q){ qList=[]; qIndex=0; card.classList.remove('show');setTimeout(resizeIsland,50);return }
+  // 提问卡与权限卡互斥：展示提问时收起权限卡，避免残留的"允许/拒绝"按钮与提问叠在一起
+  document.getElementById('permCard').classList.remove('show')
+  // 重新应用卡片 → 一律从第 1 题开始（进度只存岛上，跨卡片/窗口不存活）
+  qList=resolveQuestionList(q); qIndex=0
+  renderCurrentQuestion()
+  card.classList.add('show')
+  fitIslandWidth()
+  setTimeout(resizeIsland,50)
+}
+// 非末题：「下一题」仅本地推进（不触发 IPC、不动队列）；末题才真正关闭整张卡
+function stepQuestion(){
+  if(qIndex<qList.length-1){ qIndex++; renderCurrentQuestion(); return }
+  dismissQuestion()
+}
+// 「上一题」：纯本地回退一题，永不关卡（首题时按钮 disabled）
+function prevQuestion(){
+  if(qIndex>0){ qIndex--; renderCurrentQuestion() }
+}
+function applyCard(card){
+  // 权限卡与提问卡互斥：只渲染队首卡（applyPermission/applyQuestion 内部也会收起另一张）
+  if(!card){
+    document.getElementById('permCard').classList.remove('show')
+    document.getElementById('questionCard').classList.remove('show')
+    qList=[]; qIndex=0
+    fitIslandWidth()
+    setTimeout(resizeIsland,50)
+    return
+  }
+  if(card.kind==='permission'){ applyPermission(card); return }
+  applyQuestion(card)
+}
 ipcRenderer.on('agent-state-update',(e,data)=>applyState(data))
-ipcRenderer.on('agent-permission-request',(e,data)=>applyPermission(data))
-// 懒创建的岛加载后主动拉取一次当前状态/权限，避免错过创建前的广播
+ipcRenderer.on('agent-card-update',(e,data)=>applyCard(data))
+// 懒创建的岛加载后主动拉取一次当前状态/队首卡，避免错过创建前的广播
 function initStatus(){
   ipcRenderer.invoke('agent-get-status').then(s=>{
     if(!s) return
     applyState({state:s.displayState,sessions:[]})
-    if(s.pendingPermission) applyPermission(s.pendingPermission)
+    if(s.currentCard) applyCard(s.currentCard)
   }).catch(()=>{})
 }
 function formatToolInput(input){
@@ -4146,24 +4268,24 @@ function formatToolInput(input){
     const lines=[]
     for(const k of priorityKeys){
       if(input[k]!==undefined){
-        lines.push(k+': '+truncate(String(input[k]),100))
+        lines.push(k+': '+String(input[k]))
       }
     }
-    // 其余字段
+    // 其余字段：全部展示，不做行数/长度截断（岛按内容自动长大）
     for(const k of Object.keys(input)){
       if(priorityKeys.includes(k)) continue
       const v=input[k]
       const vs=typeof v==='object'?JSON.stringify(v):String(v)
-      lines.push(k+': '+truncate(vs,80))
+      lines.push(k+': '+vs)
     }
-    return lines.slice(0,6).join('\\n')
-  }catch{ return JSON.stringify(input).slice(0,200) }
+    return lines.join('\\n')
+  }catch{ return JSON.stringify(input) }
 }
-function truncate(s,n){return s.length>n?s.slice(0,n)+'…':s}
 function doAllow(){resolvePerm('allow')}
 function doDeny(){resolvePerm('deny')}
 function doAlwaysAllow(){resolvePerm('always')}
 function resolvePerm(b){ipcRenderer.invoke('agent-resolve-permission',b);document.getElementById('permCard').classList.remove('show');setTimeout(resizeIsland,50)}
+function dismissQuestion(){ipcRenderer.invoke('agent-dismiss-question');document.getElementById('questionCard').classList.remove('show');setTimeout(resizeIsland,50)}
 function showAiDetail(){ipcRenderer.invoke('show-ai-window')}
 // === AI 岛拖动（整条状态条含 padding，4px 阈值区分点击 vs 拖动） ===
 // 复用悬浮球的 pointer 拖动模式：pointerdown 记录起点，超过 4px 才算拖动，
@@ -4245,8 +4367,10 @@ function registerAiIslandHandlers() {
 		if (!Number.isFinite(contentWidth)) return;
 		const totalW = contentWidth + 20;
 		const h = Number.isFinite(contentHeight) ? contentHeight : 44;
+		if (!Number.isFinite(totalW) || !Number.isFinite(h)) return;
 		if (aiIslandUserMoved) {
 			const [x, y] = aiIsland.getPosition();
+			if (!Number.isFinite(x) || !Number.isFinite(y)) return;
 			aiIsland.setBounds({
 				x,
 				y,
@@ -4256,9 +4380,11 @@ function registerAiIslandHandlers() {
 		} else {
 			const bounds = electron.screen.getPrimaryDisplay().bounds;
 			const newX = Math.round(bounds.x + (bounds.width - totalW) / 2);
+			const newY = bounds.y + 4;
+			if (!Number.isFinite(newX) || !Number.isFinite(newY)) return;
 			aiIsland.setBounds({
 				x: newX,
-				y: bounds.y + 4,
+				y: newY,
 				width: totalW,
 				height: h
 			});
@@ -4266,6 +4392,7 @@ function registerAiIslandHandlers() {
 	});
 	electron.ipcMain.on("ai-island-drag-start", (_event, sx, sy) => {
 		if (!aiIsland || aiIsland.isDestroyed()) return;
+		if (!Number.isFinite(sx) || !Number.isFinite(sy)) return;
 		const [wx, wy] = aiIsland.getPosition();
 		aiDragOrigin = {
 			winX: wx,
@@ -4276,9 +4403,10 @@ function registerAiIslandHandlers() {
 	});
 	electron.ipcMain.on("ai-island-drag-move", (_event, sx, _sy) => {
 		if (!aiIsland || aiIsland.isDestroyed() || !aiDragOrigin) return;
-		if (!Number.isFinite(sx)) return;
+		if (!Number.isFinite(sx) || !Number.isFinite(aiDragOrigin.scrX) || !Number.isFinite(aiDragOrigin.winX) || !Number.isFinite(aiDragOrigin.winY)) return;
 		const dx = sx - aiDragOrigin.scrX;
 		const nx = Math.round(aiDragOrigin.winX + dx);
+		if (!Number.isFinite(nx)) return;
 		const [w, h] = aiIsland.getSize();
 		aiIsland.setBounds({
 			x: nx,
@@ -4650,21 +4778,32 @@ function registerIpcHandlers(agentBridge) {
 				});
 			} catch {}
 		});
-		agentBridge.setPermissionListener((perm) => {
-			showAiIsland();
-			const safePerm = {
-				sessionId: perm.sessionId,
-				toolName: perm.toolName,
-				toolInput: perm.toolInput,
-				suggestions: perm.suggestions,
-				createdAt: perm.createdAt
+		agentBridge.setCardListener((card) => {
+			if (card) showAiIsland();
+			let safe;
+			if (!card) safe = null;
+			else if (card.kind === "permission") safe = {
+				kind: "permission",
+				sessionId: card.sessionId,
+				toolName: card.toolName,
+				toolInput: card.toolInput,
+				suggestions: card.suggestions,
+				createdAt: card.createdAt
 			};
-			logger_default.info(`[IPC] broadcast permission: tool=${perm.toolName}, wins=${electron.BrowserWindow.getAllWindows().length}`);
+			else safe = {
+				kind: "question",
+				sessionId: card.sessionId,
+				toolName: card.toolName,
+				toolInput: card.toolInput,
+				questions: card.questions,
+				createdAt: card.createdAt
+			};
+			logger_default.info(`[IPC] broadcast card: kind=${card ? card.kind : "null"}, wins=${electron.BrowserWindow.getAllWindows().length}`);
 			const wins = electron.BrowserWindow.getAllWindows();
 			for (const win of wins) if (!win.isDestroyed()) try {
-				win.webContents.send("agent-permission-request", safePerm);
+				win.webContents.send("agent-card-update", safe);
 			} catch (e) {
-				logger_default.error(`[IPC] send permission to window failed: ${e.message}`);
+				logger_default.error(`[IPC] send card to window failed: ${e.message}`);
 			}
 		});
 		electron.ipcMain.handle("agent-get-status", () => {
@@ -4681,6 +4820,7 @@ function registerIpcHandlers(agentBridge) {
 			return agentBridge?.getStatus();
 		});
 		electron.ipcMain.handle("agent-resolve-permission", (_event, behavior) => agentBridge?.resolvePermission(behavior));
+		electron.ipcMain.handle("agent-dismiss-question", () => agentBridge?.dismissQuestion());
 		electron.ipcMain.handle("agent-set-auto-allow", (_event, enabled) => agentBridge?.setAutoAllow(enabled));
 		electron.ipcMain.handle("agent-get-auto-allow", () => agentBridge?.getAutoAllow() ?? false);
 	}
@@ -4994,7 +5134,7 @@ function createAgentStateMachine() {
 init_logger();
 var DEFAULT_PORT = 6e4;
 var MAX_PORT = 60019;
-var PERMISSION_TIMEOUT_MS = 12e4;
+var HEAD_TIMEOUT_MS = 12e4;
 var runtimeDir = null;
 function getRuntimeDir() {
 	if (runtimeDir) return runtimeDir;
@@ -5004,9 +5144,17 @@ function getRuntimeDir() {
 function createAgentServer(stateMachine) {
 	let server = null;
 	let activePort = null;
-	let pendingPermission = null;
-	let permissionTimeout = null;
-	let onPermissionRequest = null;
+	let cardQueue = [];
+	let headTimer = null;
+	let onCardChange = null;
+	const COMPLETION_EVENTS = [
+		"PostToolUse",
+		"PostToolUseFailure",
+		"Stop",
+		"StopFailure",
+		"SessionEnd",
+		"ApiError"
+	];
 	const MAX_BODY_BYTES = 1 * 1024 * 1024;
 	class BodyTooLargeError extends Error {
 		code = "PAYLOAD_TOO_LARGE";
@@ -5037,6 +5185,46 @@ function createAgentServer(stateMachine) {
 		res.writeHead(status, { "Content-Type": "application/json" });
 		res.end(JSON.stringify(data));
 	}
+	function headCard() {
+		return cardQueue[0] ?? null;
+	}
+	function expireHead(reason) {
+		const head = headCard();
+		if (!head) return;
+		if (head.kind === "permission") head.reject(reason);
+		shiftHead();
+	}
+	function shiftHead() {
+		cardQueue.shift();
+		clearTimeout(headTimer);
+		headTimer = null;
+		startHeadTimer();
+		notifyCard();
+	}
+	function startHeadTimer() {
+		if (headTimer) clearTimeout(headTimer);
+		if (!cardQueue.length) {
+			headTimer = null;
+			return;
+		}
+		headTimer = setTimeout(() => {
+			headTimer = null;
+			expireHead("timeout");
+		}, HEAD_TIMEOUT_MS);
+	}
+	function notifyCard() {
+		if (onCardChange) onCardChange(headCard());
+	}
+	function removeQuestionsForSession(sessionId) {
+		const before = cardQueue.length;
+		const filtered = cardQueue.filter((c) => !(c.kind === "question" && c.sessionId === sessionId));
+		if (filtered.length === before) return;
+		cardQueue = filtered;
+		clearTimeout(headTimer);
+		headTimer = null;
+		startHeadTimer();
+		notifyCard();
+	}
 	function handleState(data, res) {
 		const sessionId = data.session_id || data.sessionId;
 		const state = data.state;
@@ -5054,6 +5242,7 @@ function createAgentServer(stateMachine) {
 			contextUsage: data.context_usage || data.contextUsage,
 			model: data.model
 		});
+		if (COMPLETION_EVENTS.includes(event)) removeQuestionsForSession(sessionId);
 		logger_default.info(`[AgentServer] /state ok, total sessions=${stateMachine.getSessions().length}`);
 		sendJson(res, 200, {
 			ok: true,
@@ -5064,32 +5253,27 @@ function createAgentServer(stateMachine) {
 		const toolName = data.tool_name || data.toolName || "unknown";
 		const toolInput = data.tool_input || data.toolInput || {};
 		const sessionId = data.session_id || data.sessionId || "unknown";
+		if (toolName === "AskUserQuestion") {
+			logger_default.info(`[AgentServer] /permission hold AskUserQuestion (提问卡走 /question): session=${sessionId}`);
+			return;
+		}
 		stateMachine.updateSession(sessionId, "notification", "PermissionRequest", {
 			toolName,
 			toolInput
 		});
-		if (pendingPermission) {
-			pendingPermission.reject("superseded");
-			if (permissionTimeout) clearTimeout(permissionTimeout);
-		}
+		const item = {
+			kind: "permission",
+			sessionId,
+			toolName,
+			toolInput,
+			suggestions: data.permission_suggestions || null,
+			resolve: () => {},
+			reject: () => {},
+			createdAt: Date.now()
+		};
 		new Promise((resolve, reject) => {
-			pendingPermission = {
-				sessionId,
-				toolName,
-				toolInput,
-				suggestions: data.permission_suggestions || null,
-				resolve,
-				reject,
-				createdAt: Date.now()
-			};
-			permissionTimeout = setTimeout(() => {
-				if (pendingPermission) {
-					pendingPermission.reject("timeout");
-					pendingPermission = null;
-					permissionTimeout = null;
-				}
-			}, PERMISSION_TIMEOUT_MS);
-			if (onPermissionRequest) onPermissionRequest(pendingPermission);
+			item.resolve = resolve;
+			item.reject = reject;
 		}).then((behavior) => {
 			if (res.headersSent) return;
 			stateMachine.updateSession(sessionId, "idle", "PermissionResolved");
@@ -5112,6 +5296,36 @@ function createAgentServer(stateMachine) {
 			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(responseBody);
 		});
+		cardQueue.push(item);
+		if (cardQueue.length === 1) startHeadTimer();
+		notifyCard();
+		logger_default.info(`[AgentServer] /permission queued: session=${sessionId}, queue=${cardQueue.length}`);
+	}
+	function handleQuestion(data, res) {
+		const sessionId = data.session_id || data.sessionId || "unknown";
+		const toolName = data.tool_name || data.toolName || "AskUserQuestion";
+		const toolInput = data.tool_input || data.toolInput || {};
+		const questions = Array.isArray(data.questions) ? data.questions : null;
+		stateMachine.updateSession(sessionId, "notification", "AskUserQuestion", {
+			toolName,
+			toolInput
+		});
+		const item = {
+			kind: "question",
+			sessionId,
+			toolName,
+			toolInput,
+			questions,
+			createdAt: Date.now()
+		};
+		cardQueue.push(item);
+		if (cardQueue.length === 1) startHeadTimer();
+		notifyCard();
+		logger_default.info(`[AgentServer] /question queued: session=${sessionId}, queue=${cardQueue.length}`);
+		sendJson(res, 200, {
+			ok: true,
+			app: "erzhi-recording"
+		});
 	}
 	function handleHealth(res) {
 		const sc = stateMachine.getSessions().length;
@@ -5133,27 +5347,46 @@ function createAgentServer(stateMachine) {
 			logger_default.error("[AgentServer] parseBody error:", e);
 			sendJson(res, e?.code === "PAYLOAD_TOO_LARGE" ? 413 : 400, { error: e?.code === "PAYLOAD_TOO_LARGE" ? "Payload too large" : "Invalid JSON" });
 		});
+		else if (req.method === "POST" && req.url === "/question") parseBody(req).then((d) => handleQuestion(d, res)).catch((e) => {
+			logger_default.error("[AgentServer] parseBody error:", e);
+			sendJson(res, e?.code === "PAYLOAD_TOO_LARGE" ? 413 : 400, { error: e?.code === "PAYLOAD_TOO_LARGE" ? "Payload too large" : "Invalid JSON" });
+		});
 		else if (req.method === "GET" && req.url === "/health") handleHealth(res);
 		else sendJson(res, 404, { error: "Not found" });
 	}
 	function resolvePendingPermission(behavior) {
-		if (pendingPermission) {
-			if (permissionTimeout) clearTimeout(permissionTimeout);
-			permissionTimeout = null;
-			pendingPermission.resolve(behavior);
-			pendingPermission = null;
+		const head = headCard();
+		if (head && head.kind === "permission") {
+			head.resolve(behavior);
+			shiftHead();
 		}
 	}
-	function cancelPendingPermission() {
-		if (pendingPermission) {
-			if (permissionTimeout) clearTimeout(permissionTimeout);
-			permissionTimeout = null;
-			pendingPermission.reject("cancelled");
-			pendingPermission = null;
-		}
+	function dismissQuestion() {
+		const head = headCard();
+		if (head && head.kind === "question") shiftHead();
 	}
-	function setOnPermissionRequest(cb) {
-		onPermissionRequest = cb;
+	function setOnCardChange(cb) {
+		onCardChange = cb;
+	}
+	function getSafeCurrentCard() {
+		const head = headCard();
+		if (!head) return null;
+		if (head.kind === "permission") return {
+			kind: "permission",
+			sessionId: head.sessionId,
+			toolName: head.toolName,
+			toolInput: head.toolInput,
+			suggestions: head.suggestions,
+			createdAt: head.createdAt
+		};
+		return {
+			kind: "question",
+			sessionId: head.sessionId,
+			toolName: head.toolName,
+			toolInput: head.toolInput,
+			questions: head.questions,
+			createdAt: head.createdAt
+		};
 	}
 	function start() {
 		return new Promise((resolve) => {
@@ -5194,7 +5427,11 @@ function createAgentServer(stateMachine) {
 		});
 	}
 	function stop() {
-		cancelPendingPermission();
+		for (const c of cardQueue) if (c.kind === "permission") c.reject("stopped");
+		cardQueue = [];
+		clearTimeout(headTimer);
+		headTimer = null;
+		if (onCardChange) onCardChange(null);
 		if (server) {
 			server.close();
 			server = null;
@@ -5204,17 +5441,14 @@ function createAgentServer(stateMachine) {
 	function getPort() {
 		return activePort;
 	}
-	function getPendingPermission() {
-		return pendingPermission;
-	}
 	return {
 		start,
 		stop,
 		getPort,
-		getPendingPermission,
+		getSafeCurrentCard,
 		resolvePendingPermission,
-		cancelPendingPermission,
-		setOnPermissionRequest
+		dismissQuestion,
+		setOnCardChange
 	};
 }
 //#endregion
@@ -5457,18 +5691,18 @@ function createAgentBridge(config = {}) {
 	const server = createAgentServer(stateMachine);
 	const hookManager = createClaudeHookManager(() => server.getPort());
 	let stateListener = null;
-	let permissionListener = null;
+	let cardListener = null;
 	let autoAllow = false;
 	stateMachine.subscribe((state, sessions) => {
 		if (stateListener) stateListener(state, sessions);
 	});
-	server.setOnPermissionRequest((perm) => {
-		if (autoAllow) {
-			logger_default.info(`[AgentBridge] auto-allow permission: tool=${perm.toolName}`);
+	server.setOnCardChange((card) => {
+		if (autoAllow && card && card.kind === "permission") {
+			logger_default.info(`[AgentBridge] auto-allow permission: tool=${card.toolName}`);
 			server.resolvePendingPermission("allow");
 			return;
 		}
-		if (permissionListener) permissionListener(perm);
+		if (cardListener) cardListener(card);
 	});
 	async function start() {
 		stateMachine.start();
@@ -5498,11 +5732,14 @@ function createAgentBridge(config = {}) {
 	function setStateListener(listener) {
 		stateListener = listener;
 	}
-	function setPermissionListener(listener) {
-		permissionListener = listener;
+	function setCardListener(listener) {
+		cardListener = listener;
 	}
 	function resolvePermission(behavior) {
 		server.resolvePendingPermission(behavior);
+	}
+	function dismissQuestion() {
+		server.dismissQuestion();
 	}
 	function installHooks() {
 		hookManager.install();
@@ -5548,7 +5785,7 @@ function createAgentBridge(config = {}) {
 			hookInstalled: hookManager.isInstalled(),
 			hookManagerStatus: hookManager.getStatus(),
 			displayState,
-			pendingPermission: server.getPendingPermission(),
+			currentCard: server.getSafeCurrentCard(),
 			sessionCount,
 			claudeRunning: checkClaudeRunning()
 		};
@@ -5561,8 +5798,9 @@ function createAgentBridge(config = {}) {
 		getHookManager,
 		getStatus,
 		setStateListener,
-		setPermissionListener,
+		setCardListener,
 		resolvePermission,
+		dismissQuestion,
 		installHooks,
 		uninstallHooks,
 		setAutoAllow,

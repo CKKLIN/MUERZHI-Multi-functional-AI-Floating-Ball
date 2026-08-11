@@ -445,10 +445,12 @@ ipcRenderer.on('agent-state-update',(e,data)=>{
   dot.className='ai-dot '+data.state;lb.textContent=aiLabels[data.state]||'AI '+data.state;lb.classList.toggle('active',data.state!=='idle')
   setTimeout(resizeIsland,50)
 })
-ipcRenderer.on('agent-permission-request',(e,data)=>{
+// 录制悬浮岛也展示权限卡：只关心队首为权限卡的情况（提问卡无对应 UI，忽略）
+ipcRenderer.on('agent-card-update',(e,card)=>{
+  if(!card||card.kind!=='permission'){ document.getElementById('permCard').classList.remove('show'); setTimeout(resizeIsland,50); return }
   document.getElementById('permCard').classList.add('show')
-  document.getElementById('permTool').textContent=data.toolName||'未知操作'
-  const istr=data.toolInput?JSON.stringify(data.toolInput).slice(0,80):''
+  document.getElementById('permTool').textContent=card.toolName||'未知操作'
+  const istr=card.toolInput?JSON.stringify(card.toolInput).slice(0,80):''
   document.getElementById('permTarget').textContent=istr?': '+istr:''
   setTimeout(resizeIsland,50)
 })

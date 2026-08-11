@@ -141,6 +141,17 @@ async function main() {
     return;
   }
 
+  // AskUserQuestion 是工具调用，走 PreToolUse 触发；仅拦截 PreToolUse（PostToolUse 同名但无 questions，
+  // 避免重复推送）。只读通知卡片用：把问题+选项发给悬浮岛展示，而不是注入答案（hook 无法返回工具结果）。
+  if (eventName === "PreToolUse" && toolName === "AskUserQuestion") {
+    await postToClawd("/question", {
+      session_id: sessionId,
+      tool_name: toolName,
+      tool_input: toolInput,
+      questions: (toolInput && toolInput.questions) || null,
+    }, port);
+  }
+
   if (!sessionId) {
     hookLog(`SKIP: missing sessionId`);
     process.stdout.write(JSON.stringify({}) + "\n");
