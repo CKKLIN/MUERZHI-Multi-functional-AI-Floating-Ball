@@ -381,7 +381,7 @@ export function registerIpcHandlers(agentBridge?: AgentBridge) {
       } else if (card.kind === 'permission') {
         safe = { kind: 'permission', sessionId: card.sessionId, toolName: card.toolName, toolInput: card.toolInput, suggestions: card.suggestions, createdAt: card.createdAt }
       } else {
-        safe = { kind: 'question', sessionId: card.sessionId, toolName: card.toolName, toolInput: card.toolInput, questions: card.questions, createdAt: card.createdAt }
+        safe = { kind: 'question', sessionId: card.sessionId, toolName: card.toolName, toolInput: card.toolInput, questions: card.questions, answerable: card.answerable, createdAt: card.createdAt }
       }
       log.info(`[IPC] broadcast card: kind=${card ? card.kind : 'null'}, wins=${BrowserWindow.getAllWindows().length}`)
       const wins = BrowserWindow.getAllWindows()
@@ -403,6 +403,7 @@ export function registerIpcHandlers(agentBridge?: AgentBridge) {
     ipcMain.handle('agent-uninstall-hooks', () => { agentBridge?.uninstallHooks(); return agentBridge?.getStatus() })
     ipcMain.handle('agent-resolve-permission', (_event, behavior: string) => agentBridge?.resolvePermission(behavior))
     ipcMain.handle('agent-dismiss-question', () => agentBridge?.dismissQuestion())
+    ipcMain.handle('agent-submit-question', (_event, sessionId: string, answers: Record<string, unknown>) => agentBridge?.submitQuestion(sessionId, answers))
     ipcMain.handle('agent-set-auto-allow', (_event, enabled: boolean) => agentBridge?.setAutoAllow(enabled))
     ipcMain.handle('agent-get-auto-allow', () => agentBridge?.getAutoAllow() ?? false)
   }

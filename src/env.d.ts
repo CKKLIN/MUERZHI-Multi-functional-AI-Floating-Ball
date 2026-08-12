@@ -128,6 +128,8 @@ export interface ElectronAPI {
   agentInstallHooks: () => Promise<AgentBridgeStatus | null>
   agentUninstallHooks: () => Promise<AgentBridgeStatus | null>
   agentResolvePermission: (behavior: string) => Promise<void>
+  agentDismissQuestion: () => Promise<void>
+  agentSubmitQuestion: (sessionId: string, answers: Record<string, unknown>) => Promise<void>
   agentSetAutoAllow: (enabled: boolean) => Promise<void>
   agentGetAutoAllow: () => Promise<boolean>
   onAgentStateUpdate: (callback: (data: AgentStatePayload) => void) => () => void
@@ -164,7 +166,7 @@ export interface AgentPermissionPayload {
 
 export type AgentCardPayload =
   | ({ kind: 'permission' } & AgentPermissionPayload)
-  | { kind: 'question'; sessionId: string; toolName: string; toolInput: any; questions: any[] | null }
+  | { kind: 'question'; sessionId: string; toolName: string; toolInput: any; questions: any[] | null; answerable: boolean }
 
 export interface AgentBridgeStatus {
   serverRunning: boolean

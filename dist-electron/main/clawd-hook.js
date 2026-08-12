@@ -121,6 +121,10 @@ async function main() {
   const state = EVENT_TO_STATE[eventName] || "idle";
   const toolName = event.tool_name || event.toolName || "";
   const toolInput = event.tool_input || event.toolInput || null;
+  // tool_use_id：Claude Code 为每次工具调用分配的稳定 ID，贯穿 PermissionRequest/PreToolUse/PostToolUse*/PermissionDenied。
+  // 服务端拿它按"同一工具调用"精确匹配：用户在 Claude Code 原生界面允许/拒绝后，后端据此关闭对应的权限审批卡
+  // （避免"原生界面已处理、悬浮岛却还挂着审批卡"，且能精确关闭该卡挂起的 /permission 连接）。
+  const toolUseId = event.tool_use_id || event.toolUseId || "";
 
   hookLog(`EVENT: name=${eventName}, session=${sessionId}, state=${state}, tool=${toolName}, port=${port}`);
 
@@ -129,6 +133,7 @@ async function main() {
       tool_name: toolName,
       tool_input: toolInput,
       session_id: sessionId,
+      tool_use_id: toolUseId,
       permission_suggestions: event.permission_suggestions || null,
       source_pid: process.ppid,
       cwd: process.cwd(),
@@ -166,6 +171,7 @@ async function main() {
     cwd: process.cwd(),
     tool_name: toolName,
     tool_input: toolInput,
+    tool_use_id: toolUseId,
     model: event.model || null,
     context_usage: event.context_usage || event.contextUsage || null,
   };

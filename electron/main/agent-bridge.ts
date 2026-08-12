@@ -40,6 +40,7 @@ export interface AgentBridge {
   setCardListener: (listener: (card: CardItem | null) => void) => void
   resolvePermission: (behavior: string) => void
   dismissQuestion: () => void
+  submitQuestion: (sessionId: string, answers: Record<string, unknown>) => void
   installHooks: () => void
   uninstallHooks: () => void
   setAutoAllow: (enabled: boolean) => void
@@ -111,6 +112,10 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
     server.dismissQuestion()
   }
 
+  function submitQuestion(sessionId: string, answers: Record<string, unknown>) {
+    server.submitQuestion(sessionId, answers)
+  }
+
   function installHooks() { hookManager.install() }
   function uninstallHooks() { hookManager.uninstall() }
   function setAutoAllow(enabled: boolean) { autoAllow = enabled; log.info(`[AgentBridge] autoAllow=${enabled}`) }
@@ -160,7 +165,7 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
   return {
     start, stop, getServer, getStateMachine, getHookManager, getStatus,
     setStateListener, setCardListener,
-    resolvePermission, dismissQuestion, installHooks, uninstallHooks,
+    resolvePermission, dismissQuestion, submitQuestion, installHooks, uninstallHooks,
     setAutoAllow, getAutoAllow,
   }
 }

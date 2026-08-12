@@ -83,6 +83,17 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
 .question-body{display:flex;flex-direction:column;gap:8px;padding:12px 14px 10px}
 .question-text{font-size:12px;color:#fff;font-weight:600;line-height:1.5;white-space:pre-wrap;word-break:break-word}
 .question-opt{display:flex;flex-direction:column;gap:3px;padding:6px 8px;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.06);border-radius:6px}
+/* 可作答卡：选项可点选，单选/多选用一个前置小标记；选中项高亮描边 */
+.question-opt.selectable{cursor:pointer;border:1px solid rgba(255,255,255,0.08);transition:all 0.12s}
+.question-opt.selectable:hover{border-color:rgba(251,191,36,0.4);background:rgba(251,191,36,0.07)}
+.question-opt.selectable.selected{border-color:rgba(52,211,153,0.65);background:rgba(52,211,153,0.12)}
+.qmark{display:inline-flex;align-items:center;justify-content:center;width:11px;height:11px;border-radius:50%;margin-right:6px;font-size:8px;color:rgba(255,255,255,0.55);border:1px solid rgba(255,255,255,0.35);flex-shrink:0}
+.qmark.multi{border-radius:3px}
+.question-opt.selectable.selected .qmark{background:#34d399;border-color:#34d399;color:#0a0a14}
+.question-other{width:100%;margin-top:6px;padding:6px 8px;border:none;border-radius:6px;background:rgba(0,0,0,0.4);color:#fff;font-size:11px;outline:none;border:1px solid rgba(251,191,36,0.35)}
+/* 提问卡右上角「关闭」（可作答卡的放弃/关闭 → 回 deny） */
+.question-close{margin-left:auto;cursor:pointer;font-size:13px;color:rgba(255,255,255,0.55);padding:0 4px;line-height:1;display:none}
+.question-close:hover{color:#fca5a5}
 .question-opt-label{font-size:11.5px;color:#6ee7b7;font-weight:600}
 .question-opt-desc{font-size:10.5px;color:rgba(255,255,255,0.72);line-height:1.4;white-space:pre-wrap;word-break:break-word}
 .question-hint{font-size:9.5px;color:rgba(255,255,255,0.4);line-height:1.4}
@@ -126,6 +137,7 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
       <span class="question-banner-dot"></span>
       <span class="question-banner-text">AI 正在提问</span>
       <span class="question-progress" id="questionProgress"></span>
+      <span class="question-close" id="questionClose" onclick="closeQuestion()" title="关闭">✕</span>
     </div>
     <div class="question-body" id="questionBody"></div>
     <div class="question-actions">
@@ -137,7 +149,7 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
 <script>
 const __QCU_UTILS_PATH__=${JSON.stringify(questionCardUtilsPath())}
 const quiz=require(__QCU_UTILS_PATH__)
-const {resolveQuestionList,toQuestionItem,buttonLabel,progressText}=quiz
+const {resolveQuestionList,toQuestionItem,buttonLabel,progressText,questionKey,multiSelectOf,withOther,toggleOption,buildAnswers}=quiz
 const {ipcRenderer}=require('electron')
 function resizeIsland(){
   const island=document.getElementById('island')
@@ -191,9 +203,12 @@ function applyPermission(data){
   fitIslandWidth()
   setTimeout(resizeIsland,50)
 }
-// 提问卡「逐题推进」：qList 持整卡题目数组，qIndex 持当前题下标（只存岛上；卡片重新应用/清空即重置回第 1 题）
-let qList=[], qIndex=0
+// 提问卡「逐题推进」：qList 持整卡题目数组，qIndex 持当前题下标（只存岛上；卡片重新应用/清空即重置回第 1 题）。
+// 可作答卡（answerable）：qSessionId 标记由 /permission 背书，qDrafts 持每题选中态（Set + 其他自由文本）
+let qList=[], qIndex=0, qAnswerable=false, qSessionId='', qDrafts=[]
+function currentDraft(){ return qDrafts[qIndex] || (qDrafts[qIndex]={selected:new Set(),otherText:''}) }
 function renderCurrentQuestion(){
+  const answerable=qAnswerable
   const body=document.getElementById('questionBody'); body.innerHTML=''
   const total=qList.length
   const view=toQuestionItem(qList[qIndex]||qList[0], qIndex)
@@ -201,56 +216,114 @@ function renderCurrentQuestion(){
   const prog=document.getElementById('questionProgress')
   const pt=progressText(qIndex,total)
   prog.style.display=pt?'inline':'none'; prog.textContent=pt||''
+  const closeEl=document.getElementById('questionClose')
   // 当前题标题
   const t=document.createElement('div');t.className='question-text';t.textContent=view.text
   body.appendChild(t)
-  // 当前题选项
-  view.options.forEach(function(opt){
-    const row=document.createElement('div');row.className='question-opt'
-    const lab=document.createElement('div');lab.className='question-opt-label';lab.textContent=opt.label
-    row.appendChild(lab)
-    if(opt.desc){
-      const d=document.createElement('div');d.className='question-opt-desc';d.textContent=opt.desc
-      row.appendChild(d)
-    }
-    body.appendChild(row)
-  })
-  const hint=document.createElement('div');hint.className='question-hint'
-  hint.textContent='请到 Claude Code 界面作答，这里仅作提醒。'
-  body.appendChild(hint)
-  // 按钮：末题/单题「知道了」，其余「下一题」；首题时「上一题」禁用
-  document.getElementById('questionBtn').textContent=buttonLabel(qIndex,total)
+  if(answerable){
+    // 可作答：选项可点选，末尾按需追加「其他」自由输入；单选/多选依据 multiSelect
+    const item=qList[qIndex]
+    const multi=multiSelectOf(item)
+    const opts=withOther(view.options)
+    const draft=currentDraft()
+    opts.forEach(function(opt){
+      const row=document.createElement('div');row.className='question-opt selectable'+(draft.selected.has(opt.label)?' selected':'')
+      const lab=document.createElement('div');lab.className='question-opt-label'
+      const mark=document.createElement('span');mark.className='qmark'+(multi?' multi':'')
+      mark.textContent=multi?'✓':''
+      lab.appendChild(mark)
+      lab.appendChild(document.createTextNode(opt.label))
+      row.appendChild(lab)
+      if(opt.desc){
+        const d=document.createElement('div');d.className='question-opt-desc';d.textContent=opt.desc
+        row.appendChild(d)
+      }
+      row.addEventListener('click',function(){
+        const r=toggleOption(draft.selected,opt.label,multi)
+        draft.selected=r.selected
+        renderCurrentQuestion()
+      })
+      body.appendChild(row)
+      if(opt.isOther&&draft.selected.has('其他')){
+        const inp=document.createElement('input');inp.className='question-other';inp.placeholder='输入其他内容…';inp.value=draft.otherText||''
+        inp.addEventListener('click',function(e){e.stopPropagation()})
+        inp.addEventListener('input',function(){draft.otherText=inp.value})
+        body.appendChild(inp)
+        if(multi){
+          const h=document.createElement('div');h.className='question-hint';h.textContent='可与其他选项同时选择。'
+          body.appendChild(h)
+        }
+      }
+    })
+    if(closeEl) closeEl.style.display='inline-block'
+    // 末题「提交答案」（回 allow+answers）；非末题「下一题」仅本地推进
+    document.getElementById('questionBtn').textContent=(qIndex<total-1)?'下一题':'提交答案'
+  }else{
+    // 只读（现状）：仅展示选项，提示去 Claude 界面作答
+    view.options.forEach(function(opt){
+      const row=document.createElement('div');row.className='question-opt'
+      const lab=document.createElement('div');lab.className='question-opt-label';lab.textContent=opt.label
+      row.appendChild(lab)
+      if(opt.desc){
+        const d=document.createElement('div');d.className='question-opt-desc';d.textContent=opt.desc
+        row.appendChild(d)
+      }
+      body.appendChild(row)
+    })
+    const hint=document.createElement('div');hint.className='question-hint'
+    hint.textContent='请到 Claude Code 界面作答，这里仅作提醒。'
+    body.appendChild(hint)
+    if(closeEl) closeEl.style.display='none'
+    document.getElementById('questionBtn').textContent=buttonLabel(qIndex,total)
+  }
   document.getElementById('questionPrevBtn').disabled=qIndex<=0
   fitIslandWidth()
   resizeIsland()
 }
+function resetQuestion(){
+  qList=[];qIndex=0;qAnswerable=false;qSessionId='';qDrafts=[]
+  const closeEl=document.getElementById('questionClose'); if(closeEl) closeEl.style.display='none'
+}
 function applyQuestion(q){
   const card=document.getElementById('questionCard')
-  if(!q){ qList=[]; qIndex=0; card.classList.remove('show');setTimeout(resizeIsland,50);return }
+  if(!q){ resetQuestion(); card.classList.remove('show');setTimeout(resizeIsland,50);return }
   // 提问卡与权限卡互斥：展示提问时收起权限卡，避免残留的"允许/拒绝"按钮与提问叠在一起
   document.getElementById('permCard').classList.remove('show')
-  // 重新应用卡片 → 一律从第 1 题开始（进度只存岛上，跨卡片/窗口不存活）
+  // 重新应用卡片 → 一律从第 1 题开始；记录是否可作答（由 /permission 背书）
   qList=resolveQuestionList(q); qIndex=0
+  qAnswerable=!!q.answerable; qSessionId=q.sessionId||''
+  qDrafts=qList.map(function(){return {selected:new Set(),otherText:''}})
   renderCurrentQuestion()
   card.classList.add('show')
   fitIslandWidth()
   setTimeout(resizeIsland,50)
 }
-// 非末题：「下一题」仅本地推进（不触发 IPC、不动队列）；末题才真正关闭整张卡
+// 非末题：「下一题」仅本地推进（不触发 IPC、不动队列）；末题：
+//   只读 → 关闭（知道了）；可作答 → 提交答案（回 allow+updatedInput.answers）
 function stepQuestion(){
   if(qIndex<qList.length-1){ qIndex++; renderCurrentQuestion(); return }
-  dismissQuestion()
+  if(qAnswerable){
+    const payload=buildAnswers(qList,qDrafts)
+    ipcRenderer.invoke('agent-submit-question', qSessionId, payload)
+    document.getElementById('questionCard').classList.remove('show')
+    resetQuestion()
+    setTimeout(resizeIsland,50)
+  }else{
+    dismissQuestion()
+  }
 }
 // 「上一题」：纯本地回退一题，永不关卡（首题时按钮 disabled）
 function prevQuestion(){
   if(qIndex>0){ qIndex--; renderCurrentQuestion() }
 }
+// 「关闭」（右上角 ✕）：只读卡直接收起；可作答卡回 deny 结束提问（服务端区分处理）
+function closeQuestion(){dismissQuestion()}
 function applyCard(card){
   // 权限卡与提问卡互斥：只渲染队首卡（applyPermission/applyQuestion 内部也会收起另一张）
   if(!card){
     document.getElementById('permCard').classList.remove('show')
     document.getElementById('questionCard').classList.remove('show')
-    qList=[]; qIndex=0
+    resetQuestion()
     fitIslandWidth()
     setTimeout(resizeIsland,50)
     return

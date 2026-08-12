@@ -164,6 +164,8 @@ const electronAPI = {
   agentInstallHooks: () => ipcRenderer.invoke('agent-install-hooks'),
   agentUninstallHooks: () => ipcRenderer.invoke('agent-uninstall-hooks'),
   agentResolvePermission: (behavior: string) => ipcRenderer.invoke('agent-resolve-permission', behavior),
+  agentDismissQuestion: () => ipcRenderer.invoke('agent-dismiss-question'),
+  agentSubmitQuestion: (sessionId: string, answers: Record<string, unknown>) => ipcRenderer.invoke('agent-submit-question', sessionId, answers),
   agentSetAutoAllow: (enabled: boolean) => ipcRenderer.invoke('agent-set-auto-allow', enabled),
   agentGetAutoAllow: () => ipcRenderer.invoke('agent-get-auto-allow'),
   onAgentStateUpdate: (callback: (data: any) => void) => {
