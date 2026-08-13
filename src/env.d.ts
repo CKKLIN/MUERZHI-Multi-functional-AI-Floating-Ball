@@ -12,6 +12,10 @@ export interface FloatingBallSettings {
   openAtLogin: boolean
 }
 
+export interface AiIslandSettings {
+  flat: boolean
+}
+
 export interface ConversionProgress {
   percent: number
   targetSize: number
@@ -142,6 +146,8 @@ export interface ElectronAPI {
   resetFloatingBallPosition: () => Promise<void>
   showAiIsland: () => Promise<void>
   hideAiIsland: () => Promise<void>
+  getAiIslandSettings: () => Promise<AiIslandSettings>
+  setAiIslandSettings: (patch: Partial<AiIslandSettings>) => Promise<AiIslandSettings>
 }
 
 export interface AgentStatePayload {

@@ -86,10 +86,6 @@ export function createAgentServer(stateMachine: ReturnType<typeof createAgentSta
   // 会话结束：Stop/SessionEnd 后该 session 不可能再执行新工具，整清它所有待审批权限卡（精确匹配覆盖不了"没执行就结束"）。
   const SESSION_END_EVENTS = ["Stop", "StopFailure", "SessionEnd"]
 
-  // 已在悬浮岛作答过的 session：防"提交答案 → Claude 又触发 PreToolUse /question"把已答提问当新只读卡再推一次（幽灵卡）。
-  // 仅在真正 submit 成功后置位；COMPLETION_EVENTS 或新的一轮 /permission AskUserQuestion 到来时清除。
-  let answeredQuestionSessions = new Set<string>()
-
   const MAX_BODY_BYTES = 1 * 1024 * 1024 // 1MB：防止本地进程发超大 body OOM 主进程
 
   class BodyTooLargeError extends Error {
@@ -188,7 +184,6 @@ export function createAgentServer(stateMachine: ReturnType<typeof createAgentSta
     for (const c of removed) {
       if (c.kind === "question" && c.answerable) c.reject("completed") // 回 deny；若是已 submit 的卡，其连接早已响应，此 reject 幂等无害
     }
-    answeredQuestionSessions.delete(sessionId)
     clearTimeout(headTimer!)
     headTimer = null
     startHeadTimer()
@@ -254,11 +249,9 @@ export function createAgentServer(stateMachine: ReturnType<typeof createAgentSta
       model: data.model,
     })
 
-    // AskUserQuestion 答完会触发该 session 的完成事件 → 从队列收起该提问卡，并清掉「已作答」标记
-    // （标记防 ghost 卡，见 answeredQuestionSessions 注释；会话完成即失效，让同 session 后续新提问能正常展示）
+    // AskUserQuestion 答完/会话结束会触发完成事件 → 从队列收起尚未提交或悬挂的提问卡
     if (COMPLETION_EVENTS.includes(event)) {
       removeQuestionsForSession(sessionId)
-      answeredQuestionSessions.delete(sessionId)
     }
     // 会话结束 → 整清该 session 的权限卡（Stop/SessionEnd 后不再执行新工具）
     if (SESSION_END_EVENTS.includes(event)) {
@@ -351,9 +344,6 @@ export function createAgentServer(stateMachine: ReturnType<typeof createAgentSta
       toolInput,
     })
 
-    // 新一轮提问顶掉旧的「已作答」防 ghost 标记（同 session 后续新提问要能重新展示）
-    answeredQuestionSessions.delete(sessionId)
-
     const item: QuestionCard = {
       kind: "question",
       sessionId,
@@ -402,41 +392,11 @@ export function createAgentServer(stateMachine: ReturnType<typeof createAgentSta
     log.info(`[AgentServer] AskUserQuestion (answerable) queued: session=${sessionId}, queue=${cardQueue.length}`)
   }
 
+  // AskUserQuestion 的只读通道（PreToolUse → /question）：本 Claude 版本下同一提问总是先走 /permission
+  // 生成「可作答卡」，/question 只是克隆的只读通知，且会抢在用户作答前排队形成"答完还冒出来"的幽灵卡。
+  // 直接去掉只读卡——no-op，仅回 200 让 hook 正常结束，不再建卡、不再设通知、不再改动状态机。
   function handleQuestion(data: any, res: http.ServerResponse) {
-    const sessionId = data.session_id || data.sessionId || "unknown"
-    const toolName = data.tool_name || data.toolName || "AskUserQuestion"
-    const toolInput = data.tool_input || data.toolInput || {}
-    const questions = Array.isArray(data.questions) ? data.questions : null
-
-    // 已在悬浮岛作答的 session：Claude 提交后仍会触发 PreToolUse → /question，
-    // 但真实答案已借 /permission 回传，跳过以免把「已回答」当新只读卡再推一次（幽灵卡）。
-    if (answeredQuestionSessions.has(sessionId)) {
-      sendJson(res, 200, { ok: true, app: "erzhi-recording", skipped: "answered" })
-      return
-    }
-
-    // 设 notification（优先级 3）让悬浮岛脉冲提示，且 hasActivity 触发 showAiIsland
-    stateMachine.updateSession(sessionId, "notification", "AskUserQuestion", {
-      toolName,
-      toolInput,
-    })
-
-    const item: QuestionCard = {
-      kind: "question",
-      sessionId,
-      toolName,
-      toolInput,
-      questions,
-      answerable: false, // 只读回退卡：无 /permission 连接可响应（预授权/仅 PreToolUse 场景），只通知不答案
-      resolve: () => {},
-      reject: () => {},
-      createdAt: Date.now(),
-    }
-
-    cardQueue.push(item)
-    if (cardQueue.length === 1) startHeadTimer()
-    notifyCard()
-    log.info(`[AgentServer] /question (read-only) queued: session=${sessionId}, queue=${cardQueue.length}`)
+    log.info(`[AgentServer] /question ignored (read-only card removed): session=${data.session_id || data.sessionId || "unknown"}`)
     sendJson(res, 200, { ok: true, app: "erzhi-recording" })
   }
 
@@ -490,13 +450,11 @@ export function createAgentServer(stateMachine: ReturnType<typeof createAgentSta
     }
   }
 
-  // 提交当前可作答提问卡的答案（悬浮岛「提交答案」）→ 回 allow+updatedInput.answers；
-  // 同 session 记「已作答」，让随后的 PreToolUse /question 不再推幽灵只读卡
+  // 提交当前可作答提问卡的答案（悬浮岛「提交答案」）→ 回 allow+updatedInput.answers
   function submitQuestion(sessionId: string, answers: Record<string, unknown>) {
     const head = headCard()
     if (head && head.kind === "question" && head.answerable && head.sessionId === sessionId) {
       head.resolve(answers) // 触发 q.then → 回 allow+answers 给 Claude
-      answeredQuestionSessions.add(sessionId)
       shiftHead()
       log.info(`[AgentServer] submitQuestion accepted: session=${sessionId}`)
     } else {

@@ -40,7 +40,7 @@ function createWindow(preloadPath: string) {
     minWidth: 420,
     minHeight: 340,
     show: false,
-    skipTaskbar: true, // 常驻托盘 + 悬浮球的应用不进任务栏，避免占用任务栏槽位
+    skipTaskbar: false, // 从菜单打开的主录制窗口需在任务栏有图标，便于用户切换/回到
     frame: false,
     titleBarStyle: 'hidden',
     title: '二支录制',
@@ -200,7 +200,7 @@ function showAiWindow() {
     minWidth: 400,
     minHeight: 400,
     show: false,
-    skipTaskbar: true, // 与主窗口一致，不进任务栏
+    skipTaskbar: false, // 从菜单打开的 AI 助手窗口需在任务栏有图标，便于切换
     frame: false,
     titleBarStyle: 'hidden',
     title: 'AI 助手',
@@ -239,7 +239,7 @@ function showSettingsWindow() {
     minWidth: 380,
     minHeight: 420,
     show: false,
-    skipTaskbar: true, // 与主窗口一致，不进任务栏
+    skipTaskbar: false, // 从菜单打开的设置窗口需在任务栏有图标，便于切换
     frame: false,
     titleBarStyle: 'hidden',
     title: '设置',

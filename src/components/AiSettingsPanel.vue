@@ -8,6 +8,7 @@ const claudeIntegrated = ref(false)
 const bridgeStatus = ref<AgentBridgeStatus | null>(null)
 const loading = ref(true)
 const autoAllow = ref(false)
+const islandFlat = ref(false)
 let statusInterval: ReturnType<typeof setInterval> | null = null
 
 async function loadAiStatus() {
@@ -44,6 +45,16 @@ async function toggleAutoAllow() {
   }
 }
 
+async function toggleIslandFlat() {
+  islandFlat.value = !islandFlat.value
+  try {
+    await window.electronAPI.setAiIslandSettings({ flat: islandFlat.value })
+  } catch (e) {
+    console.error('[AiSettingsPanel] setAiIslandSettings error:', e)
+    islandFlat.value = !islandFlat.value
+  }
+}
+
 // 实时状态更新
 function onAgentStateUpdate(data: { state: string; sessions: any[] }) {
   if (bridgeStatus.value) {
@@ -77,6 +88,11 @@ onMounted(async () => {
   // 读取自动允许设置
   try {
     autoAllow.value = await window.electronAPI.agentGetAutoAllow()
+  } catch {}
+  // 读取 AI 岛外观设置（横条态）
+  try {
+    const s = await window.electronAPI.getAiIslandSettings()
+    islandFlat.value = s.flat === true
   } catch {}
   // 保留轮询作为兜底，但主要依赖实时更新
   statusInterval = setInterval(loadAiStatus, 5000)
@@ -142,6 +158,21 @@ onUnmounted(() => {
               <div class="row-desc">开启后 Claude Code 的权限请求将自动通过，不再弹出悬浮岛审批</div>
             </div>
             <button class="toggle-btn" :class="{ on: autoAllow }" @click="toggleAutoAllow">
+              <span class="toggle-knob"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <div class="group-header">悬浮岛外观</div>
+        <div class="settings-section">
+          <div class="setting-row">
+            <div class="row-text">
+              <div class="row-label">横条态（更扁的细横条）</div>
+              <div class="row-desc">把悬浮岛默认状态条压成更扁的细横条，省屏幕空间</div>
+            </div>
+            <button class="toggle-btn" :class="{ on: islandFlat }" @click="toggleIslandFlat">
               <span class="toggle-knob"></span>
             </button>
           </div>

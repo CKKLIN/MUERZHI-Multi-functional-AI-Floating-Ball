@@ -4,6 +4,8 @@
 
 import { BrowserWindow, screen, ipcMain, app } from 'electron'
 import * as path from 'path'
+import nodeFs from 'node:fs'
+import { join } from 'node:path'
 import log from './logger'
 
 let aiIsland: BrowserWindow | null = null
@@ -12,6 +14,60 @@ let aiDragOrigin: { winX: number; winY: number; scrX: number; scrY: number } | n
 let aiIslandUserMoved = false
 /** 透明空白区鼠标穿透状态：true 时 setIgnoreMouseEvents，让窗口右侧多余透明区不拦截下方点击 */
 let aiIslandMouseIgnored = false
+
+// === AI 岛设置（横条态等；主进程文件为真相源，渲染层经 IPC get/set） ===
+const AI_ISLAND_SETTINGS_FILE = 'ai-island-settings.json'
+
+export interface AiIslandSettings {
+  /** 横条态：把默认状态条压成更扁的细横条（更不占屏幕） */
+  flat: boolean
+}
+
+const DEFAULT_AI_ISLAND_SETTINGS: AiIslandSettings = { flat: false }
+let cachedAiIslandSettings: AiIslandSettings | null = null
+
+function aiIslandSettingsFilePath(): string {
+  const dir = app.isPackaged ? app.getPath('userData') : join(__dirname, '..', '..')
+  return join(dir, AI_ISLAND_SETTINGS_FILE)
+}
+
+function loadAiIslandSettings(): AiIslandSettings {
+  try {
+    const data = nodeFs.readFileSync(aiIslandSettingsFilePath(), 'utf-8')
+    const parsed = JSON.parse(data)
+    return {
+      flat: typeof parsed.flat === 'boolean' ? parsed.flat : DEFAULT_AI_ISLAND_SETTINGS.flat,
+    }
+  } catch {}
+  return { ...DEFAULT_AI_ISLAND_SETTINGS }
+}
+
+function saveAiIslandSettings(settings: AiIslandSettings) {
+  try { nodeFs.writeFileSync(aiIslandSettingsFilePath(), JSON.stringify(settings), 'utf-8') } catch {}
+}
+
+/** 把设置作用到活动岛（运行时切换横条态；显隐由 IPC 显式控制，不在此改） */
+function applyAiIslandSettings(s: AiIslandSettings) {
+  if (aiIsland && !aiIsland.isDestroyed()) {
+    aiIsland.webContents.send('ai-island-set-flat', s.flat)
+  }
+}
+
+export function getAiIslandSettings(): AiIslandSettings {
+  if (cachedAiIslandSettings) return cachedAiIslandSettings
+  cachedAiIslandSettings = loadAiIslandSettings()
+  return cachedAiIslandSettings
+}
+
+/** 主进程内部唯一变更入口：合并→save→刷新缓存→作用到活动岛→返回新值 */
+export function updateAiIslandSettings(patch: Partial<AiIslandSettings>): AiIslandSettings {
+  const next = { ...getAiIslandSettings(), ...patch }
+  saveAiIslandSettings(next)
+  cachedAiIslandSettings = next
+  applyAiIslandSettings(next)
+  return next
+}
+
 
 /** 定位提问卡纯逻辑文件（question-card-utils.js）：dev 下随 vite 复制进 dist-electron/main/，打包后走 extraResources。
  *  岛窗口用 data: URL 加载内联 HTML，内联 <script> 须在运行时 require() 这个文件（同 clawd-hook.js 的发布链路）。 */
@@ -22,6 +78,7 @@ function questionCardUtilsPath(): string {
 }
 
 function buildAiIslandHtml(): string {
+  const flat = getAiIslandSettings().flat
   return `<!DOCTYPE html>
 <html><head><style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -32,11 +89,12 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
   border-radius:22px;
   display:flex;flex-direction:column;
   border:1px solid rgba(255,255,255,0.1);
-  transition:opacity 0.3s,transform 0.3s;
+  /* 横条态切换过渡：圆角/背景随 body.flat 平滑变化 */
+  transition:opacity 0.3s,transform 0.3s,border-radius 0.3s,background 0.3s;
   overflow:hidden;
 }
 .island.hidden{opacity:0;transform:translateY(-8px) scaleY(0.5);pointer-events:none}
-.island-row{display:flex;align-items:center;gap:8px;height:40px;padding:0 14px;justify-content:center;cursor:grab;-webkit-user-select:none;user-select:none;touch-action:none}
+.island-row{display:flex;align-items:center;gap:8px;height:40px;padding:0 14px;justify-content:center;cursor:grab;-webkit-user-select:none;user-select:none;touch-action:none;transition:height 0.3s ease}
 /* AI 状态指示器 */
 .ai-indicator{display:flex;align-items:center;gap:7px;flex-shrink:0;padding:0 4px;cursor:pointer;border-radius:6px;transition:background 0.15s}
 .ai-indicator:hover{background:rgba(255,255,255,0.08)}
@@ -103,7 +161,21 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
 /* 上一题在首题时禁用（无题可回） */
 .question-btn:disabled{opacity:0.35;cursor:default}
 .question-btn:disabled:hover{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.8);border-color:rgba(255,255,255,0.1)}
-</style></head><body>
+/* 横条态：贴边的极简细胶囊条——更细、更素（半透明实色 + 细描边 + 柔影，无渐变/内高光）；
+   仅在 body.flat 时生效，权限/提问卡出现时底部卡片保持原有展示 */
+body.flat .island{
+  min-width:200px;
+  justify-content:center;
+  background:#14141e; /* 不透明，无阴影 */
+  border:1px solid rgba(255,255,255,0.08);
+  border-top:none; /* 顶边贴齐屏幕边缘，看起来从屏幕边沿伸出 */
+  border-radius:0 0 8px 8px; /* 上方两角直角贴边，只圆下方两角——挂边标签样式 */
+}
+body.flat .island-row{height:12px;padding:0 16px;gap:5px}
+body.flat .ai-dot{width:5px;height:5px}
+body.flat .ai-label{font-size:8.5px;letter-spacing:0.5px;color:rgba(255,255,255,0.55)}
+body.flat .ai-label.active{color:#fff}
+</style></head><body${flat ? ' class="flat"' : ''}>
 <div class="island" id="island">
   <div class="island-row" id="islandRow">
     <div class="ai-indicator" id="aiIndicator" onclick="showAiDetail()" title="点击查看详情">
@@ -154,7 +226,9 @@ const {ipcRenderer}=require('electron')
 function resizeIsland(){
   const island=document.getElementById('island')
   const w=island.scrollWidth
-  const h=island.scrollHeight
+  // 用 offsetHeight 而非 scrollHeight：scrollHeight 不含边框，会把 .island 的 1px 上下边框
+  // 算漏，导致窗口高度比胶囊实际渲染高度矮 2px、底部边框在窗口底缘被硬裁（贴边细条上尤其明显）
+  const h=island.offsetHeight
   ipcRenderer.send('resize-ai-island',w,h)
 }
 // 卡片宽度自适应：按当前展示卡的内容理想宽度钳制到 [300,420]，并把岛宽设为该值，
@@ -367,6 +441,16 @@ function doAlwaysAllow(){resolvePerm('always')}
 function resolvePerm(b){ipcRenderer.invoke('agent-resolve-permission',b);document.getElementById('permCard').classList.remove('show');setTimeout(resizeIsland,50)}
 function dismissQuestion(){ipcRenderer.invoke('agent-dismiss-question');document.getElementById('questionCard').classList.remove('show');setTimeout(resizeIsland,50)}
 function showAiDetail(){ipcRenderer.invoke('show-ai-window')}
+// === 横条态：切换 body.flat 触发 CSS 过渡（行高 40↔12 + 圆角/背景），窗口尺寸由
+//     ResizeObserver 在过渡的每一帧跟随（resize-ai-island），实现平滑过渡而非硬跳 ===
+function setFlat(flat){
+  document.body.classList.toggle('flat', !!flat)
+  fitIslandWidth()
+  // 这里不做即时 resize：尺寸变化会逐帧经 RO 发送，避免与过渡抢跑造成上下抖动；
+  // 只在过渡结束后兜底一次，确保窗口与最终尺寸精确一致
+  setTimeout(resizeIsland, 320)
+}
+ipcRenderer.on('ai-island-set-flat',(_e,flat)=>setFlat(flat))
 // === AI 岛拖动（整条状态条含 padding，4px 阈值区分点击 vs 拖动） ===
 // 复用悬浮球的 pointer 拖动模式：pointerdown 记录起点，超过 4px 才算拖动，
 // 这样 .ai-indicator 的"点击查看详情"不受影响（真拖动不触发 click）
@@ -401,7 +485,13 @@ function updateMouseMode(e){
   ipcRenderer.send('set-ai-island-mouse-mode', onIsland)
 }
 document.addEventListener('mousemove', updateMouseMode)
-ipcRenderer.send('set-ai-island-mouse-mode', true) // 初始视为内容区可交互
+// 兜底：按下时按命中目标重新断言鼠标模式——即使某次 move 被吞，点落 .island 内容上也
+// 立即恢复可交互；落在穿透区则维持穿透，绝不拦截下方应用点击
+document.addEventListener('pointerdown', updateMouseMode)
+// 默认点击穿透（忽略鼠标）：无边框透明窗口的不可见缩放热区 / +20px 透明缓冲若不穿透会
+// 拦截下方应用点击（横条态贴边细条时尤甚）。仅当指针悬停在 .island 可见内容上时，由
+// 上面的 mousemove/pointerdown 检测切换回可交互（点击横条打开 AI 窗口仍然有效）。
+ipcRenderer.send('set-ai-island-mouse-mode', false)
 resizeIsland()
 initStatus()
 </script>
@@ -422,7 +512,10 @@ export function showAiIsland() {
     x, y, width: w, height: h,
     frame: false,
     transparent: true,
-    resizable: true,
+    // 必须非可缩放：Windows 上「透明 + resizable」窗口会在外边沿外扩一圈不可见的缩放命中区，
+    // 且 setIgnoreMouseEvents(点击穿透) 在该组合下不可靠——都会让横条下方被透明窗挡住点不到。
+    // 岛尺寸由 resize-ai-island 自动定，无需用户手动缩放，故禁掉。
+    resizable: false,
     movable: false,
     alwaysOnTop: true,
     skipTaskbar: true,
@@ -433,7 +526,8 @@ export function showAiIsland() {
     },
   })
   aiIsland.setVisibleOnAllWorkspaces(true)
-  aiIsland.setMinimumSize(100, 44)
+  // 最小高放低到 12，兼容横条态（贴边细横条 ~16px）；普通态空闲横条 ~40px / 卡片更高，均不会被最小高卡住
+  aiIsland.setMinimumSize(100, 12)
   aiIsland.setAlwaysOnTop(true, 'screen-saver')
   aiIsland.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildAiIslandHtml())}`)
   log.info('AI island shown')
@@ -452,6 +546,13 @@ export function isAiIslandVisible(): boolean {
 }
 
 export function registerAiIslandHandlers() {
+  // === AI 岛设置（渲染层 get/set，主进程文件为真相源） ===
+  ipcMain.handle('get-ai-island-settings', () => getAiIslandSettings())
+
+  ipcMain.handle('set-ai-island-settings', (_event, patch: Partial<AiIslandSettings>) => {
+    return updateAiIslandSettings(patch)
+  })
+
   ipcMain.on('resize-ai-island', (_event: any, contentWidth: number, contentHeight?: number) => {
     if (!aiIsland || aiIsland.isDestroyed()) return
     // 防御：渲染层在窗口被销毁/隐藏瞬间的 ResizeObserver 或迟到的 setTimeout 回调可能
@@ -461,13 +562,22 @@ export function registerAiIslandHandlers() {
     const h = Number.isFinite(contentHeight) ? contentHeight : 44
     // 兜底：传播后的 totalW/h 若异常（理论上不会，但防御不到位仍会抛 conversion failure），直接丢弃
     if (!Number.isFinite(totalW) || !Number.isFinite(h)) return
-    if (aiIslandUserMoved) {
-      // 用户拖过：保留当前位置，只按内容调整宽高，避免被拉回居中/顶部
+    if (getAiIslandSettings().flat) {
+      // 横条态先于用户拖动判定：「贴边」紧贴屏幕顶缘（无间隙）并水平居中——边缘坞样式。
+      // 忽略用户拖离位置，这样切到横条态时总会稳稳吸在屏幕边缘；用当前所在显示器而非固定
+      // 主屏，避免多屏下被拉回主屏。窗口宽度 = 横条宽度（不加 +20 缓冲），窗口与横条完全同大，
+      // 下方即应用可点击区域，无透明窗遮挡。
+      const b = screen.getDisplayMatching(aiIsland.getBounds()).bounds
+      const newX = Math.round(b.x + (b.width - contentWidth) / 2)
+      if (!Number.isFinite(newX)) return
+      aiIsland.setBounds({ x: newX, y: b.y, width: contentWidth, height: h })
+    } else if (aiIslandUserMoved) {
+      // 用户拖过（非横条态）：保留当前位置，只按内容调整宽高，避免被拉回居中/顶部
       const [x, y] = aiIsland.getPosition()
       if (!Number.isFinite(x) || !Number.isFinite(y)) return
       aiIsland.setBounds({ x, y, width: totalW, height: h })
     } else {
-      // 未拖过：水平居中 + 顶部（初始定位行为）
+      // 未拖过：水平居中 + 顶部（初始定位行为），留 4px 间隙
       const bounds = screen.getPrimaryDisplay().bounds
       const newX = Math.round(bounds.x + (bounds.width - totalW) / 2)
       const newY = bounds.y + 4

@@ -119,6 +119,8 @@ const electronAPI = {
   hideFloatingIsland: () => ipcRenderer.invoke('hide-floating-island'),
   showAiIsland: () => ipcRenderer.invoke('show-ai-island'),
   hideAiIsland: () => ipcRenderer.invoke('hide-ai-island'),
+  getAiIslandSettings: () => ipcRenderer.invoke('get-ai-island-settings'),
+  setAiIslandSettings: (patch: Record<string, unknown>) => ipcRenderer.invoke('set-ai-island-settings', patch),
   hideCameraPreview: () => ipcRenderer.invoke('hide-camera-preview'),
   toggleCameraPreview: (show: boolean, cameraDeviceId?: string) =>
     ipcRenderer.invoke('toggle-camera-preview', show, cameraDeviceId),
