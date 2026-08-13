@@ -392,11 +392,18 @@ export function createAgentServer(stateMachine: ReturnType<typeof createAgentSta
     log.info(`[AgentServer] AskUserQuestion (answerable) queued: session=${sessionId}, queue=${cardQueue.length}`)
   }
 
-  // AskUserQuestion 的只读通道（PreToolUse → /question）：本 Claude 版本下同一提问总是先走 /permission
-  // 生成「可作答卡」，/question 只是克隆的只读通知，且会抢在用户作答前排队形成"答完还冒出来"的幽灵卡。
-  // 直接去掉只读卡——no-op，仅回 200 让 hook 正常结束，不再建卡、不再设通知、不再改动状态机。
+  // AskUserQuestion 的只读通道（PreToolUse → /question）：
+  // 本 Claude 版本下同一提问总是先走 /permission 生成「可作答卡」，这里**不 push 卡片**——
+  // 避免只读卡抢在用户作答前排队、答完后还冒出来的幽灵卡。
+  // 但保留一条「仅通知」回退：若某场景只走 PreToolUse 而没有 /permission 连接可注入答案，
+  // 至少设 notification 状态（脉冲 + hasActivity 拉起悬浮岛）提示有新提问，不让它完全静默。
+  // 不建卡 → 不会产生幽灵卡；状态由后续完成事件清除。
   function handleQuestion(data: any, res: http.ServerResponse) {
-    log.info(`[AgentServer] /question ignored (read-only card removed): session=${data.session_id || data.sessionId || "unknown"}`)
+    const sessionId = data.session_id || data.sessionId || "unknown"
+    const toolName = data.tool_name || data.toolName || "AskUserQuestion"
+    const toolInput = data.tool_input || data.toolInput || {}
+    stateMachine.updateSession(sessionId, "notification", "AskUserQuestion", { toolName, toolInput })
+    log.info(`[AgentServer] /question notified (read-only card removed): session=${sessionId}`)
     sendJson(res, 200, { ok: true, app: "erzhi-recording" })
   }
 

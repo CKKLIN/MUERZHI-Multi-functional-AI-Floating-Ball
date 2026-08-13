@@ -59,9 +59,13 @@ export function getAiIslandSettings(): AiIslandSettings {
   return cachedAiIslandSettings
 }
 
-/** 主进程内部唯一变更入口：合并→save→刷新缓存→作用到活动岛→返回新值 */
+/** 主进程内部唯一变更入口：白名单+类型校验→合并→save→刷新缓存→作用到活动岛→返回新值。
+ *  写入端与 loadAiIslandSettings 读取端做对称校验：非布尔 flat / 多余 key 一律丢弃，
+ *  避免把非法类型持久化进 JSON（否则重启后读取校验失败会静默回退默认值）。 */
 export function updateAiIslandSettings(patch: Partial<AiIslandSettings>): AiIslandSettings {
-  const next = { ...getAiIslandSettings(), ...patch }
+  const next = { ...getAiIslandSettings() }
+  if (typeof patch.flat === 'boolean') next.flat = patch.flat
+  // 将来新增字段在此对称扩展（白名单式，过滤多余 key）
   saveAiIslandSettings(next)
   cachedAiIslandSettings = next
   applyAiIslandSettings(next)
@@ -485,8 +489,9 @@ function updateMouseMode(e){
   ipcRenderer.send('set-ai-island-mouse-mode', onIsland)
 }
 document.addEventListener('mousemove', updateMouseMode)
-// 兜底：按下时按命中目标重新断言鼠标模式——即使某次 move 被吞，点落 .island 内容上也
-// 立即恢复可交互；落在穿透区则维持穿透，绝不拦截下方应用点击
+// 穿透态（ignore=true）下 Windows 的 setIgnoreMouseEvents(ignore,{forward:true}) 只转发 mousemove，
+// click/pointerdown 收不到——所以穿透态恢复可交互只能靠悬停产生的 mousemove，pointerdown 兜底
+// 仅在「已可交互」时兜住被吞的 move，无法跨越穿透态直接恢复（见 set-ai-island-mouse-mode 的 forward 说明）。
 document.addEventListener('pointerdown', updateMouseMode)
 // 默认点击穿透（忽略鼠标）：无边框透明窗口的不可见缩放热区 / +20px 透明缓冲若不穿透会
 // 拦截下方应用点击（横条态贴边细条时尤甚）。仅当指针悬停在 .island 可见内容上时，由
@@ -608,7 +613,9 @@ export function registerAiIslandHandlers() {
 
   ipcMain.on('ai-island-drag-end', () => {
     aiDragOrigin = null
-    aiIslandUserMoved = true
+    // 横条态贴边定位固定不动、拖动无效，若仍置"已移动"标记，切回普通态后会按一个其实没移过的
+    // 位置锁定——只有非横条态（普通态）才记录用户拖动状态
+    if (!getAiIslandSettings().flat) aiIslandUserMoved = true
   })
 
   // 透明空白区鼠标穿透：鼠标不在内容上时忽略鼠标事件，让窗口右侧多余透明区不拦截下方点击

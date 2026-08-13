@@ -9,6 +9,8 @@ const bridgeStatus = ref<AgentBridgeStatus | null>(null)
 const loading = ref(true)
 const autoAllow = ref(false)
 const islandFlat = ref(false)
+// 初始岛flat值是否已从主进程读回：读回前禁用 toggle，避免 onMounted 迟到的 get 覆盖乐观 set 的竞态
+const islandFlatLoaded = ref(false)
 let statusInterval: ReturnType<typeof setInterval> | null = null
 
 async function loadAiStatus() {
@@ -46,6 +48,7 @@ async function toggleAutoAllow() {
 }
 
 async function toggleIslandFlat() {
+  if (!islandFlatLoaded.value) return // 初始值尚未读回，先不响应，避免与初始 get 竞态
   islandFlat.value = !islandFlat.value
   try {
     await window.electronAPI.setAiIslandSettings({ flat: islandFlat.value })
@@ -94,6 +97,8 @@ onMounted(async () => {
     const s = await window.electronAPI.getAiIslandSettings()
     islandFlat.value = s.flat === true
   } catch {}
+  // 初始值已读回，之后允许 toggle
+  islandFlatLoaded.value = true
   // 保留轮询作为兜底，但主要依赖实时更新
   statusInterval = setInterval(loadAiStatus, 5000)
 
