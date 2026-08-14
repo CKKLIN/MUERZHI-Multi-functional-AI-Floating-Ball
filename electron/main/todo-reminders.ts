@@ -16,6 +16,7 @@ export function computeDueReminders(items: TodoItem[], now: number): TodoItem[] 
   return items.filter(it =>
     !!it.reminder &&
     !it.reminderFired &&
+    !(it.type === 'todo' && it.done) && // 已完成的待办不再提醒（与气泡"完成即下线"口径一致）
     it.reminder <= nowIso // 字典序等价时间序（ISO 8601 UTC）
   )
 }

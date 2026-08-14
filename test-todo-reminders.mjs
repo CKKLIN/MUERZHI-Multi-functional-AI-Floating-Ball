@@ -10,19 +10,29 @@ function eq(actual, expected, msg) {
 function ok(cond, msg) { if (!cond) { fails++; console.error(`✗ ${msg}`) } else { console.log(`✓ ${msg}`) } }
 
 const NOW = Date.parse('2026-08-14T12:00:00Z')
-function item(id, reminder, reminderFired = false) {
-  return { id, type: 'todo', title: id, content: '', priority: 'low',
-           reminder, reminderFired, done: false, createdAt: 1, updatedAt: 1 }
+function item(id, reminder, opts = {}) {
+  // 兼容旧调用：item(id, reminder, true) == { fired: true }
+  const o = typeof opts === 'boolean' ? { fired: opts } : opts
+  return { id, type: o.type ?? 'todo', title: id, content: '', priority: 'low',
+           reminder, reminderFired: o.fired ?? false, done: o.done ?? false, createdAt: 1, updatedAt: 1 }
 }
 
 // 基础：到期未触发 → 返回
 {
   const due = item('due', '2026-08-14T11:00:00.000Z')          // 已过
   const future = item('future', '2026-08-14T13:00:00.000Z')    // 未来
-  const fired = item('fired', '2026-08-14T11:00:00.000Z', true) // 已触发过
+  const fired = item('fired', '2026-08-14T11:00:00.000Z', { fired: true }) // 已触发过
   const none = item('none', null)                               // 无提醒
   const res = computeDueReminders([none, future, fired, due], NOW)
   eq(res, ['due'], '只返回到期且未触发的项')
+}
+
+// 已完成的待办不再提醒（即便已到期未触发）
+{
+  const done = item('done', '2026-08-14T11:00:00.000Z', { done: true })
+  const open = item('open', '2026-08-14T11:00:00.000Z')
+  const res = computeDueReminders([done, open], NOW)
+  eq(res, ['open'], '已完成的待办不参与提醒')
 }
 
 // 刚好等于 now 极性边界：<= now 视为到期
