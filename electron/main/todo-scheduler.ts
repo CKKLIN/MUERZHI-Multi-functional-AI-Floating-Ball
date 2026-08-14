@@ -9,6 +9,7 @@ import { Notification } from 'electron'
 import { loadItems, markReminderFired } from './todo-store'
 import { computeDueReminders } from './todo-reminders'
 import { setTodoBadgeFlash } from './todo-badge'
+import { isTodoWindowVisible } from './todo-window'
 import { stripHtml } from './todo-text'
 import log from './logger'
 
@@ -32,8 +33,11 @@ function checkReminders(): void {
     }
     markReminderFired(it.id)
   }
-  // 有到期未确认 → 悬浮球气泡进入闪烁；用户打开待办窗口后由 todo-window 熄灭
-  setTodoBadgeFlash(true)
+  // 有到期未确认 → 悬浮球气泡进入闪烁。若待办窗口此刻正开着，用户就在看，无需闪烁
+  // （直观通知已弹），避免下次打开才熄灭。
+  if (!isTodoWindowVisible()) {
+    setTodoBadgeFlash(true)
+  }
 }
 
 export function startTodoScheduler(): void {

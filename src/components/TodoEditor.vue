@@ -2,7 +2,7 @@
 // TodoEditor.vue —— 待办/备忘录 的富文本编辑面板
 // 标题为普通文本输入；正文用 Quill 富文本（图文：图片经 FileReader 转 dataURL 存进 HTML）。
 // 字段：类型 / 优先级 / 完成 / 提醒时间。保存/取消通过回调交给 TodoApp 处理。
-import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { onMounted, onBeforeUnmount, ref } from 'vue'
 import Quill from 'quill'
 import 'quill/dist/quill.snow.css'
 import type { TodoDraft, TodoPriority, TodoType } from '../stores/todo'
@@ -79,6 +79,15 @@ onMounted(() => {
     }
     input.click()
   })
+})
+
+// 编辑器卸载（返回列表/取消）时销毁 Quill，移除其注册在 document 上的 selectionchange
+// 监听与内部 DOM 引用，避免重复进出编辑器时累积监听器、旧编辑器 DOM 常驻内存
+onBeforeUnmount(() => {
+  if (quill) {
+    try { quill.destroy() } catch { /* 已销毁 */ }
+    quill = null
+  }
 })
 
 function save() {
