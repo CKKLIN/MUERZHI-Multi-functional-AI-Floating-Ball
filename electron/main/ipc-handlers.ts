@@ -6,6 +6,13 @@ import { selectRegion, registerRegionSelectorHandlers } from './region-selector'
 import { registerFloatingBallHandlers } from './floating-ball'
 import { showBalloon } from './tray'
 import { showAiIsland, hideAiIsland, registerAiIslandHandlers } from './ai-island'
+import {
+  loadItems, createTodo, updateTodo, deleteTodo, toggleTodoDone,
+  loadTodoSettings, updateTodoSettings,
+} from './todo-store'
+import type { TodoItem, TodoInput } from './todo-store'
+import { refreshTodoBadge } from './todo-badge'
+import { showTodoWindow, closeTodoWindow, isTodoWindowVisible, toggleTodoWindowAlwaysOnTop } from './todo-window'
 import type { AgentBridge } from './agent-bridge'
 import log from './logger'
 
@@ -407,4 +414,51 @@ export function registerIpcHandlers(agentBridge?: AgentBridge) {
     ipcMain.handle('agent-set-auto-allow', (_event, enabled: boolean) => agentBridge?.setAutoAllow(enabled))
     ipcMain.handle('agent-get-auto-allow', () => agentBridge?.getAutoAllow() ?? false)
   }
+
+  // === 待办便签 IPC ===
+  // 数据走 todo-store（主进程 JSON 为真相源），变更后 refreshTodoBadge 同步悬浮球气泡。
+  registerTodoIpcHandlers()
+}
+
+// 待办便签相关的 IPC 通道单独抽成函数，便于 index.ts 在注册主 IPC 后显式调用（与上方
+// registerRegionSelectorHandlers / registerFloatingBallHandlers 遥相呼应）。数据真相源都在
+// 主进程 todo-store，渲染层 store 只做镜像与乐观更新。
+export function registerTodoIpcHandlers(): void {
+  ipcMain.handle('todo-get', () => loadItems())
+
+  ipcMain.handle('todo-create', (_event, input: TodoInput) => {
+    const items = createTodo(input)
+    refreshTodoBadge()
+    return items
+  })
+
+  ipcMain.handle('todo-update', (_event, id: string, patch: Partial<Omit<TodoItem, 'id' | 'createdAt'>>) => {
+    const items = updateTodo(id, patch)
+    refreshTodoBadge()
+    return items
+  })
+
+  ipcMain.handle('todo-delete', (_event, id: string) => {
+    const items = deleteTodo(id)
+    refreshTodoBadge()
+    return items
+  })
+
+  ipcMain.handle('todo-toggle-done', (_event, id: string) => {
+    const items = toggleTodoDone(id)
+    refreshTodoBadge()
+    return items
+  })
+
+  ipcMain.handle('todo-show-window', () => { showTodoWindow() })
+  ipcMain.handle('todo-close-window', () => { closeTodoWindow() })
+  ipcMain.handle('todo-window-visible', () => isTodoWindowVisible())
+  ipcMain.handle('todo-toggle-always-on-top', () => toggleTodoWindowAlwaysOnTop())
+
+  ipcMain.handle('todo-get-settings', () => loadTodoSettings())
+  ipcMain.handle('todo-set-settings', (_event, patch: Record<string, unknown>) => {
+    const s = updateTodoSettings(patch as any)
+    refreshTodoBadge()
+    return s
+  })
 }

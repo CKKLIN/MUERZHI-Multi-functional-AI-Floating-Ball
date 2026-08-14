@@ -16,6 +16,27 @@ export interface AiIslandSettings {
   flat: boolean
 }
 
+export type TodoType = 'todo' | 'memo'
+export type TodoPriority = 'low' | 'medium' | 'high' | 'urgent'
+
+export interface TodoItem {
+  id: string
+  type: TodoType
+  title: string
+  content: string
+  priority: TodoPriority
+  reminder: string | null
+  reminderFired: boolean
+  done: boolean
+  createdAt: number
+  updatedAt: number
+}
+
+export interface TodoSettings {
+  badgeVisible: boolean
+  windowAlwaysOnTop: boolean
+}
+
 export interface ConversionProgress {
   percent: number
   targetSize: number
@@ -148,6 +169,19 @@ export interface ElectronAPI {
   hideAiIsland: () => Promise<void>
   getAiIslandSettings: () => Promise<AiIslandSettings>
   setAiIslandSettings: (patch: Partial<AiIslandSettings>) => Promise<AiIslandSettings>
+
+  // Todo / 待办便签
+  todoGet: () => Promise<TodoItem[]>
+  todoCreate: (input: Partial<TodoItem> & Pick<TodoItem, 'type'>) => Promise<TodoItem[]>
+  todoUpdate: (id: string, patch: Partial<Omit<TodoItem, 'id' | 'createdAt'>>) => Promise<TodoItem[]>
+  todoDelete: (id: string) => Promise<TodoItem[]>
+  todoToggleDone: (id: string) => Promise<TodoItem[]>
+  showTodoWindow: () => Promise<void>
+  closeTodoWindow: () => Promise<void>
+  todoWindowVisible: () => Promise<boolean>
+  todoToggleAlwaysOnTop: () => Promise<boolean>
+  todoGetSettings: () => Promise<TodoSettings>
+  todoSetSettings: (patch: Partial<TodoSettings>) => Promise<TodoSettings>
 }
 
 export interface AgentStatePayload {

@@ -110,6 +110,16 @@ export function setFloatingBallAlwaysOnTop(value: boolean) {
   }
 }
 
+// === 待办数量气泡 ===
+/** 向悬浮球右上角推送待办气泡（count 数量 / flash 到期闪烁 / visible 显隐开关）。
+ *  窗口不存在或已销毁时静默。由 todo-badge.ts 在数据变更后调用。 */
+export function applyFloatingBallBadge(count: number, flash: boolean, visible: boolean) {
+  if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
+  floatingBallWindow.webContents.executeJavaScript(
+    `if(window.updateBadge) updateBadge(${Number(count) || 0}, ${!!flash}, ${!!visible})`
+  ).catch(() => {})
+}
+
 /** 把设置作用到活动悬浮球（visible 切换显隐，alwaysOnTop 切层级） */
 function applyFloatingBallSettings(s: FloatingBallSettings) {
   if (s.visible) {
@@ -183,15 +193,17 @@ export function showFloatingBall() {
     if (floatingBallWindow === self) floatingBallWindow = null
   })
 
-  // 原生拖拽时持续保存位置。
-  // 只在 66px 球状态记录 ballPos：展开态(240px)的 move 是程序 resize 触发的，若记录会把
-  // ballPos 算成 240 窗口左上角，污染锚点，导致展开/收起时悬浮球越偏越远。
+  // 移动/拖拽时持续记录位置。
+  // 用窗口中心反推 66px 球左上角：展开(240)/收起(66)都围绕同一球心，中心在 resize 与拖拽下都不变，
+  // 因此展开态拖拽也不会污染 ballPos，收起后不会跳回旧位置。
   floatingBallWindow.on('move', () => {
     if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
-    const [w] = floatingBallWindow.getSize()
-    if (w !== BALL_SIZE) return
-    const [bx, by] = floatingBallWindow.getPosition()
-    ballPos = { x: bx, y: by }
+    const [wx, wy] = floatingBallWindow.getPosition()
+    const [ww, wh] = floatingBallWindow.getSize()
+    ballPos = {
+      x: Math.round(wx + ww / 2 - BALL_SIZE / 2),
+      y: Math.round(wy + wh / 2 - BALL_SIZE / 2),
+    }
   })
 
   floatingBallWindow.on('close', () => {
@@ -209,8 +221,13 @@ export function showFloatingBall() {
 
 export function hideFloatingBall() {
   if (floatingBallWindow && !floatingBallWindow.isDestroyed()) {
-    const [bx, by] = floatingBallWindow.getPosition()
-    ballPos = { x: bx, y: by }
+    // 同样由窗口中心反推 66px 球左上角：即便展开态(240)下隐藏也不会存错角落
+    const [wx, wy] = floatingBallWindow.getPosition()
+    const [ww, wh] = floatingBallWindow.getSize()
+    ballPos = {
+      x: Math.round(wx + ww / 2 - BALL_SIZE / 2),
+      y: Math.round(wy + wh / 2 - BALL_SIZE / 2),
+    }
     saveBallPosition(ballPos!)
     // 用 destroy() 同步销毁并立即置 null，避免 close() 异步触发 'closed' 事件时
     // floatingBallWindow 已被 showFloatingBall 重新赋值为新窗口，导致新窗口引用被清成 null
@@ -224,34 +241,49 @@ export function hideFloatingBall() {
 // === 展开/收起 ===
 /** 主进程侧跟踪展开态，供失焦等场景判断是否需要收起 */
 let isBallExpanded = false
+/** 待定的收起收尾定时器：快速连点时，新的 expand 应取消它，避免中途缩窗/清 DOM 造成抖动 */
+let collapseTimer: NodeJS.Timeout | null = null
 
 async function expandBall() {
   if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
+  // 取消未完成的收起收尾（快速连点场景：展开要覆盖尚在合拢的动画，避免中途缩窗/清 DOM 抖动）
+  if (collapseTimer) {
+    clearTimeout(collapseTimer)
+    collapseTimer = null
+  }
   const [x, y] = floatingBallWindow.getPosition() // 兜底；ballPos 通常已由 66px 态的 move 维护
   const bx = ballPos ? ballPos.x : x
   const by = ballPos ? ballPos.y : y
   const cx = Math.round(bx + BALL_SIZE / 2)
   const cy = Math.round(by + BALL_SIZE / 2)
   log.info('[Ball] expand at', [x, y], 'center', [cx, cy])
+  // 只有当窗口当前不是 240（即真从收起态展开）才需要先隐藏+resize；
+  // 若已在 240（正在合拢动画中被再次点击）则只切 class 走纯 CSS 开花，避免连点时反复闪现
+  const [w] = floatingBallWindow.getSize()
+  const needResize = w !== RING_SIZE
   // 窗口不可见时完成 resize 和内容状态更新，避免 trigger 按钮在 240×240 窗口中
   // 因 #ball 尚未收到 expanded class（仍为 66×66）而偏移到左上角造成闪烁
-  floatingBallWindow.setOpacity(0)
-  floatingBallWindow.setBounds({
-    x: cx - RING_SIZE / 2,
-    y: cy - RING_SIZE / 2,
-    width: RING_SIZE,
-    height: RING_SIZE,
-  })
+  if (needResize) {
+    floatingBallWindow.setOpacity(0)
+    floatingBallWindow.setBounds({
+      x: cx - RING_SIZE / 2,
+      y: cy - RING_SIZE / 2,
+      width: RING_SIZE,
+      height: RING_SIZE,
+    })
+  }
   try {
     await floatingBallWindow.webContents.executeJavaScript(
-      `ensureMenu(); document.body.offsetHeight; document.body.classList.add('expanded'); isExpanded=true; void 0;`
+      `restartBloom(); void 0;`
     )
   } catch {}
   // 用 capturePage 强制 GPU 完成一帧完整的合成渲染后再恢复可见
   if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
-  try { await floatingBallWindow.capturePage() } catch {}
-  if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
-  floatingBallWindow.setOpacity(1)
+  if (needResize) {
+    try { await floatingBallWindow.capturePage() } catch {}
+    if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
+    floatingBallWindow.setOpacity(1)
+  }
   isBallExpanded = true
   floatingBallWindow.webContents.send('ball-state', 'expanded')
 }
@@ -268,31 +300,34 @@ async function collapseBall() {
   const bx = ballPos.x
   const by = ballPos.y
   log.info('[Ball] collapse at', [bx, by])
-  isBallExpanded = false
   // 收起要像"合拢"：保持窗口可见，先移除 expanded class 让花瓣按 CSS 动画收到 scale(0)，
-  // 播完(约 560ms)后再清空 DOM 并缩回窗口，避免花瓣瞬间消失。
-  // 指针事件会随 class 移除自动关闭，动画期间不会误点。窗口仍为 240×240，花瓣不会被裁剪。
+  // 动画收尾（清 DOM + 缩回 66px）经 collapseTimer 延迟执行，可被下一次 expand 取消——
+  // 快速连点时窗口保持在 240，只有每次切换的 CSS 开花/合拢在动，不闪烁不抖动。
+  // 指针事件会随 class 移除自动关闭，动画期间不会误点。
   try {
     await floatingBallWindow.webContents.executeJavaScript(
       `document.body.classList.remove('expanded'); isExpanded=false; void 0;`
     )
   } catch {}
   if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
-  await new Promise(resolve => setTimeout(resolve, 560)) // 留足 500ms 收拢动画时长
-  if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
-  if (isBallExpanded) return // 动画期间被重新展开，跳过清理以免误删刚重建的菜单
-  try {
-    await floatingBallWindow.webContents.executeJavaScript(
-      `var s=document.getElementById('ringSvg');while(s.firstChild){s.removeChild(s.firstChild)} menuCreated=false; void 0;`
-    )
-  } catch {}
-  if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
-  // resize 前后切透明，避免 DWM 边框闪现白色矩形
-  floatingBallWindow.setOpacity(0)
-  floatingBallWindow.setBounds({ x: bx, y: by, width: BALL_SIZE, height: BALL_SIZE })
-  // 不再做二次 setBounds 修正（那是快速切换下偏移累计的根源）。
-  // 66px 态的 move 事件会读到实际落点并刷新 ballPos，作为下次展开/收起的准确锚点。
-  floatingBallWindow.setOpacity(1)
+  if (collapseTimer) clearTimeout(collapseTimer)
+  collapseTimer = setTimeout(() => {
+    collapseTimer = null
+    if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
+    if (isBallExpanded) return // 动画期间被重新展开，跳过清理以免误删刚重建的菜单
+    try {
+      floatingBallWindow.webContents.executeJavaScript(
+        `var s=document.getElementById('ringSvg');while(s.firstChild){s.removeChild(s.firstChild)} menuCreated=false; void 0;`
+      )
+    } catch {}
+    if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
+    // resize 前后切透明，避免 DWM 边框闪现白色矩形
+    floatingBallWindow.setOpacity(0)
+    floatingBallWindow.setBounds({ x: bx, y: by, width: BALL_SIZE, height: BALL_SIZE })
+    // 不再做二次 setBounds 修正（那是快速切换下偏移累计的根源）。
+    // 66px 态的 move 事件会读到实际落点并刷新 ballPos，作为下次展开/收起的准确锚点。
+    floatingBallWindow.setOpacity(1)
+  }, 920) // 大于"动画时长(0.5s)+最大错落延迟(0.4s)"，确保最后一片也合拢完再清 DOM
 }
 
 // 转发操作到主窗口
@@ -302,6 +337,8 @@ function forwardAction(action: string) {
     process.emit('clawd-show-record-window' as any)
   } else if (action === 'ai') {
     process.emit('clawd-show-ai-window' as any)
+  } else if (action === 'todo') {
+    process.emit('clawd-show-todo-window' as any)
   } else if (action === 'settings') {
     process.emit('clawd-show-settings-window' as any)
   } else {
@@ -404,6 +441,14 @@ body.expanded .arc-item{
   fill:url(#cardGradHover);
 }
 
+/* 连点时的干净重置：仅在 no-anim 时禁用过渡，让花瓣瞬间回到闭合态以便下次完整重开。
+   用类而非改 inline transition，保住每片各自的 inline transition-delay（逐片开花的错落感） */
+body.no-anim .arc-item,
+body.no-anim .arc-shadow,
+body.no-anim .arc-label{
+  transition:none !important;
+}
+
 /* 每片花瓣的阴影：画在最上层（花瓣→阴影→文字），阴影沿圆周顺时针旋转并配合遮罩
    只露出"压在顺时针相邻花瓣上" 的一侧 ⇒ 每片仅一侧有影，一片压一片均匀堆叠 */
 .arc-shadow{
@@ -440,8 +485,8 @@ body.expanded .arc-label{
   opacity:1;
   transform:scale(1);
 }
-.arc-label .icon{font-size:18px;fill:#4a6cf7;font-weight:700;filter:drop-shadow(0 1px 0 rgba(255,255,255,0.55))}
-.arc-label .label{font-size:10px;font-weight:600;fill:#3a4156;stroke:rgba(255,255,255,0.75);stroke-width:2px;paint-order:stroke}
+.arc-label .icon{font-size:15px;fill:#4a6cf7;font-weight:700;filter:drop-shadow(0 1px 0 rgba(255,255,255,0.55))}
+.arc-label .label{font-size:9px;font-weight:600;fill:#3a4156;stroke:rgba(255,255,255,0.75);stroke-width:2px;paint-order:stroke}
 
 /* 中心按钮 */
 #trigger{
@@ -459,6 +504,32 @@ body.expanded .arc-label{
   pointer-events:none;
 }
 #trigger:active{transform:scale(0.95)}
+
+/* 恒 66px 的球心容器：trigger 与气泡都锚在这，展开（#ball 变 240）时仍贴球心不动 */
+.core{
+  position:relative;width:66px;height:66px;flex:0 0 auto;
+  display:flex;align-items:center;justify-content:center;
+  pointer-events:none; /* 只让真正的 trigger 接收点击 */
+}
+.core #trigger{pointer-events:auto}
+
+/* 待办数量气泡：悬浮球右上角红色数字胶囊；flash 时呼吸闪烁提醒到期 */
+#ballBadge{
+  position:absolute;top:0;right:0;z-index:20;
+  min-width:15px;height:15px;padding:0 3px;
+  border-radius:999px;
+  background:#4e5cd4;color:#fff;
+  font-size:9px;font-weight:700;line-height:15px;text-align:center;
+  display:none;align-items:center;justify-content:center;
+  box-shadow:0 1px 3px rgba(0,0,0,0.35);
+}
+#ballBadge.flash{animation:badgeFlash 1s ease-in-out infinite}
+@keyframes badgeFlash{
+  0%,100%{opacity:1;transform:scale(1)}
+  50%{opacity:0.35;transform:scale(0.8)}
+}
+body.expanded #ballBadge{display:none} /* 展开态让出花瓣，避免遮挡菜单 */
+
 </style>
 </head>
 <body>
@@ -466,9 +537,14 @@ body.expanded .arc-label{
   <svg class="ring-svg" id="ringSvg" viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
     <!-- 圆弧段用 JS 动态创建 -->
   </svg>
-  <button id="trigger">
-    <img id="logoImg" class="logo-img" src="${logo}" alt="logo" />
-  </button>
+  <div class="core">
+    <button id="trigger">
+      <img id="logoImg" class="logo-img" src="${logo}" alt="logo" />
+    </button>
+    <!-- 待办数量气泡：悬浮球右上角红色数字胶囊。放在恒 66px 的 .core 内（始终贴球心居中），
+         锚点是球而非随展开放大的容器 ⇒ 展开菜单时不偏移；top/right=0 落在窗口内，不会被裁切 -->
+    <span id="ballBadge"></span>
+  </div>
 </div>
 
 <script>
@@ -476,12 +552,26 @@ const {ipcRenderer} = require('electron')
 
 const ITEMS = [
   {label:'录屏',icon:'●',action:'record'},
+  {label:'音乐',icon:'♪',action:'music'},
   {label:'AI助手',icon:'✦',action:'ai'},
+  {label:'待办便签',icon:'☑',action:'todo'},
   {label:'设置',icon:'⚙',action:'settings'},
 ]
 
 let isExpanded = false
 let menuCreated = false
+
+// === 待办数量气泡 ===
+// 主进程通过 applyFloatingBallBadge 用 executeJavaScript 调用；页面加载完成时主动
+// 上报 'floating-ball-badge-ready'，让主进程立刻补推一次（保证每次重建 DOM 后计数正确）。
+function updateBadge(count, flash, visible){
+  var el = document.getElementById('ballBadge')
+  if(!el) return
+  el.textContent = count > 99 ? '99+' : String(count)
+  el.style.display = (visible && count > 0) ? 'flex' : 'none'
+  el.classList.toggle('flash', !!flash)
+}
+ipcRenderer.send('floating-ball-badge-ready')
 
 // 生成圆弧路径（四分之一圆环）
 function arcPath(cx, cy, r1, r2, sa, ea){
@@ -535,7 +625,7 @@ function ensureMenu(){
     path.setAttribute('class','arc-item')
     path.setAttribute('d',d)
     path.setAttribute('data-action',item.action)
-    path.style.transitionDelay = (i*0.15)+'s'
+    path.style.transitionDelay = (i*0.10)+'s'
     path.style.setProperty('--swing', ((i%2?-1:1) * (6 + i)) + 'deg') // 错落的角度摆动，模拟花瓣散开
     path.addEventListener('click',function(){
       ipcRenderer.send('floating-ball-action', this.getAttribute('data-action'))
@@ -570,7 +660,7 @@ function ensureMenu(){
     sh.setAttribute('class','arc-shadow')
     sh.setAttribute('d', arcPath(cx, cy, r1, r2, sa + SHADOW_ROT, ea + SHADOW_ROT)) // 整片顺时针转 4°
     sh.setAttribute('mask','url(#'+maskId+')')
-    sh.style.transitionDelay = (i*0.15)+'s'
+    sh.style.transitionDelay = (i*0.10)+'s'
     sh.style.setProperty('--swing', ((i%2?-1:1) * (6 + i)) + 'deg') // 与所属花瓣保持一致的开花摆动
     svg.appendChild(sh)
   })
@@ -587,7 +677,7 @@ function ensureMenu(){
     txt.setAttribute('class','arc-label')
     txt.setAttribute('x',lx)
     txt.setAttribute('y',ly)
-    txt.style.transitionDelay = (i*0.15+0.12)+'s'
+    txt.style.transitionDelay = (i*0.10+0.08)+'s'
     const iconSpan = document.createElementNS('http://www.w3.org/2000/svg','tspan')
     iconSpan.setAttribute('class','icon')
     iconSpan.setAttribute('x',lx)
@@ -602,6 +692,22 @@ function ensureMenu(){
     txt.appendChild(labelSpan)
     svg.appendChild(txt)
   })
+}
+
+// 干净地重新开花：先（no-anim 下瞬时）回到闭合态 scale(0)，再启用过渡并切到 expanded。
+// 快速连点时旧过渡会在中间态被打断，若不重置花瓣会"卡在中间"；每次都从闭合态完整重开。
+// 用 no-anim 类而非改 inline transition，因此每片各自的 transition-delay（逐片开花的错落感）不受影响。
+function restartBloom(){
+  var svg = document.getElementById('ringSvg')
+  document.body.classList.remove('expanded')
+  document.body.classList.add('no-anim')
+  ensureMenu() // 在闭合态下创建/补齐花瓣（若此前 DOM 已被清空），使其一律从 scale(0) 开始绽放；
+               // 若在 expanded 之后才创建，新花瓣会直接从 scale(1) 出现、看不到开花效果
+  void svg.getBoundingClientRect() // ① 重排：no-anim 下闭合态 scale(0) 立即生效
+  document.body.classList.remove('no-anim')
+  void svg.getBoundingClientRect() // ② 再重排：让浏览器"看到"已启用过渡、但仍处于闭合态——保证下一步一定触发过渡
+  document.body.classList.add('expanded')
+  isExpanded = true
 }
 
 // === 手动拖拽 ===
@@ -641,9 +747,8 @@ trigger.addEventListener('pointerup', function(e){
 
 ipcRenderer.on('ball-state',function(_event,state){
   if(state==='expanded'){
-    document.body.classList.add('expanded')
-    ensureMenu()
-    isExpanded=true
+    // expandBall 已通过 executeJavaScript 触发 restartBloom；这里仅兜底同步，避免重复重开导致二次闪烁
+    if(!document.body.classList.contains('expanded')) restartBloom()
   } else {
     document.body.classList.remove('expanded')
     var svg = document.getElementById('ringSvg')

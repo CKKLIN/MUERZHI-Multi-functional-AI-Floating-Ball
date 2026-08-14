@@ -12,6 +12,9 @@ import { hideAiIsland } from './ai-island'
 import { setRegistryLogger, killAllConversions } from './conversion-registry'
 import { setHwEncoderLogger } from './hw-encoder'
 import { registerLocalVideoScheme, registerLocalVideoProtocol } from './local-video-protocol'
+import { showTodoWindow, closeTodoWindow } from './todo-window'
+import { registerTodoBadgeHandlers, refreshTodoBadge } from './todo-badge'
+import { startTodoScheduler, stopTodoScheduler } from './todo-scheduler'
 
 declare const __dirname: string
 
@@ -106,6 +109,10 @@ app.whenReady().then(() => {
   registerGlobalShortcuts(mainWindow!)
   showFloatingBallIfVisible()
   reportIP()
+  // 待办便签：启动提醒调度；并给悬浮球补推一次气泡计数（DOM 就绪后由 badge-ready 再补推）
+  registerTodoBadgeHandlers()
+  startTodoScheduler()
+  refreshTodoBadge()
 
   // 启动时按持久化设置对齐系统开机自启状态（防止用户在系统层面手动改过）
   try {
@@ -142,6 +149,9 @@ app.whenReady().then(() => {
   process.on('clawd-show-settings-window' as any, () => {
     showSettingsWindow()
   })
+  process.on('clawd-show-todo-window' as any, () => {
+    showTodoWindow()
+  })
 
   retryPendingTimer = setInterval(retryPending, 30_000)
   app.on('activate', () => {
@@ -174,6 +184,9 @@ app.on('before-quit', () => {
   hideAiIsland()
   // kill 所有在途 ffmpeg 转换，避免 ffmpeg.exe 成为孤儿进程继续吃 CPU
   killAllConversions()
+  // 停止待办提醒调度 + 拆待办窗口
+  stopTodoScheduler()
+  closeTodoWindow()
   unregisterGlobalShortcuts()
   destroyTray()
   if (retryPendingTimer) {

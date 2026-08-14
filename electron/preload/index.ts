@@ -187,6 +187,20 @@ const electronAPI = {
   setFloatingBallSettings: (patch: Partial<{ visible: boolean; alwaysOnTop: boolean; openAtLogin: boolean }>) =>
     ipcRenderer.invoke('set-floating-ball-settings', patch),
   resetFloatingBallPosition: () => ipcRenderer.invoke('reset-floating-ball-position'),
+
+  // Todo / 待办便签
+  todoGet: () => ipcRenderer.invoke('todo-get'),
+  todoCreate: (input: { type: 'todo' | 'memo'; title?: string; content?: string; priority?: string; reminder?: string | null; done?: boolean }) =>
+    ipcRenderer.invoke('todo-create', input),
+  todoUpdate: (id: string, patch: Record<string, unknown>) => ipcRenderer.invoke('todo-update', id, patch),
+  todoDelete: (id: string) => ipcRenderer.invoke('todo-delete', id),
+  todoToggleDone: (id: string) => ipcRenderer.invoke('todo-toggle-done', id),
+  showTodoWindow: () => ipcRenderer.invoke('todo-show-window'),
+  closeTodoWindow: () => ipcRenderer.invoke('todo-close-window'),
+  todoWindowVisible: () => ipcRenderer.invoke('todo-window-visible'),
+  todoToggleAlwaysOnTop: () => ipcRenderer.invoke('todo-toggle-always-on-top'),
+  todoGetSettings: () => ipcRenderer.invoke('todo-get-settings'),
+  todoSetSettings: (patch: Record<string, unknown>) => ipcRenderer.invoke('todo-set-settings', patch),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

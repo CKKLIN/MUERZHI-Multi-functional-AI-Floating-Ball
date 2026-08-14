@@ -3,6 +3,7 @@ import HomeView from '../views/HomeView.vue'
 
 const AiView = () => import('../views/AiView.vue')
 const SettingsView = () => import('../views/SettingsView.vue')
+const TodoView = () => import('../views/TodoView.vue')
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -10,6 +11,7 @@ const router = createRouter({
     { path: '/', name: 'home', component: HomeView },
     { path: '/ai', name: 'ai', component: AiView },
     { path: '/settings', name: 'settings', component: SettingsView },
+    { path: '/todo', name: 'todo', component: TodoView },
   ],
 })
 
