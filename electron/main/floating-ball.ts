@@ -183,16 +183,25 @@ export function showFloatingBall() {
     if (floatingBallWindow === self) floatingBallWindow = null
   })
 
-  // 原生拖拽时持续保存位置
+  // 原生拖拽时持续保存位置。
+  // 只在 66px 球状态记录 ballPos：展开态(240px)的 move 是程序 resize 触发的，若记录会把
+  // ballPos 算成 240 窗口左上角，污染锚点，导致展开/收起时悬浮球越偏越远。
   floatingBallWindow.on('move', () => {
-    if (floatingBallWindow && !floatingBallWindow.isDestroyed()) {
-      const [bx, by] = floatingBallWindow.getPosition()
-      ballPos = { x: bx, y: by }
-    }
+    if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
+    const [w] = floatingBallWindow.getSize()
+    if (w !== BALL_SIZE) return
+    const [bx, by] = floatingBallWindow.getPosition()
+    ballPos = { x: bx, y: by }
   })
 
   floatingBallWindow.on('close', () => {
     if (ballPos) saveBallPosition(ballPos)
+  })
+
+  // 失焦自动收起：展开态下点击/切走任意其他窗口时，悬浮球失去焦点即收回菜单，
+  // 避免菜单常驻遮挡屏幕。blur 也可能由本窗口内部弹窗触发，但 Cart 中无弹窗，安全。
+  floatingBallWindow.on('blur', () => {
+    if (isBallExpanded) collapseBall()
   })
 
   log.info('Floating ball shown')
@@ -213,11 +222,16 @@ export function hideFloatingBall() {
 }
 
 // === 展开/收起 ===
+/** 主进程侧跟踪展开态，供失焦等场景判断是否需要收起 */
+let isBallExpanded = false
+
 async function expandBall() {
   if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
-  const [x, y] = floatingBallWindow.getPosition()
-  const cx = Math.round(x + BALL_SIZE / 2)
-  const cy = Math.round(y + BALL_SIZE / 2)
+  const [x, y] = floatingBallWindow.getPosition() // 兜底；ballPos 通常已由 66px 态的 move 维护
+  const bx = ballPos ? ballPos.x : x
+  const by = ballPos ? ballPos.y : y
+  const cx = Math.round(bx + BALL_SIZE / 2)
+  const cy = Math.round(by + BALL_SIZE / 2)
   log.info('[Ball] expand at', [x, y], 'center', [cx, cy])
   // 窗口不可见时完成 resize 和内容状态更新，避免 trigger 按钮在 240×240 窗口中
   // 因 #ball 尚未收到 expanded class（仍为 66×66）而偏移到左上角造成闪烁
@@ -238,33 +252,46 @@ async function expandBall() {
   try { await floatingBallWindow.capturePage() } catch {}
   if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
   floatingBallWindow.setOpacity(1)
+  isBallExpanded = true
   floatingBallWindow.webContents.send('ball-state', 'expanded')
 }
 
 async function collapseBall() {
+  isBallExpanded = false
   if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
-  const [x, y] = floatingBallWindow.getPosition()
-  const cx = Math.round(x + RING_SIZE / 2)
-  const cy = Math.round(y + RING_SIZE / 2)
-  log.info('[Ball] collapse at', [x, y], 'center', [cx, cy])
-  // 先隐藏窗口再清理内容，避免 class 移除/子节点删除过程中 trigger 按钮偏移或圆环闪烁
-  floatingBallWindow.setOpacity(0)
+  // 锚定 ballPos（66px 球左上角，权威锚点），而非临时 getPosition/尺寸——快速展开收起时不累计偏移。
+  // 若尚未有锚点，从当前 240px 窗口中心反推球体左上角。
+  if (!ballPos) {
+    const [x, y] = floatingBallWindow.getPosition()
+    ballPos = { x: Math.round(x + RING_SIZE / 2 - BALL_SIZE / 2), y: Math.round(y + RING_SIZE / 2 - BALL_SIZE / 2) }
+  }
+  const bx = ballPos.x
+  const by = ballPos.y
+  log.info('[Ball] collapse at', [bx, by])
+  isBallExpanded = false
+  // 收起要像"合拢"：保持窗口可见，先移除 expanded class 让花瓣按 CSS 动画收到 scale(0)，
+  // 播完(约 560ms)后再清空 DOM 并缩回窗口，避免花瓣瞬间消失。
+  // 指针事件会随 class 移除自动关闭，动画期间不会误点。窗口仍为 240×240，花瓣不会被裁剪。
   try {
     await floatingBallWindow.webContents.executeJavaScript(
-      `document.body.classList.remove('expanded');
-       var s=document.getElementById('ringSvg');while(s.firstChild){s.removeChild(s.firstChild)}
-       menuCreated=false; isExpanded=false; void 0;`
+      `document.body.classList.remove('expanded'); isExpanded=false; void 0;`
+    )
+  } catch {}
+  if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
+  await new Promise(resolve => setTimeout(resolve, 560)) // 留足 500ms 收拢动画时长
+  if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
+  if (isBallExpanded) return // 动画期间被重新展开，跳过清理以免误删刚重建的菜单
+  try {
+    await floatingBallWindow.webContents.executeJavaScript(
+      `var s=document.getElementById('ringSvg');while(s.firstChild){s.removeChild(s.firstChild)} menuCreated=false; void 0;`
     )
   } catch {}
   if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
   // resize 前后切透明，避免 DWM 边框闪现白色矩形
-  const nx = cx - BALL_SIZE / 2
-  const ny = cy - BALL_SIZE / 2
-  floatingBallWindow.setBounds({ x: nx, y: ny, width: BALL_SIZE, height: BALL_SIZE })
-  const [ax, ay] = floatingBallWindow.getPosition()
-  if (ax !== nx || ay !== ny) {
-    floatingBallWindow.setBounds({ x: nx + (nx - ax), y: ny + (ny - ay), width: BALL_SIZE, height: BALL_SIZE })
-  }
+  floatingBallWindow.setOpacity(0)
+  floatingBallWindow.setBounds({ x: bx, y: by, width: BALL_SIZE, height: BALL_SIZE })
+  // 不再做二次 setBounds 修正（那是快速切换下偏移累计的根源）。
+  // 66px 态的 move 事件会读到实际落点并刷新 ballPos，作为下次展开/收起的准确锚点。
   floatingBallWindow.setOpacity(1)
 }
 
@@ -352,31 +379,48 @@ body.expanded .ring-svg{
 }
 
 /* arc segments - bloom from center like flower petals */
+/* 不透明实色卡片，偏蓝点缀（无红），花瓣无缝铺满（无缝隙），无描边无阴影（阴影由 .arc-shadow 叠出） */
+/* 展开像开花：每片从花心放大 + 一个由 --swing 决定的小角度摆动，配合错落时序逐片绽放，
+   弹性 eased 轻微过冲；收起时反向缩回 */
 .arc-item{
-  fill:rgba(255,255,255,0.88);
-  stroke:rgba(255,255,255,0.5);
-  stroke-width:1px;
+  fill:url(#cardGrad);
+  stroke:none;
   cursor:pointer;
   pointer-events:none;
   opacity:0;
-  transform:scale(0);
+  transform:scale(0) rotate(var(--swing,0deg));
   transform-origin:120px 120px;
   transition:
-    transform 0.35s cubic-bezier(0.34,1.56,0.64,1),
-    opacity 0.25s ease,
+    transform 0.5s cubic-bezier(0.34,1.56,0.64,1),
+    opacity 0.3s ease,
     fill 0.2s ease;
 }
 body.expanded .arc-item{
   opacity:1;
-  transform:scale(1);
+  transform:scale(1) rotate(0deg);
   pointer-events:auto;
 }
 .arc-item:hover{
-  fill:rgba(233,69,96,0.18);
-  stroke:#e94560;
+  fill:url(#cardGradHover);
 }
-.arc-item:active{
-  fill:rgba(233,69,96,0.28);
+
+/* 每片花瓣的阴影：画在最上层（花瓣→阴影→文字），阴影沿圆周顺时针旋转并配合遮罩
+   只露出"压在顺时针相邻花瓣上" 的一侧 ⇒ 每片仅一侧有影，一片压一片均匀堆叠 */
+.arc-shadow{
+  fill:rgba(40,50,80,0.32);
+  stroke:none;
+  filter:blur(2px);
+  pointer-events:none;
+  opacity:0;
+  transform:scale(0) rotate(var(--swing,0deg));
+  transform-origin:120px 120px;
+  transition:
+    transform 0.5s cubic-bezier(0.34,1.56,0.64,1),
+    opacity 0.3s ease;
+}
+body.expanded .arc-shadow{
+  opacity:1;
+  transform:scale(1) rotate(0deg);
 }
 
 /* arc labels - also pop from center */
@@ -396,14 +440,14 @@ body.expanded .arc-label{
   opacity:1;
   transform:scale(1);
 }
-.arc-label .icon{font-size:18px;fill:#e94560;font-weight:700}
-.arc-label .label{font-size:10px;font-weight:600;fill:#5a5a6e}
+.arc-label .icon{font-size:18px;fill:#4a6cf7;font-weight:700;filter:drop-shadow(0 1px 0 rgba(255,255,255,0.55))}
+.arc-label .label{font-size:10px;font-weight:600;fill:#3a4156;stroke:rgba(255,255,255,0.75);stroke-width:2px;paint-order:stroke}
 
 /* 中心按钮 */
 #trigger{
   position:absolute;z-index:10;
   width:56px;height:56px;border-radius:50%;border:none;
-  background:#e8e8e8;
+  background:#eceef3;
   cursor:pointer;
   display:flex;align-items:center;justify-content:center;
 }
@@ -450,6 +494,20 @@ function arcPath(cx, cy, r1, r2, sa, ea){
   return 'M'+x1i+','+y1i+' L'+x1o+','+y1o+' A'+r2+','+r2+' 0 '+laf+',1 '+x2o+','+y2o+' L'+x2i+','+y2i+' A'+r1+','+r1+' 0 '+laf+',0 '+x1i+','+y1i+' Z'
 }
 
+// 构造线性渐变（卡片高光/悬停色）
+function makeGradient(id, c1, c2){
+  const g = document.createElementNS('http://www.w3.org/2000/svg','linearGradient')
+  g.setAttribute('id',id)
+  g.setAttribute('x1','20%'); g.setAttribute('y1','0%')
+  g.setAttribute('x2','80%'); g.setAttribute('y2','100%')
+  ;[['0%',c1],['100%',c2]].forEach(function(p){
+    const s = document.createElementNS('http://www.w3.org/2000/svg','stop')
+    s.setAttribute('offset',p[0]); s.setAttribute('stop-color',p[1])
+    g.appendChild(s)
+  })
+  return g
+}
+
 function ensureMenu(){
   if(menuCreated) return
   menuCreated = true
@@ -458,24 +516,69 @@ function ensureMenu(){
   const total = ITEMS.length
   const segArc = 360 / total
   const startOff = -90 - segArc / 2
+  // 无缝铺满：每个花瓣占满自己的 120° 槽位，相邻共用径向边，无缝隙
+  // 阴影沿顺时针旋转的角度：用圆周方向而非屏幕 X 方向，保证每片影都一致落在自己顺时针的相邻片上
+  const SHADOW_ROT = 4
 
+  // 实色卡片渐变（每次重建，避免 collapse 清空 SVG 后残留空引用）
+  const defs = document.createElementNS('http://www.w3.org/2000/svg','defs')
+  defs.appendChild(makeGradient('cardGrad', '#ffffff', '#f2f4f9'))
+  defs.appendChild(makeGradient('cardGradHover', '#eef1ff', '#dbe2ff'))
+  svg.appendChild(defs)
+
+  // 第一遍：无缝花瓣本体
   ITEMS.forEach(function(item, i){
     const sa = startOff + i * segArc
     const ea = sa + segArc
     const d = arcPath(cx, cy, r1, r2, sa, ea)
-
-    // 圆弧路径
     const path = document.createElementNS('http://www.w3.org/2000/svg','path')
     path.setAttribute('class','arc-item')
     path.setAttribute('d',d)
     path.setAttribute('data-action',item.action)
     path.style.transitionDelay = (i*0.15)+'s'
+    path.style.setProperty('--swing', ((i%2?-1:1) * (6 + i)) + 'deg') // 错落的角度摆动，模拟花瓣散开
     path.addEventListener('click',function(){
       ipcRenderer.send('floating-ball-action', this.getAttribute('data-action'))
     })
     svg.appendChild(path)
+  })
 
-    // 文字
+  // 第二遍：每片阴影，画在全部花瓣之上。
+  // 每片用自己的遮罩裁掉"本瓣自身"区域；阴影沿顺时针旋转 SHADOW_ROT，只露出落在
+  // 相邻顺时针花瓣左沿的一侧影 ⇒ 每片仅一侧有影，且一片压一片均匀堆叠（方位一致）。
+  ITEMS.forEach(function(item, i){
+    const NS = 'http://www.w3.org/2000/svg'
+    const sa = startOff + i * segArc
+    const ea = sa + segArc
+    const dOwn = arcPath(cx, cy, r1, r2, sa, ea)
+
+    const maskId = 'shadowMask' + i
+    const mask = document.createElementNS(NS,'mask')
+    mask.setAttribute('id', maskId)
+    const mRect = document.createElementNS(NS,'rect')
+    mRect.setAttribute('x','0'); mRect.setAttribute('y','0')
+    mRect.setAttribute('width','240'); mRect.setAttribute('height','240')
+    mRect.setAttribute('fill','#fff')
+    const mCut = document.createElementNS(NS,'path')
+    mCut.setAttribute('d', dOwn)
+    mCut.setAttribute('fill','#000')
+    mask.appendChild(mRect)
+    mask.appendChild(mCut)
+    defs.appendChild(mask)
+
+    const sh = document.createElementNS(NS,'path')
+    sh.setAttribute('class','arc-shadow')
+    sh.setAttribute('d', arcPath(cx, cy, r1, r2, sa + SHADOW_ROT, ea + SHADOW_ROT)) // 整片顺时针转 4°
+    sh.setAttribute('mask','url(#'+maskId+')')
+    sh.style.transitionDelay = (i*0.15)+'s'
+    sh.style.setProperty('--swing', ((i%2?-1:1) * (6 + i)) + 'deg') // 与所属花瓣保持一致的开花摆动
+    svg.appendChild(sh)
+  })
+
+  // 第三遍：文字，置于最上层保证清晰
+  ITEMS.forEach(function(item, i){
+    const sa = startOff + i * segArc
+    const ea = sa + segArc
     const ma = (sa+ea)/2
     const mr = (r1+r2)/2
     const lx = cx + mr*Math.cos(ma*Math.PI/180)
@@ -551,10 +654,12 @@ ipcRenderer.on('ball-state',function(_event,state){
 })
 
 // === 点击外部收起 ===
+// 展开态下，只有点到中心按钮(#trigger)或菜单花瓣(.arc-item)才算"点在悬浮球/菜单上"；
+// 点到窗口内任何透明区域（圆内空隙、四角、环外）都被视为"点到外部"，即收起菜单。
 document.addEventListener('click',function(e){
-  if(isExpanded && !e.target.closest('#ball')){
-    ipcRenderer.send('floating-ball-collapse')
-  }
+  if(!isExpanded) return
+  if(e.target.closest('#trigger') || e.target.closest('.arc-item')) return
+  ipcRenderer.send('floating-ball-collapse')
 })
 </script>
 </body>
@@ -673,6 +778,7 @@ export function registerFloatingBallHandlers() {
       const nx = Math.round(display.x + (display.width - BALL_SIZE) / 2)
       const ny = Math.round(display.y + (display.height - BALL_SIZE) / 2)
       // 若当前是展开态（240×240），先收起 DOM 再 setBounds，避免大窗口跳到中心
+      isBallExpanded = false
       try {
         floatingBallWindow.webContents.executeJavaScript(
           `document.body.classList.remove('expanded'); var s=document.getElementById('ringSvg');if(s){while(s.firstChild){s.removeChild(s.firstChild)}} menuCreated=false; isExpanded=false; void 0;`
