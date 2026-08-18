@@ -3328,6 +3328,16 @@ function saveBallPosition(pos) {
 		node_fs.default.writeFileSync(ballPosFilePath(), JSON.stringify(pos), "utf-8");
 	} catch {}
 }
+/** 带防御的 setBounds：任一坐标/尺寸非有限数（NaN/Infinity）时丢弃本次调整，
+*  避免竞态下偶发的坏数值让 BrowserWindow.setBounds 抛 conversion failure 崩主进程。 */
+function setBallBounds(b) {
+	if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
+	if (!Number.isFinite(b.x) || !Number.isFinite(b.y) || !Number.isFinite(b.width) || !Number.isFinite(b.height)) {
+		logger_default.warn("Floating ball setBounds skipped (non-finite):", b);
+		return;
+	}
+	floatingBallWindow.setBounds(b);
+}
 var BALL_SETTINGS_FILE = "floating-ball-settings.json";
 var DEFAULT_SETTINGS = {
 	visible: true,
@@ -3497,7 +3507,7 @@ async function expandBall() {
 	const needResize = w !== RING_SIZE;
 	if (needResize) {
 		floatingBallWindow.setOpacity(0);
-		floatingBallWindow.setBounds({
+		setBallBounds({
 			x: cx - RING_SIZE / 2,
 			y: cy - RING_SIZE / 2,
 			width: RING_SIZE,
@@ -3545,7 +3555,7 @@ async function collapseBall() {
 		} catch {}
 		if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
 		floatingBallWindow.setOpacity(0);
-		floatingBallWindow.setBounds({
+		setBallBounds({
 			x: bx,
 			y: by,
 			width: BALL_SIZE,
@@ -4020,14 +4030,14 @@ function registerFloatingBallHandlers() {
 		const dy = sy - dragOrigin.scrY;
 		const nx = Math.round(dragOrigin.winX + dx);
 		const ny = Math.round(dragOrigin.winY + dy);
-		floatingBallWindow.setBounds({
+		setBallBounds({
 			x: nx,
 			y: ny,
 			width: dragSize.w,
 			height: dragSize.h
 		});
 		const [ax, ay] = floatingBallWindow.getPosition();
-		if (ax !== nx || ay !== ny) floatingBallWindow.setBounds({
+		if (ax !== nx || ay !== ny) setBallBounds({
 			x: nx + (nx - ax),
 			y: ny + (ny - ay),
 			width: dragSize.w,
@@ -4048,14 +4058,14 @@ function registerFloatingBallHandlers() {
 			if (y - b.y < SNAP) ny = b.y;
 			else if (b.y + b.height - (y + h) < SNAP) ny = b.y + b.height - h;
 			if (nx !== x || ny !== y) {
-				floatingBallWindow.setBounds({
+				setBallBounds({
 					x: nx,
 					y: ny,
 					width: w,
 					height: h
 				});
 				const [ax, ay] = floatingBallWindow.getPosition();
-				floatingBallWindow.setBounds({
+				setBallBounds({
 					x: nx + (nx - ax),
 					y: ny + (ny - ay),
 					width: w,
@@ -4094,7 +4104,7 @@ function registerFloatingBallHandlers() {
 			try {
 				floatingBallWindow.webContents.executeJavaScript(`document.body.classList.remove('expanded'); var s=document.getElementById('ringSvg');if(s){while(s.firstChild){s.removeChild(s.firstChild)}} menuCreated=false; isExpanded=false; void 0;`).catch(() => {});
 			} catch {}
-			floatingBallWindow.setBounds({
+			setBallBounds({
 				x: nx,
 				y: ny,
 				width: BALL_SIZE,
@@ -4105,7 +4115,7 @@ function registerFloatingBallHandlers() {
 				y: ny
 			};
 			const [ax, ay] = floatingBallWindow.getPosition();
-			if (ax !== nx || ay !== ny) floatingBallWindow.setBounds({
+			if (ax !== nx || ay !== ny) setBallBounds({
 				x: nx + (nx - ax),
 				y: ny + (ny - ay),
 				width: BALL_SIZE,

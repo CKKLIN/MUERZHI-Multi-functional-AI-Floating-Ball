@@ -35,6 +35,17 @@ function saveBallPosition(pos: { x: number; y: number }) {
   } catch {}
 }
 
+/** 带防御的 setBounds：任一坐标/尺寸非有限数（NaN/Infinity）时丢弃本次调整，
+ *  避免竞态下偶发的坏数值让 BrowserWindow.setBounds 抛 conversion failure 崩主进程。 */
+function setBallBounds(b: { x: number; y: number; width: number; height: number }) {
+  if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
+  if (!Number.isFinite(b.x) || !Number.isFinite(b.y) || !Number.isFinite(b.width) || !Number.isFinite(b.height)) {
+    log.warn('Floating ball setBounds skipped (non-finite):', b)
+    return
+  }
+  floatingBallWindow.setBounds(b)
+}
+
 // === 悬浮球设置（主进程文件为唯一真相源，渲染层经 IPC get/set） ===
 const BALL_SETTINGS_FILE = 'floating-ball-settings.json'
 
@@ -265,7 +276,7 @@ async function expandBall() {
   // 因 #ball 尚未收到 expanded class（仍为 66×66）而偏移到左上角造成闪烁
   if (needResize) {
     floatingBallWindow.setOpacity(0)
-    floatingBallWindow.setBounds({
+    setBallBounds({
       x: cx - RING_SIZE / 2,
       y: cy - RING_SIZE / 2,
       width: RING_SIZE,
@@ -323,7 +334,7 @@ async function collapseBall() {
     if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
     // resize 前后切透明，避免 DWM 边框闪现白色矩形
     floatingBallWindow.setOpacity(0)
-    floatingBallWindow.setBounds({ x: bx, y: by, width: BALL_SIZE, height: BALL_SIZE })
+    setBallBounds({ x: bx, y: by, width: BALL_SIZE, height: BALL_SIZE })
     // 不再做二次 setBounds 修正（那是快速切换下偏移累计的根源）。
     // 66px 态的 move 事件会读到实际落点并刷新 ballPos，作为下次展开/收起的准确锚点。
     floatingBallWindow.setOpacity(1)
@@ -817,11 +828,11 @@ export function registerFloatingBallHandlers() {
     const dy = sy - dragOrigin.scrY
     const nx = Math.round(dragOrigin.winX + dx)
     const ny = Math.round(dragOrigin.winY + dy)
-    floatingBallWindow.setBounds({ x: nx, y: ny, width: dragSize.w, height: dragSize.h })
+    setBallBounds({ x: nx, y: ny, width: dragSize.w, height: dragSize.h })
     // 读回修正 DWM 1px 偏移
     const [ax, ay] = floatingBallWindow.getPosition()
     if (ax !== nx || ay !== ny) {
-      floatingBallWindow.setBounds({ x: nx + (nx - ax), y: ny + (ny - ay), width: dragSize.w, height: dragSize.h })
+      setBallBounds({ x: nx + (nx - ax), y: ny + (ny - ay), width: dragSize.w, height: dragSize.h })
     }
   })
 
@@ -843,10 +854,10 @@ export function registerFloatingBallHandlers() {
       if (y - b.y < SNAP) ny = b.y
       else if ((b.y + b.height) - (y + h) < SNAP) ny = b.y + b.height - h
       if (nx !== x || ny !== y) {
-        floatingBallWindow.setBounds({ x: nx, y: ny, width: w, height: h })
+        setBallBounds({ x: nx, y: ny, width: w, height: h })
         // 读回修正 DWM 1px 偏移（与 drag-move 一致）
         const [ax, ay] = floatingBallWindow.getPosition()
-        floatingBallWindow.setBounds({ x: nx + (nx - ax), y: ny + (ny - ay), width: w, height: h })
+        setBallBounds({ x: nx + (nx - ax), y: ny + (ny - ay), width: w, height: h })
         if (ballPos) {
           ballPos = { x: nx, y: ny }
           saveBallPosition(ballPos)
@@ -889,12 +900,12 @@ export function registerFloatingBallHandlers() {
           `document.body.classList.remove('expanded'); var s=document.getElementById('ringSvg');if(s){while(s.firstChild){s.removeChild(s.firstChild)}} menuCreated=false; isExpanded=false; void 0;`
         ).catch(() => {})
       } catch {}
-      floatingBallWindow.setBounds({ x: nx, y: ny, width: BALL_SIZE, height: BALL_SIZE })
+      setBallBounds({ x: nx, y: ny, width: BALL_SIZE, height: BALL_SIZE })
       ballPos = { x: nx, y: ny }
       // 读回修正 DWM 1px 偏移
       const [ax, ay] = floatingBallWindow.getPosition()
       if (ax !== nx || ay !== ny) {
-        floatingBallWindow.setBounds({ x: nx + (nx - ax), y: ny + (ny - ay), width: BALL_SIZE, height: BALL_SIZE })
+        setBallBounds({ x: nx + (nx - ax), y: ny + (ny - ay), width: BALL_SIZE, height: BALL_SIZE })
       }
     }
   })
