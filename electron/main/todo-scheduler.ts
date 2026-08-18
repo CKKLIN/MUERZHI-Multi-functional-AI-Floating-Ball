@@ -5,10 +5,10 @@
 //   2) markReminderFired 落库（防止下轮重复弹）
 //   3) 置悬浮球气泡到期闪烁（在用户打开待办窗口前一直闪）
 // 启动时先补扫一次，覆盖休眠/关机期间错过的提醒（错过也会补弹一次，不会永久丢失）。
-import { Notification } from 'electron'
 import { loadItems, markReminderFired } from './todo-store'
 import { computeDueReminders } from './todo-reminders'
 import { setTodoBadgeFlash } from './todo-badge'
+import { showTodoReminder } from './todo-reminder-window'
 import { isTodoWindowVisible } from './todo-window'
 import { stripHtml } from './todo-text'
 import log from './logger'
@@ -20,17 +20,11 @@ function checkReminders(): void {
   const due = computeDueReminders(loadItems(), Date.now())
   if (due.length === 0) return
   for (const it of due) {
-    const title = stripHtml(it.title).trim()
-    const body = stripHtml(it.content).trim().slice(0, 120)
-    try {
-      const n = new Notification({
-        title: title ? `⏰ ${title}` : '⏰ 待办提醒',
-        body: body || '到时间了，记得处理一下。',
-      })
-      n.show()
-    } catch (err: any) {
-      log.warn('Todo reminder notification failed:', err?.message ?? err)
-    }
+    const text = stripHtml(it.content).trim()
+    // 备忘用标题，待办用正文首段
+    const title = it.type === 'memo' && stripHtml(it.title).trim() ? stripHtml(it.title).trim() : text.slice(0, 24)
+    // 用自绘的常驻弹窗提醒（头部显示 MUERZHI、不自动关闭），见 todo-reminder-window.ts
+    showTodoReminder(title, text.slice(0, 90))
     markReminderFired(it.id)
   }
   // 有到期未确认 → 悬浮球气泡进入闪烁。若待办窗口此刻正开着，用户就在看，无需闪烁

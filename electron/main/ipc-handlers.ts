@@ -8,11 +8,13 @@ import { showBalloon } from './tray'
 import { showAiIsland, hideAiIsland, registerAiIslandHandlers } from './ai-island'
 import {
   loadItems, createTodo, updateTodo, deleteTodo, toggleTodoDone,
-  loadTodoSettings, updateTodoSettings,
+  loadTodoSettings, updateTodoSettings, togglePin,
 } from './todo-store'
 import type { TodoItem, TodoInput } from './todo-store'
 import { refreshTodoBadge } from './todo-badge'
-import { showTodoWindow, closeTodoWindow, isTodoWindowVisible, toggleTodoWindowAlwaysOnTop } from './todo-window'
+import { showTodoWindow, closeTodoWindow, isTodoWindowVisible, toggleTodoWindowAlwaysOnTop, focusTodoItem } from './todo-window'
+import { hideTodoReminder } from './todo-reminder-window'
+import { syncStickyNotes } from './todo-sticky'
 import type { AgentBridge } from './agent-bridge'
 import log from './logger'
 
@@ -429,23 +431,34 @@ export function registerTodoIpcHandlers(): void {
   ipcMain.handle('todo-create', (_event, input: TodoInput) => {
     const items = createTodo(input)
     refreshTodoBadge()
+    syncStickyNotes()
     return items
   })
 
   ipcMain.handle('todo-update', (_event, id: string, patch: Partial<Omit<TodoItem, 'id' | 'createdAt'>>) => {
     const items = updateTodo(id, patch)
     refreshTodoBadge()
+    syncStickyNotes()
     return items
   })
 
   ipcMain.handle('todo-delete', (_event, id: string) => {
     const items = deleteTodo(id)
     refreshTodoBadge()
+    syncStickyNotes()
     return items
   })
 
   ipcMain.handle('todo-toggle-done', (_event, id: string) => {
     const items = toggleTodoDone(id)
+    refreshTodoBadge()
+    syncStickyNotes()
+    return items
+  })
+
+  ipcMain.handle('todo-toggle-pin', (_event, id: string) => {
+    const items = togglePin(id)
+    syncStickyNotes()
     refreshTodoBadge()
     return items
   })
@@ -461,4 +474,24 @@ export function registerTodoIpcHandlers(): void {
     refreshTodoBadge()
     return s
   })
+
+  // 提醒弹窗：✕ 关闭 / 打开待办
+  ipcMain.on('todo-reminder-close', () => { hideTodoReminder() })
+  ipcMain.on('todo-reminder-open', () => {
+    hideTodoReminder()
+    showTodoWindow()
+  })
+
+  // 贴屏便签：点击打开并定位 / ✕ 取消贴屏
+  ipcMain.on('todo-sticky-open', (_event, id: string) => {
+    focusTodoItem(id)
+  })
+  ipcMain.on('todo-sticky-unpin', (_event, id: string) => {
+    togglePin(id)
+    syncStickyNotes()
+    refreshTodoBadge()
+  })
+
+  // 退出前关闭全部便签（由 before-quit 调用；这里也兜底注册，避免重复注册）
+  // closeAllStickyNotes 由 index.ts 在 before-quit 接线，见其导入。
 }

@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, nativeImage, ipcMain } from 'electron'
+import { app, BrowserWindow, nativeImage, ipcMain, session } from 'electron'
 import log, { ensureLogPath } from './logger'
 import { registerIpcHandlers } from './ipc-handlers'
 import { setMainWindow, hideRegionBorder, hideFloatingIsland, hideCameraPreview } from './region-selector'
@@ -13,6 +13,8 @@ import { setRegistryLogger, killAllConversions } from './conversion-registry'
 import { setHwEncoderLogger } from './hw-encoder'
 import { registerLocalVideoScheme, registerLocalVideoProtocol } from './local-video-protocol'
 import { showTodoWindow, closeTodoWindow } from './todo-window'
+import { hideTodoReminder } from './todo-reminder-window'
+import { syncStickyNotes, closeAllStickyNotes } from './todo-sticky'
 import { registerTodoBadgeHandlers, refreshTodoBadge } from './todo-badge'
 import { startTodoScheduler, stopTodoScheduler } from './todo-scheduler'
 
@@ -93,6 +95,15 @@ app.whenReady().then(() => {
   setHwEncoderLogger(log)
   const preloadPath = join(__dirname, '..', 'preload', 'index.cjs')
 
+  // 清掉渲染层 HTTP 磁盘缓存：开发模式下 vite 资产 URL 不带版本号，Chromium 会把旧 CSS/JS
+  // 缓存在 userData，导致改了 src 后即便重启仍显示旧界面（清 node_modules/.vite 不清这个）。
+  // 每次启动清一次，保证主窗口/待办等拿到最新。打包后同样无害。
+  try {
+    session.defaultSession.clearCache()
+  } catch (e) {
+    log.warn('clearCache() failed:', e)
+  }
+
   // 先启动 Agent Bridge（HTTP server + 状态机 + hooks），AI 岛改为按需懒创建
   agentBridge = createAgentBridge({
     autoInstallHooks: true,
@@ -113,6 +124,8 @@ app.whenReady().then(() => {
   registerTodoBadgeHandlers()
   startTodoScheduler()
   refreshTodoBadge()
+  // 按持久化位置重建贴屏便签
+  syncStickyNotes()
 
   // 启动时按持久化设置对齐系统开机自启状态（防止用户在系统层面手动改过）
   try {
@@ -184,9 +197,11 @@ app.on('before-quit', () => {
   hideAiIsland()
   // kill 所有在途 ffmpeg 转换，避免 ffmpeg.exe 成为孤儿进程继续吃 CPU
   killAllConversions()
-  // 停止待办提醒调度 + 拆待办窗口
+  // 停止待办提醒调度 + 拆待办窗口 + 提醒弹窗 + 贴屏便签
   stopTodoScheduler()
   closeTodoWindow()
+  hideTodoReminder()
+  closeAllStickyNotes()
   unregisterGlobalShortcuts()
   destroyTray()
   if (retryPendingTimer) {

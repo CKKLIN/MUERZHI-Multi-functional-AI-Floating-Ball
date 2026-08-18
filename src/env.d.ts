@@ -28,6 +28,9 @@ export interface TodoItem {
   reminder: string | null
   reminderFired: boolean
   done: boolean
+  pinned: boolean
+  pinX: number | null
+  pinY: number | null
   createdAt: number
   updatedAt: number
 }
@@ -35,6 +38,7 @@ export interface TodoItem {
 export interface TodoSettings {
   badgeVisible: boolean
   windowAlwaysOnTop: boolean
+  stickyBoardPos: { x: number; y: number } | null
 }
 
 export interface ConversionProgress {
@@ -176,6 +180,8 @@ export interface ElectronAPI {
   todoUpdate: (id: string, patch: Partial<Omit<TodoItem, 'id' | 'createdAt'>>) => Promise<TodoItem[]>
   todoDelete: (id: string) => Promise<TodoItem[]>
   todoToggleDone: (id: string) => Promise<TodoItem[]>
+  todoTogglePin: (id: string) => Promise<TodoItem[]>
+  onTodoFocusItem: (callback: (id: string) => void) => () => void
   showTodoWindow: () => Promise<void>
   closeTodoWindow: () => Promise<void>
   todoWindowVisible: () => Promise<boolean>

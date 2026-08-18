@@ -195,6 +195,12 @@ const electronAPI = {
   todoUpdate: (id: string, patch: Record<string, unknown>) => ipcRenderer.invoke('todo-update', id, patch),
   todoDelete: (id: string) => ipcRenderer.invoke('todo-delete', id),
   todoToggleDone: (id: string) => ipcRenderer.invoke('todo-toggle-done', id),
+  todoTogglePin: (id: string) => ipcRenderer.invoke('todo-toggle-pin', id),
+  onTodoFocusItem: (callback: (id: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, id: string) => callback(id)
+    ipcRenderer.on('todo-focus-item', handler)
+    return () => ipcRenderer.removeListener('todo-focus-item', handler)
+  },
   showTodoWindow: () => ipcRenderer.invoke('todo-show-window'),
   closeTodoWindow: () => ipcRenderer.invoke('todo-close-window'),
   todoWindowVisible: () => ipcRenderer.invoke('todo-window-visible'),

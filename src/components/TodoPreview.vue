@@ -18,38 +18,46 @@ function fmtTime(iso: string | null): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-async function onDelete() {
-  await store.remove(store.previewId)
-  store.closePreview()
-  store.toastMsg('已删除')
+// 创建时间（epoch ms）
+function fmtCreated(ms: number): string {
+  const d = new Date(ms)
+  if (isNaN(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
+
+// 富文本 → 纯文本（无标题，正文即内容；标题行取正文首行）
+function plainText(html: string): string {
+  const el = document.createElement('div')
+  el.innerHTML = html || ''
+  return (el.textContent || '').replace(/\s+/g, ' ').trim()
+}
+const headingText = computed(() => {
+  const cur = it.value
+  if (!cur) return ''
+  if (cur.type === 'memo') return cur.title || '(无标题)'
+  return plainText(cur.content).slice(0, 60) || '(无内容)'
+})
+
 </script>
 
 <template>
   <div class="preview" v-if="it">
-    <header class="pv-top">
-      <button class="back-btn" title="返回列表" @click="store.closePreview()">←</button>
-      <span class="pv-title">详情</span>
-      <div class="pv-actions">
-        <button class="act-edit" @click="store.startEdit(it.id)">编辑</button>
-        <button class="act-del" @click="onDelete()">删除</button>
-      </div>
-    </header>
-
     <div class="pv-scroll">
       <div class="pv-card">
         <div class="pv-head">
           <button v-if="it.type === 'todo'" class="check" :class="{ on: it.done }"
             @click="store.toggleDone(it.id)"><span v-if="it.done">✓</span></button>
           <h2 class="pv-heading" :class="{ struck: it.type === 'todo' && it.done }">
-            {{ it.title || '(无标题)' }}
+            {{ headingText || '(无内容)' }}
           </h2>
         </div>
 
         <div class="pv-meta">
           <span class="type" :class="it.type">{{ TYPE_NM[it.type] }}</span>
           <span class="prio"><i class="dot" :style="{ background: PRIO_COLOR[it.priority] }"></i>{{ PRIO_NM[it.priority] }}</span>
-          <span v-if="it.reminder">⏰ {{ fmtTime(it.reminder) }}</span>
+          <span>{{ fmtCreated(it.createdAt) }}</span>
+          <span v-if="it.reminder">提醒 {{ fmtTime(it.reminder) }}</span>
         </div>
 
         <div class="pv-body" v-if="it.content" v-html="it.content"></div>
@@ -60,19 +68,14 @@ async function onDelete() {
 </template>
 
 <style scoped>
-.preview { display: flex; flex-direction: column; height: 100%; }
+.preview { display: flex; flex-direction: column; height: 100%; width: 100%; min-width: 0; }
 
-.pv-top { display: flex; align-items: center; gap: 10px; padding: 10px 16px; }
-.back-btn { width: 30px; height: 30px; border: none; border-radius: 9px; background: var(--bg-surface); color: var(--text-secondary); box-shadow: var(--shadow); cursor: pointer; font-size: 15px; }
-.back-btn:hover { color: var(--text-primary); }
-.pv-title { flex: 1; font-size: 14px; font-weight: 600; color: var(--text-muted); }
-.pv-actions { display: flex; gap: 8px; }
-.act-edit { padding: 6px 16px; border: none; border-radius: 10px; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: 0 2px 6px rgba(78,92,212,0.35); }
-.act-del { padding: 6px 12px; border: none; border-radius: 10px; background: var(--bg-hover); color: var(--text-secondary); font-size: 13px; cursor: pointer; }
-.act-del:hover { color: var(--accent); }
-
-.pv-scroll { flex: 1; overflow: auto; padding: 4px 16px 16px; }
+/* 滚动区占满剩余空间；卡片自适应宽高（内容多时随卡片滚动） */
+.pv-scroll { flex: 1; min-height: 0; min-width: 0; overflow: auto; padding: 6px 16px 16px; }
 .pv-card {
+  width: 100%;
+  min-width: 0;
+  min-height: 100%;
   background: linear-gradient(180deg, #ffffff 0%, #fcfcfd 100%);
   border: 1px solid var(--border);
   border-radius: 14px;

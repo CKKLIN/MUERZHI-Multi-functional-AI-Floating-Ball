@@ -14,12 +14,15 @@ export type TodoPriority = 'low' | 'medium' | 'high' | 'urgent'
 export interface TodoItem {
   id: string
   type: TodoType
-  title: string              // 富文本标题（HTML）
+  title: string              // 仅备忘录用；待办无标题（空串）
   content: string            // 富文本正文（HTML，含 dataURL 图片）
   priority: TodoPriority
   reminder: string | null    // ISO 时间戳；null = 无提醒
   reminderFired: boolean     // 是否已触发过提醒（避免重复通知）
   done: boolean              // 仅 todo 使用（备忘录恒 false）
+  pinned: boolean            // 是否贴屏（常驻屏幕便签）
+  pinX: number | null        // 便签屏幕位置（贴屏后写入）
+  pinY: number | null
   createdAt: number
   updatedAt: number
 }
@@ -99,7 +102,7 @@ export function saveItems(items: TodoItem[]): void {
 
 export interface TodoInput {
   type: TodoType
-  title: string
+  title?: string
   content: string
   priority: TodoPriority
   reminder?: string | null
@@ -119,6 +122,9 @@ export function createTodo(input: TodoInput): TodoItem[] {
     reminder: input.reminder ?? null,
     reminderFired: false,
     done: input.done ?? false,
+    pinned: false,
+    pinX: null,
+    pinY: null,
     createdAt: now,
     updatedAt: now,
   }
@@ -175,6 +181,26 @@ export function markReminderFired(id: string): TodoItem[] {
   return patchItem(id, { reminderFired: true })
 }
 
+/** 切换“贴屏”。新贴时可给初始位置（主进程按屏幕算好传入）；取消贴屏保留位置（再贴可复用）。 */
+export function togglePin(id: string, initial?: { x: number; y: number }): TodoItem[] {
+  const items = loadItems()
+  const it = items.find(x => x.id === id)
+  if (!it) return items
+  it.pinned = !it.pinned
+  if (it.pinned && initial) {
+    it.pinX = Math.round(initial.x)
+    it.pinY = Math.round(initial.y)
+  }
+  it.updatedAt = Date.now()
+  saveItems(items)
+  return items
+}
+
+/** 便签被拖动后保存新位置（不触发整段重渲染语义，仅落库）。 */
+export function savePinPosition(id: string, x: number, y: number): TodoItem[] {
+  return patchItem(id, { pinX: Math.round(x), pinY: Math.round(y) })
+}
+
 /** 待办数量气泡的计数口径：未完成的 type==='todo' 条数（done===false），memo 不计。 */
 export function incompleteTodoCount(items: TodoItem[]): number {
   return items.filter(it => it.type === 'todo' && !it.done).length
@@ -186,9 +212,11 @@ export interface TodoSettings {
   badgeVisible: boolean
   /** 待办窗口默认置顶 */
   windowAlwaysOnTop: boolean
+  /** 贴屏便签板窗口位置（合并成一个窗口后，整板一个位置） */
+  stickyBoardPos: { x: number; y: number } | null
 }
 
-const DEFAULT_TODO_SETTINGS: TodoSettings = { badgeVisible: true, windowAlwaysOnTop: true }
+const DEFAULT_TODO_SETTINGS: TodoSettings = { badgeVisible: true, windowAlwaysOnTop: true, stickyBoardPos: null }
 
 export function loadTodoSettings(): TodoSettings {
   try {
@@ -196,6 +224,9 @@ export function loadTodoSettings(): TodoSettings {
     return {
       badgeVisible: typeof parsed.badgeVisible === 'boolean' ? parsed.badgeVisible : DEFAULT_TODO_SETTINGS.badgeVisible,
       windowAlwaysOnTop: typeof parsed.windowAlwaysOnTop === 'boolean' ? parsed.windowAlwaysOnTop : DEFAULT_TODO_SETTINGS.windowAlwaysOnTop,
+      stickyBoardPos: (parsed.stickyBoardPos && typeof parsed.stickyBoardPos.x === 'number' && typeof parsed.stickyBoardPos.y === 'number')
+        ? { x: parsed.stickyBoardPos.x, y: parsed.stickyBoardPos.y }
+        : null,
     }
   } catch {
     return { ...DEFAULT_TODO_SETTINGS }

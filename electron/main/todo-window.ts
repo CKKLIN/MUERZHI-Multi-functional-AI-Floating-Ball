@@ -30,7 +30,7 @@ export function showTodoWindow(): void {
   const preloadPath = join(__dirname, '..', 'preload', 'index.cjs')
   todoWindow = new BrowserWindow({
     icon: getIcon(),
-    width: 360,
+    width: 525,
     height: 450,
     minWidth: 320,
     minHeight: 360,
@@ -82,4 +82,20 @@ export function toggleTodoWindowAlwaysOnTop(): boolean {
     todoWindow.setAlwaysOnTop(next, 'normal')
   }
   return next
+}
+
+/** 打开待办窗口并定位到指定条（贴屏便签点击“打开待办”用）。 */
+export function focusTodoItem(id: string): void {
+  showTodoWindow()
+  if (!todoWindow || todoWindow.isDestroyed()) return
+  const send = () => {
+    if (todoWindow && !todoWindow.isDestroyed()) {
+      todoWindow.webContents.send('todo-focus-item', id)
+    }
+  }
+  if (todoWindow.webContents.isLoading()) {
+    todoWindow.webContents.once('did-finish-load', send)
+  } else {
+    send()
+  }
 }
