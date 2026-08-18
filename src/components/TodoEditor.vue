@@ -1,19 +1,24 @@
 <script setup lang="ts">
-// TodoEditor.vue —— 待办/备忘录 的富文本编辑面板
-// 标题为普通文本输入；正文用 Quill 富文本（图文：图片经 FileReader 转 dataURL 存进 HTML）。
-// 字段：类型 / 优先级 / 完成 / 提醒时间。保存/取消通过回调交给 TodoApp 处理。
-import { onMounted, onBeforeUnmount, ref } from 'vue'
+// TodoEditor.vue —— 新建/编辑 待办（简约版）
+// 布局：顶部标题栏 + 大号标题输入 + Quill 正文 + 底部字段与保存。
+// 新建时无“完成”勾选（新项默认未完成），编辑时才有。
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import Quill from 'quill'
 import 'quill/dist/quill.snow.css'
 import type { TodoDraft, TodoPriority, TodoType } from '../stores/todo'
 
 const props = defineProps<{
   initial?: TodoDraft | null                 // 编辑已有项时的初值；null/缺省=新建
+  defaultType?: TodoType                     // 新建时的默认类型（跟随当前选中 Tab：待办/备忘）
 }>()
 const emit = defineEmits<{
   (e: 'save', draft: TodoDraft): void
   (e: 'cancel'): void
 }>()
+
+const isCreating = computed(() => !props.initial)
+/** “更多选项”（类型/优先级/提醒）默认收起，避免次要信息抢占书写区主次 */
+const showMore = ref(false)
 
 const TOOLBAR = [
   [{ header: [1, 2, 3, false] }],
@@ -24,10 +29,10 @@ const TOOLBAR = [
   ['clean'],
 ]
 
+const type = ref<TodoType>('todo')
 const title = ref('')
-const type = ref<TodoType>(props.initial?.type ?? 'todo')
-const priority = ref<TodoPriority>(props.initial?.priority ?? 'medium')
-const done = ref(props.initial?.done ?? false)
+const priority = ref<TodoPriority>('medium')
+const done = ref(false)
 /** 用 datetime-local 兜住提醒时间（本地时区），存库时转 UTC ISO */
 const reminderLocal = ref('')
 
@@ -49,36 +54,44 @@ function localToIso(local: string): string | null {
 
 onMounted(() => {
   if (props.initial) {
-    title.value = props.initial.title ?? ''
     type.value = props.initial.type ?? 'todo'
+    title.value = props.initial.title ?? ''
     priority.value = props.initial.priority ?? 'medium'
     done.value = props.initial.done ?? false
     reminderLocal.value = isoToLocal(props.initial.reminder)
+  } else if (props.defaultType) {
+    // 新建：默认类型跟随当前选中 Tab
+    type.value = props.defaultType
   }
-  quill = new Quill(editorEl.value!, { theme: 'snow', modules: { toolbar: TOOLBAR } })
-  quill.root.innerHTML = props.initial?.content ?? ''
-  quill.focus()
+  try {
+    quill = new Quill(editorEl.value!, { theme: 'snow', modules: { toolbar: TOOLBAR } })
+    quill.root.innerHTML = props.initial?.content ?? ''
+    quill.focus()
+    console.log('[TodoEditor] Quill init OK, toolbar buttons =', editorEl.value?.querySelectorAll('.ql-toolbar button').length)
 
-  // 图片：本地文件 → FileReader → base64 dataURL 插入（dataURL 直接随 content 存主进程 JSON）
-  const toolbar = quill.getModule('toolbar')
-  toolbar.addHandler('image', () => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'image/*'
-    input.onchange = () => {
-      const file = input.files?.[0]
-      if (!file || !quill) return
-      const reader = new FileReader()
-      reader.onload = () => {
-        const dataUrl = reader.result as string
-        const range = quill!.getSelection(true) ?? { index: quill!.getLength() }
-        quill!.insertEmbed(range.index, 'image', dataUrl)
-        quill!.setSelection(range.index + 1)
+    // 图片：本地文件 → FileReader → base64 dataURL 插入（dataURL 直接随 content 存主进程 JSON）
+    const toolbar = quill.getModule('toolbar')
+    toolbar.addHandler('image', () => {
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = 'image/*'
+      input.onchange = () => {
+        const file = input.files?.[0]
+        if (!file || !quill) return
+        const reader = new FileReader()
+        reader.onload = () => {
+          const dataUrl = reader.result as string
+          const range = quill!.getSelection(true) ?? { index: quill!.getLength() }
+          quill!.insertEmbed(range.index, 'image', dataUrl)
+          quill!.setSelection(range.index + 1)
+        }
+        reader.readAsDataURL(file)
       }
-      reader.readAsDataURL(file)
-    }
-    input.click()
-  })
+      input.click()
+    })
+  } catch (e) {
+    console.error('[TodoEditor] Quill init FAILED:', e)
+  }
 })
 
 // 编辑器卸载（返回列表/取消）时销毁 Quill，移除其注册在 document 上的 selectionchange
@@ -94,88 +107,134 @@ function save() {
   if (!quill) return
   emit('save', {
     type: type.value,
-    title: title.value.trim(),
+    title: type.value === 'memo' ? title.value.trim() : '',
     content: quill.root.innerHTML,
     priority: priority.value,
     reminder: localToIso(reminderLocal.value),
     done: type.value === 'todo' ? done.value : false,
   })
 }
+
+// 让外层（TodoApp 标题行的“保存”按钮）能触发本编辑器的保存
+defineExpose({ save })
 </script>
 
 <template>
   <div class="editor">
-    <header class="editor-head">
-      <button class="icon-btn primary" :title="type === 'todo' ? '标记完成' : ''" :class="{ checked: done }"
-        v-if="type === 'todo'" @click="done = !done">
-        <span class="check">{{ done ? '✓' : '' }}</span>
-      </button>
-      <input class="title-input" v-model="title" placeholder="标题" @keydown.enter.prevent="save" />
-    </header>
 
-    <div ref="editorEl" class="quill-host"><!-- Quill 挂载点 --></div>
-
-    <div class="fields">
-      <label class="field">
-        <span>类型</span>
-        <div class="seg">
-          <button :class="{ on: type === 'todo' }" @click="type = 'todo'">待办</button>
-          <button :class="{ on: type === 'memo' }" @click="type = 'memo'">备忘录</button>
-        </div>
-      </label>
-      <label class="field">
-        <span>优先级</span>
-        <select v-model="priority">
-          <option value="urgent">紧急</option>
-          <option value="high">高</option>
-          <option value="medium">中</option>
-          <option value="low">低</option>
-        </select>
-      </label>
-      <label class="field">
-        <span>提醒</span>
-        <input type="datetime-local" v-model="reminderLocal" />
-        <button class="clear-sm" v-if="reminderLocal" @click="reminderLocal = ''" title="清除提醒">✕</button>
-      </label>
+    <!-- 备忘：标题输入（待办无标题，正文即内容） -->
+    <div class="ed-title" v-if="type === 'memo'">
+      <input v-model="title" class="title-input" placeholder="标题" />
     </div>
 
-    <footer class="editor-foot">
-      <button class="btn ghost" @click="emit('cancel')">取消</button>
-      <button class="btn accent" @click="save">保存</button>
-    </footer>
+    <!-- 编辑态完成勾选行（仅待办编辑） -->
+    <div class="ed-title" v-if="!isCreating && type === 'todo'">
+      <button class="chk" :class="{ on: done }" @click="done = !done"><span v-if="done">✓</span></button>
+      <span class="done-label">{{ done ? '已完成' : '标记完成' }}</span>
+    </div>
+
+    <!-- Quill 富文本正文：书写区主体 -->
+    <div ref="editorEl" class="quill-host"><!-- Quill 挂载点 --></div>
+
+    <!-- 次要信息（类型/优先级/提醒）收进“更多选项”，默认不抢占主次 -->
+    <div class="meta">
+      <button class="meta-toggle" :title="showMore ? '收起选项' : '类型、优先级、提醒'"
+        @click="showMore = !showMore"><span class="dot">⋯</span> {{ showMore ? '收起选项' : '更多选项' }}</button>
+      <div class="meta-body" v-if="showMore">
+        <label class="field">
+          <span>类型</span>
+          <div class="seg">
+            <button :class="{ on: type === 'todo' }" @click="type = 'todo'">待办</button>
+            <button :class="{ on: type === 'memo' }" @click="type = 'memo'">备忘</button>
+          </div>
+        </label>
+        <label class="field">
+          <span>优先级</span>
+          <select v-model="priority">
+            <option value="urgent">紧急</option>
+            <option value="high">高</option>
+            <option value="medium">中</option>
+            <option value="low">低</option>
+          </select>
+        </label>
+        <label class="field reminder">
+          <span>提醒</span>
+          <input type="datetime-local" v-model="reminderLocal" />
+          <button class="clear-sm" v-if="reminderLocal" @click="reminderLocal = ''" title="清除提醒">✕</button>
+        </label>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.editor { display: flex; flex-direction: column; height: 100%; padding: 12px 14px 10px; background: var(--bg-primary); }
+.editor { display: flex; flex-direction: column; height: 100%; width: 100%; min-width: 0; padding: 12px 18px 14px; }
 
-.editor-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); }
-.icon-btn { width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--border-light); background: var(--bg-surface); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; color: #fff; font-size: 12px; }
-.icon-btn.checked { background: var(--success); border-color: var(--success); }
-.title-input { flex: 1; border: none; outline: none; background: transparent; font-size: 17px; font-weight: 700; letter-spacing: -0.2px; color: var(--text-primary); }
+/* 顶部：仅左上取消、右上保存 —— 主次里最不打扰的一行 */
+.ed-head { display: flex; align-items: center; justify-content: space-between; padding: 0 0 10px; }
+.head-btn { width: 26px; height: 26px; border: none; border-radius: 7px; background: transparent; color: var(--text-muted); font-size: 14px; cursor: pointer; }
+.head-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.head-save { border: none; background: transparent; color: var(--accent); font-size: 14px; font-weight: 600; cursor: pointer; padding: 4px 8px; border-radius: 7px; }
+.head-save:hover { background: var(--accent-bg); }
 
-/* Quill 正文：独立白色卡片，柔和阴影 */
-.quill-host { flex: 1; min-height: 0; margin-top: 10px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; }
-.quill-host :deep(.ql-toolbar) { border: none; border-bottom: 1px solid var(--border); background: var(--bg-secondary); border-radius: 14px 14px 0 0; }
-.quill-host :deep(.ql-container) { border: none; font-size: 14px; color: var(--text-secondary); flex: 1; }
-.quill-host :deep(.ql-editor) { min-height: 120px; padding: 12px 16px; }
-.quill-host :deep(.ql-editor.ql-blank::before) { color: var(--text-muted); font-style: normal; }
+/* 标题行（备忘用）+ 完成勾选行 */
+.ed-title { display: flex; align-items: center; gap: 10px; padding: 0 0 10px; }
+.title-input { flex: 1; border: none; outline: none; background: transparent; font-size: 22px; font-weight: 700; letter-spacing: -0.3px; color: var(--text-primary); }
+.title-input::placeholder { color: var(--text-muted); }
+.chk { width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--border-light); background: var(--bg-surface); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; color: #fff; font-size: 13px; }
+.chk.on { background: var(--accent); border-color: var(--accent); }
+.done-label { font-size: 12px; color: var(--text-muted); }
 
-/* 字段区 */
-.fields { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
-.field { display: flex; align-items: center; gap: 8px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 10px; padding: 6px 8px 6px 10px; box-shadow: var(--shadow); }
+/* Quill 正文 —— 主信息第二优先级，占满书写区；聚焦时给一圈轻靛蓝光（Apple 式 focus ring） */
+.quill-host {
+  flex: 1; min-height: 0; margin-top: 0;
+  background: var(--bg-surface); border: 1px solid var(--border); border-radius: 13px;
+  box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.quill-host:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg), var(--shadow); }
+
+/* 次要信息：默认收起，一行轻提示；展开才露出字段 */
+.meta { margin-top: 10px; }
+.meta-toggle { display: inline-flex; align-items: center; gap: 6px; border: none; background: transparent; color: var(--text-muted); font-size: 12px; cursor: pointer; padding: 5px 8px; border-radius: 7px; }
+.meta-toggle:hover { background: var(--bg-hover); color: var(--text-secondary); }
+.meta-toggle .dot { color: var(--text-muted); font-size: 12px; letter-spacing: 1px; }
+.meta-body { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; animation: fade 0.15s ease; }
+@keyframes fade { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
+.field { display: flex; align-items: center; gap: 8px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 10px; padding: 5px 8px 5px 10px; box-shadow: var(--shadow); }
 .field > span { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
 .field select, .field input[type="datetime-local"] { border: none; outline: none; background: transparent; color: var(--text-primary); font-size: 13px; }
 .field select { cursor: pointer; }
+.field.reminder input[type="datetime-local"] { min-width: 116px; }
 .seg { display: flex; border-radius: 7px; overflow: hidden; }
 .seg button { padding: 4px 10px; border: none; background: transparent; color: var(--text-muted); cursor: pointer; font-size: 13px; }
 .seg button.on { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
 .clear-sm { border: none; background: none; color: var(--text-muted); cursor: pointer; font-size: 12px; padding: 2px; }
+</style>
 
-.footer { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
-.editor-foot { display: flex; justify-content: flex-end; gap: 8px; }
-.btn { padding: 7px 18px; border: none; border-radius: 10px; cursor: pointer; font-size: 13px; transition: transform 0.15s, box-shadow 0.15s; }
-.btn:hover { transform: translateY(-1px); }
-.btn.ghost { background: var(--bg-hover); color: var(--text-primary); box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-.btn.accent { background: var(--accent); color: #fff; font-weight: 600; box-shadow: 0 2px 6px rgba(78,92,212,0.35); }
+<!-- Quill 覆盖样式=全局非 scoped。关键：局部 toolbar 是 editor 的直接子级（.quill-host 的同级兄弟，
+     不是其后代——Quill 把 host 变成 .ql-container、在它前面插入 .ql-toolbar）。所以必须用
+     .editor .ql-toolbar（经过 editor 根），不能用 .quill-host .ql-toolbar。 -->
+<style>
+.editor .ql-toolbar { background: #ececf1 !important; border: none !important; border-bottom: 1px solid #d8d8de !important; padding: 1px 6px !important; width: 100% !important; max-width: 100% !important; box-sizing: border-box !important; }
+.editor .ql-toolbar .ql-formats { margin-right: 0 !important; margin-left: 1px !important; }
+.editor .ql-toolbar button { padding: 0 !important; width: 20px !important; height: 20px !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; color: #6e6e76 !important; }
+.editor .ql-toolbar button svg { width: 12px !important; height: 12px !important; }
+.editor .ql-toolbar .ql-stroke { stroke: currentColor !important; }
+.editor .ql-toolbar .ql-fill { fill: currentColor !important; }
+.editor .ql-toolbar button:hover { color: #1d1d1f !important; }
+.editor .ql-toolbar button.ql-active { color: #4e5cd4 !important; }
+.editor .ql-toolbar .ql-picker { height: 20px !important; }
+.editor .ql-toolbar .ql-picker-label { display: flex !important; align-items: center !important; height: 20px !important; padding: 0 2px !important; font-size: 10px !important; color: #6e6e76 !important; }
+.quill-host .ql-editor { min-height: 150px !important; padding: 14px 18px !important; font-size: 14px !important; line-height: 1.7 !important; color: #56565c !important; user-select: text !important; -webkit-user-select: text !important; cursor: text !important; }
+.quill-host .ql-editor p { margin: 0 0 6px !important; }
+.quill-host .ql-editor h1 { font-size: 1.5em !important; margin: 10px 0 6px !important; color: #1d1d1f !important; }
+.quill-host .ql-editor h2 { font-size: 1.25em !important; margin: 10px 0 6px !important; color: #1d1d1f !important; }
+.quill-host .ql-editor h3 { font-size: 1.1em !important; margin: 8px 0 6px !important; color: #1d1d1f !important; }
+.quill-host .ql-editor blockquote { border-left: 3px solid #d4d4d9 !important; margin: 8px 0 !important; padding-left: 12px !important; color: #8d8d93 !important; }
+.quill-host .ql-editor ul, .quill-host .ql-editor ol { margin: 6px 0 !important; padding-left: 1.3em !important; }
+.quill-host .ql-editor li { margin-bottom: 2px !important; }
+.quill-host .ql-editor img { max-width: 100% !important; border-radius: 8px !important; }
+.quill-host .ql-editor a { color: #4e5cd4 !important; }
+.quill-host .ql-editor.ql-blank::before { color: #8d8d93 !important; font-style: normal !important; user-select: none !important; }
 </style>

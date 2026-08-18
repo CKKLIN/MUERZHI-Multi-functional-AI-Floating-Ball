@@ -114,14 +114,15 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
 @keyframes ai-flash{0%,100%{opacity:1}50%{opacity:0.2;transform:scale(1.3)}}
 .ai-label{font-size:11px;color:rgba(255,255,255,0.75);white-space:nowrap;font-weight:500;letter-spacing:0.3px}
 .ai-label.active{color:#fff}
-/* 权限卡片：宽度按内容自适应，最窄 300 / 最宽 420（超出在 420 内换行） */
+/* 权限卡片：宽度按内容自适应，最窄 300 / 最宽 420（超出在 420 内换行）；
+   高度同样有上限：长 tool 参数 JSON 在 .perm-body 内纵向滚动，banner/操作按钮恒常可见可点 */
 .perm-card{width:max-content;min-width:300px;max-width:420px;padding:0;display:none;flex-direction:column;word-break:break-word}
 .perm-card.show{display:flex;animation:perm-in 0.22s cubic-bezier(0.4,0,0.2,1)}
 @keyframes perm-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
 .perm-banner{display:flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(255,255,255,0.04);border-top:1px solid rgba(255,255,255,0.1);border-bottom:1px solid rgba(255,255,255,0.06)}
 .perm-banner-dot{width:7px;height:7px;border-radius:50%;background:#e8e8f0;animation:ai-pulse 0.9s ease-in-out infinite;box-shadow:0 0 8px rgba(232,232,240,0.5);flex-shrink:0}
 .perm-banner-text{font-size:11px;font-weight:600;color:#e8e8f0;letter-spacing:0.4px}
-.perm-body{display:flex;flex-direction:column;gap:10px;padding:12px 14px 10px}
+.perm-body{display:flex;flex-direction:column;gap:10px;padding:12px 14px 10px;max-height:300px;overflow-y:auto}
 .perm-row{display:flex;flex-direction:column;gap:4px}
 .perm-row-label{font-size:9px;color:rgba(255,255,255,0.38);text-transform:uppercase;letter-spacing:0.6px;font-weight:600}
 .perm-tool{font-size:13px;color:#34d399;font-weight:600;font-family:Consolas,'Courier New',monospace}
@@ -134,7 +135,8 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
 .perm-btn.deny:hover{background:rgba(248,113,113,0.18);color:#fca5a5;border-color:rgba(248,113,113,0.4)}
 .perm-btn.always{background:rgba(52,211,153,0.1);color:#6ee7b7;border:1px solid rgba(52,211,153,0.28)}
 .perm-btn.always:hover{background:rgba(52,211,153,0.18);border-color:rgba(52,211,153,0.5)}
-/* 提问卡片（AskUserQuestion 只读通知——Claude 的 hook 无法注入答案，答案须回主界面作答）：宽度按内容自适应，最窄 300 / 最宽 420；word-break 继承让长选项在卡宽内换行而非溢出裁剪 */
+/* 提问卡片（AskUserQuestion 只读通知——Claude 的 hook 无法注入答案，答案须回主界面作答）：宽度按内容自适应，最窄 300 / 最宽 420；word-break 继承让长选项在卡宽内换行而非溢出裁剪。
+   宽度钳制外，高度也设上限：多题/长选项时 .question-body 内纵向滚动，banner 进度与底部「上一题/知道了」恒常可见 */
 .question-card{width:max-content;min-width:300px;max-width:420px;padding:0;display:none;flex-direction:column;word-break:break-word}
 .question-card.show{display:flex;animation:perm-in 0.22s cubic-bezier(0.4,0,0.2,1)}
 .question-banner{display:flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(255,255,255,0.04);border-top:1px solid rgba(255,255,255,0.1);border-bottom:1px solid rgba(255,255,255,0.06)}
@@ -142,7 +144,7 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
 .question-banner-text{font-size:11px;font-weight:600;color:#fde68a;letter-spacing:0.4px}
 /* 逐题推进的进度：右对齐，单题时隐藏 */
 .question-progress{margin-left:auto;font-size:10px;font-weight:600;color:rgba(253,230,138,0.9);letter-spacing:0.3px}
-.question-body{display:flex;flex-direction:column;gap:8px;padding:12px 14px 10px}
+.question-body{display:flex;flex-direction:column;gap:8px;padding:12px 14px 10px;max-height:300px;overflow-y:auto}
 .question-text{font-size:12px;color:#fff;font-weight:600;line-height:1.5;white-space:pre-wrap;word-break:break-word}
 .question-opt{display:flex;flex-direction:column;gap:3px;padding:6px 8px;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.06);border-radius:6px}
 /* 可作答卡：选项可点选，单选/多选用一个前置小标记；选中项高亮描边 */
@@ -165,6 +167,11 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
 /* 上一题在首题时禁用（无题可回） */
 .question-btn:disabled{opacity:0.35;cursor:default}
 .question-btn:disabled:hover{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.8);border-color:rgba(255,255,255,0.1)}
+/* 卡片主体纵向滚动条：深色细条，尽量不喧宾夺主；hover 时加亮 */
+.perm-body::-webkit-scrollbar,.question-body::-webkit-scrollbar{width:7px}
+.perm-body::-webkit-scrollbar-thumb,.question-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.16);border-radius:4px}
+.perm-body::-webkit-scrollbar-thumb:hover,.question-body::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.3)}
+.perm-body::-webkit-scrollbar-track,.question-body::-webkit-scrollbar-track{background:transparent}
 /* 横条态：贴边的极简细胶囊条——更细、更素（半透明实色 + 细描边 + 柔影，无渐变/内高光）；
    仅在 body.flat 时生效，权限/提问卡出现时底部卡片保持原有展示 */
 body.flat .island{

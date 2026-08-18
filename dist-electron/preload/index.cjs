@@ -1,1 +1,153 @@
-let e=require(`electron`),t=require(`node:fs/promises`),n=require(`node:path`);e.contextBridge.exposeInMainWorld(`electronAPI`,{getSources:t=>e.ipcRenderer.invoke(`get-sources`,t),getSystemAudioSources:()=>e.ipcRenderer.invoke(`get-system-audio-sources`),showSaveDialog:t=>e.ipcRenderer.invoke(`show-save-dialog`,t),showOpenDialog:t=>e.ipcRenderer.invoke(`show-open-dialog`,t),getDefaultSaveDir:()=>e.ipcRenderer.invoke(`get-default-save-dir`),writeFile:async(e,r)=>{try{return await(0,t.mkdir)((0,n.dirname)(r),{recursive:!0}),await(0,t.writeFile)(r,new Uint8Array(e)),{success:!0,filePath:r}}catch(e){return console.error(`保存文件失败`,r,e?.message),{success:!1,filePath:r,error:e?.message}}},toLocalVideoUrl:e=>`local-video:///${e.replace(/\\/g,`/`)}`,readFile:t=>e.ipcRenderer.invoke(`read-file`,t),fileExists:t=>e.ipcRenderer.invoke(`file-exists`,t),deleteFile:t=>e.ipcRenderer.invoke(`delete-file`,t),getFileSize:t=>e.ipcRenderer.invoke(`get-file-size`,t),convertToMp4:(t,n,r)=>e.ipcRenderer.invoke(`convert-to-mp4`,t,n,r),cropVideo:(t,n,r)=>e.ipcRenderer.invoke(`crop-video`,t,n,r),convertToGif:(t,n,r)=>e.ipcRenderer.invoke(`convert-to-gif`,t,n,r),mergeMultiScreen:(t,n)=>e.ipcRenderer.invoke(`merge-multi-screen`,t,n),onConversionProgress:t=>{let n=(e,n)=>t(n);return e.ipcRenderer.on(`on-conversion-progress`,n),()=>e.ipcRenderer.removeListener(`on-conversion-progress`,n)},onGlobalShortcut:t=>{let n=(e,n)=>t(n);return e.ipcRenderer.on(`on-global-shortcut`,n),()=>e.ipcRenderer.removeListener(`on-global-shortcut`,n)},onMainProcessMessage:t=>{let n=(e,n)=>t(n);return e.ipcRenderer.on(`main-process-message`,n),()=>e.ipcRenderer.removeListener(`main-process-message`,n)},onBeforeQuit:t=>{let n=()=>t();return e.ipcRenderer.on(`app-before-quit`,n),()=>e.ipcRenderer.removeListener(`app-before-quit`,n)},openFileLocation:t=>e.ipcRenderer.invoke(`open-file-location`,t),openExternal:t=>e.ipcRenderer.invoke(`open-external`,t),openPath:t=>e.ipcRenderer.invoke(`open-path`,t),getAppVersion:()=>e.ipcRenderer.invoke(`get-app-version`),showAboutWindow:()=>e.ipcRenderer.send(`show-about-window`),closeAboutWindow:()=>e.ipcRenderer.send(`close-about-window`),minimizeWindow:()=>e.ipcRenderer.invoke(`minimize-window`),showWindow:()=>e.ipcRenderer.invoke(`show-window`),maximizeWindow:()=>e.ipcRenderer.invoke(`maximize-window`),closeWindow:()=>e.ipcRenderer.invoke(`close-window`),notifyConversionStart:()=>e.ipcRenderer.send(`notify-conversion-start`),notifyConversionDone:t=>e.ipcRenderer.send(`notify-conversion-done`,t),getScreenScaleFactor:()=>e.ipcRenderer.invoke(`get-screen-scale-factor`),getScreenBounds:()=>e.ipcRenderer.invoke(`get-screen-bounds`),getAllDisplays:()=>e.ipcRenderer.invoke(`get-all-displays`),takeScreenshot:()=>e.ipcRenderer.invoke(`take-screenshot`),selectRegion:()=>e.ipcRenderer.invoke(`select-region`),showRegionBorder:(t,n)=>e.ipcRenderer.invoke(`show-region-border`,t,n),hideRegionBorder:()=>e.ipcRenderer.invoke(`hide-region-border`),hideBorderOnly:()=>e.ipcRenderer.invoke(`hide-border-only`),showFloatingIsland:(t,n)=>e.ipcRenderer.invoke(`show-floating-island`,t,n),hideFloatingIsland:()=>e.ipcRenderer.invoke(`hide-floating-island`),showAiIsland:()=>e.ipcRenderer.invoke(`show-ai-island`),hideAiIsland:()=>e.ipcRenderer.invoke(`hide-ai-island`),getAiIslandSettings:()=>e.ipcRenderer.invoke(`get-ai-island-settings`),setAiIslandSettings:t=>e.ipcRenderer.invoke(`set-ai-island-settings`,t),hideCameraPreview:()=>e.ipcRenderer.invoke(`hide-camera-preview`),toggleCameraPreview:(t,n)=>e.ipcRenderer.invoke(`toggle-camera-preview`,t,n),setIslandState:(t,n)=>e.ipcRenderer.invoke(`set-island-state`,t,n),updateToolbarState:(t,n)=>e.ipcRenderer.invoke(`update-toolbar-state`,t,n),updateAudioLevels:(t,n)=>e.ipcRenderer.send(`update-audio-levels`,t,n),onToolbarAction:t=>{let n=(e,n)=>t(n);return e.ipcRenderer.on(`on-toolbar-action`,n),()=>e.ipcRenderer.removeListener(`on-toolbar-action`,n)},getMediaDevices:()=>navigator.mediaDevices?.enumerateDevices?navigator.mediaDevices.enumerateDevices().then(e=>e.map(e=>({deviceId:e.deviceId,kind:e.kind,label:e.label}))):Promise.resolve([]),loadRecordings:()=>e.ipcRenderer.invoke(`load-recordings`),saveRecordings:t=>e.ipcRenderer.invoke(`save-recordings`,t),showFloatingBall:()=>e.ipcRenderer.invoke(`show-floating-ball`),hideFloatingBall:()=>e.ipcRenderer.invoke(`hide-floating-ball`),toggleFloatingBall:()=>e.ipcRenderer.invoke(`toggle-floating-ball`),onFloatingBallAction:t=>{let n=(e,n)=>t(n);return e.ipcRenderer.on(`on-floating-ball-action`,n),()=>e.ipcRenderer.removeListener(`on-floating-ball-action`,n)},agentGetStatus:()=>e.ipcRenderer.invoke(`agent-get-status`),agentInstallHooks:()=>e.ipcRenderer.invoke(`agent-install-hooks`),agentUninstallHooks:()=>e.ipcRenderer.invoke(`agent-uninstall-hooks`),agentResolvePermission:t=>e.ipcRenderer.invoke(`agent-resolve-permission`,t),agentDismissQuestion:()=>e.ipcRenderer.invoke(`agent-dismiss-question`),agentSubmitQuestion:(t,n)=>e.ipcRenderer.invoke(`agent-submit-question`,t,n),agentSetAutoAllow:t=>e.ipcRenderer.invoke(`agent-set-auto-allow`,t),agentGetAutoAllow:()=>e.ipcRenderer.invoke(`agent-get-auto-allow`),onAgentStateUpdate:t=>{let n=(e,n)=>t(n);return e.ipcRenderer.on(`agent-state-update`,n),()=>e.ipcRenderer.removeListener(`agent-state-update`,n)},onAgentPermissionRequest:t=>{let n=(e,n)=>t(n);return e.ipcRenderer.on(`agent-permission-request`,n),()=>e.ipcRenderer.removeListener(`agent-permission-request`,n)},showAiWindow:()=>e.ipcRenderer.invoke(`show-ai-window`),showSettingsWindow:()=>e.ipcRenderer.invoke(`show-settings-window`),showMainWindow:()=>e.ipcRenderer.invoke(`show-main-window`),getFloatingBallSettings:()=>e.ipcRenderer.invoke(`get-floating-ball-settings`),setFloatingBallSettings:t=>e.ipcRenderer.invoke(`set-floating-ball-settings`,t),resetFloatingBallPosition:()=>e.ipcRenderer.invoke(`reset-floating-ball-position`),todoGet:()=>e.ipcRenderer.invoke(`todo-get`),todoCreate:t=>e.ipcRenderer.invoke(`todo-create`,t),todoUpdate:(t,n)=>e.ipcRenderer.invoke(`todo-update`,t,n),todoDelete:t=>e.ipcRenderer.invoke(`todo-delete`,t),todoToggleDone:t=>e.ipcRenderer.invoke(`todo-toggle-done`,t),showTodoWindow:()=>e.ipcRenderer.invoke(`todo-show-window`),closeTodoWindow:()=>e.ipcRenderer.invoke(`todo-close-window`),todoWindowVisible:()=>e.ipcRenderer.invoke(`todo-window-visible`),todoToggleAlwaysOnTop:()=>e.ipcRenderer.invoke(`todo-toggle-always-on-top`),todoGetSettings:()=>e.ipcRenderer.invoke(`todo-get-settings`),todoSetSettings:t=>e.ipcRenderer.invoke(`todo-set-settings`,t)});
+let electron = require("electron");
+let node_fs_promises = require("node:fs/promises");
+let node_path = require("node:path");
+//#region electron/preload/index.ts
+electron.contextBridge.exposeInMainWorld("electronAPI", {
+	getSources: (types) => electron.ipcRenderer.invoke("get-sources", types),
+	getSystemAudioSources: () => electron.ipcRenderer.invoke("get-system-audio-sources"),
+	showSaveDialog: (options) => electron.ipcRenderer.invoke("show-save-dialog", options),
+	showOpenDialog: (options) => electron.ipcRenderer.invoke("show-open-dialog", options),
+	getDefaultSaveDir: () => electron.ipcRenderer.invoke("get-default-save-dir"),
+	writeFile: async (data, filePath) => {
+		try {
+			await (0, node_fs_promises.mkdir)((0, node_path.dirname)(filePath), { recursive: true });
+			await (0, node_fs_promises.writeFile)(filePath, new Uint8Array(data));
+			return {
+				success: true,
+				filePath
+			};
+		} catch (err) {
+			console.error("保存文件失败", filePath, err?.message);
+			return {
+				success: false,
+				filePath,
+				error: err?.message
+			};
+		}
+	},
+	toLocalVideoUrl: (filePath) => `local-video:///${filePath.replace(/\\/g, "/")}`,
+	readFile: (filePath) => electron.ipcRenderer.invoke("read-file", filePath),
+	fileExists: (filePath) => electron.ipcRenderer.invoke("file-exists", filePath),
+	deleteFile: (filePath) => electron.ipcRenderer.invoke("delete-file", filePath),
+	getFileSize: (filePath) => electron.ipcRenderer.invoke("get-file-size", filePath),
+	convertToMp4: (inputPath, outputPath, crop) => electron.ipcRenderer.invoke("convert-to-mp4", inputPath, outputPath, crop),
+	cropVideo: (inputPath, outputPath, crop) => electron.ipcRenderer.invoke("crop-video", inputPath, outputPath, crop),
+	convertToGif: (inputPath, outputPath, options) => electron.ipcRenderer.invoke("convert-to-gif", inputPath, outputPath, options),
+	mergeMultiScreen: (inputs, outputPath) => electron.ipcRenderer.invoke("merge-multi-screen", inputs, outputPath),
+	onConversionProgress: (callback) => {
+		const handler = (_event, progress) => callback(progress);
+		electron.ipcRenderer.on("on-conversion-progress", handler);
+		return () => electron.ipcRenderer.removeListener("on-conversion-progress", handler);
+	},
+	onGlobalShortcut: (callback) => {
+		const handler = (_event, action) => callback(action);
+		electron.ipcRenderer.on("on-global-shortcut", handler);
+		return () => electron.ipcRenderer.removeListener("on-global-shortcut", handler);
+	},
+	onMainProcessMessage: (callback) => {
+		const handler = (_event, message) => callback(message);
+		electron.ipcRenderer.on("main-process-message", handler);
+		return () => electron.ipcRenderer.removeListener("main-process-message", handler);
+	},
+	onBeforeQuit: (callback) => {
+		const handler = () => callback();
+		electron.ipcRenderer.on("app-before-quit", handler);
+		return () => electron.ipcRenderer.removeListener("app-before-quit", handler);
+	},
+	openFileLocation: (filePath) => electron.ipcRenderer.invoke("open-file-location", filePath),
+	openExternal: (url) => electron.ipcRenderer.invoke("open-external", url),
+	openPath: (filePath) => electron.ipcRenderer.invoke("open-path", filePath),
+	getAppVersion: () => electron.ipcRenderer.invoke("get-app-version"),
+	showAboutWindow: () => electron.ipcRenderer.send("show-about-window"),
+	closeAboutWindow: () => electron.ipcRenderer.send("close-about-window"),
+	minimizeWindow: () => electron.ipcRenderer.invoke("minimize-window"),
+	showWindow: () => electron.ipcRenderer.invoke("show-window"),
+	maximizeWindow: () => electron.ipcRenderer.invoke("maximize-window"),
+	closeWindow: () => electron.ipcRenderer.invoke("close-window"),
+	notifyConversionStart: () => electron.ipcRenderer.send("notify-conversion-start"),
+	notifyConversionDone: (filePath) => electron.ipcRenderer.send("notify-conversion-done", filePath),
+	getScreenScaleFactor: () => electron.ipcRenderer.invoke("get-screen-scale-factor"),
+	getScreenBounds: () => electron.ipcRenderer.invoke("get-screen-bounds"),
+	getAllDisplays: () => electron.ipcRenderer.invoke("get-all-displays"),
+	takeScreenshot: () => electron.ipcRenderer.invoke("take-screenshot"),
+	selectRegion: () => electron.ipcRenderer.invoke("select-region"),
+	showRegionBorder: (region, audioState) => electron.ipcRenderer.invoke("show-region-border", region, audioState),
+	hideRegionBorder: () => electron.ipcRenderer.invoke("hide-region-border"),
+	hideBorderOnly: () => electron.ipcRenderer.invoke("hide-border-only"),
+	showFloatingIsland: (audioState, targetDisplayId) => electron.ipcRenderer.invoke("show-floating-island", audioState, targetDisplayId),
+	hideFloatingIsland: () => electron.ipcRenderer.invoke("hide-floating-island"),
+	showAiIsland: () => electron.ipcRenderer.invoke("show-ai-island"),
+	hideAiIsland: () => electron.ipcRenderer.invoke("hide-ai-island"),
+	getAiIslandSettings: () => electron.ipcRenderer.invoke("get-ai-island-settings"),
+	setAiIslandSettings: (patch) => electron.ipcRenderer.invoke("set-ai-island-settings", patch),
+	hideCameraPreview: () => electron.ipcRenderer.invoke("hide-camera-preview"),
+	toggleCameraPreview: (show, cameraDeviceId) => electron.ipcRenderer.invoke("toggle-camera-preview", show, cameraDeviceId),
+	setIslandState: (state, elapsedSeconds) => electron.ipcRenderer.invoke("set-island-state", state, elapsedSeconds),
+	updateToolbarState: (state, elapsedSeconds) => electron.ipcRenderer.invoke("update-toolbar-state", state, elapsedSeconds),
+	updateAudioLevels: (micLevel, sysLevel) => electron.ipcRenderer.send("update-audio-levels", micLevel, sysLevel),
+	onToolbarAction: (callback) => {
+		const handler = (_event, action) => callback(action);
+		electron.ipcRenderer.on("on-toolbar-action", handler);
+		return () => electron.ipcRenderer.removeListener("on-toolbar-action", handler);
+	},
+	getMediaDevices: () => {
+		if (!navigator.mediaDevices?.enumerateDevices) return Promise.resolve([]);
+		return navigator.mediaDevices.enumerateDevices().then((devices) => devices.map((d) => ({
+			deviceId: d.deviceId,
+			kind: d.kind,
+			label: d.label
+		})));
+	},
+	loadRecordings: () => electron.ipcRenderer.invoke("load-recordings"),
+	saveRecordings: (recordings) => electron.ipcRenderer.invoke("save-recordings", recordings),
+	showFloatingBall: () => electron.ipcRenderer.invoke("show-floating-ball"),
+	hideFloatingBall: () => electron.ipcRenderer.invoke("hide-floating-ball"),
+	toggleFloatingBall: () => electron.ipcRenderer.invoke("toggle-floating-ball"),
+	onFloatingBallAction: (callback) => {
+		const handler = (_event, action) => callback(action);
+		electron.ipcRenderer.on("on-floating-ball-action", handler);
+		return () => electron.ipcRenderer.removeListener("on-floating-ball-action", handler);
+	},
+	agentGetStatus: () => electron.ipcRenderer.invoke("agent-get-status"),
+	agentInstallHooks: () => electron.ipcRenderer.invoke("agent-install-hooks"),
+	agentUninstallHooks: () => electron.ipcRenderer.invoke("agent-uninstall-hooks"),
+	agentResolvePermission: (behavior) => electron.ipcRenderer.invoke("agent-resolve-permission", behavior),
+	agentDismissQuestion: () => electron.ipcRenderer.invoke("agent-dismiss-question"),
+	agentSubmitQuestion: (sessionId, answers) => electron.ipcRenderer.invoke("agent-submit-question", sessionId, answers),
+	agentSetAutoAllow: (enabled) => electron.ipcRenderer.invoke("agent-set-auto-allow", enabled),
+	agentGetAutoAllow: () => electron.ipcRenderer.invoke("agent-get-auto-allow"),
+	onAgentStateUpdate: (callback) => {
+		const handler = (_event, data) => callback(data);
+		electron.ipcRenderer.on("agent-state-update", handler);
+		return () => electron.ipcRenderer.removeListener("agent-state-update", handler);
+	},
+	onAgentPermissionRequest: (callback) => {
+		const handler = (_event, data) => callback(data);
+		electron.ipcRenderer.on("agent-permission-request", handler);
+		return () => electron.ipcRenderer.removeListener("agent-permission-request", handler);
+	},
+	showAiWindow: () => electron.ipcRenderer.invoke("show-ai-window"),
+	showSettingsWindow: () => electron.ipcRenderer.invoke("show-settings-window"),
+	showMainWindow: () => electron.ipcRenderer.invoke("show-main-window"),
+	getFloatingBallSettings: () => electron.ipcRenderer.invoke("get-floating-ball-settings"),
+	setFloatingBallSettings: (patch) => electron.ipcRenderer.invoke("set-floating-ball-settings", patch),
+	resetFloatingBallPosition: () => electron.ipcRenderer.invoke("reset-floating-ball-position"),
+	todoGet: () => electron.ipcRenderer.invoke("todo-get"),
+	todoCreate: (input) => electron.ipcRenderer.invoke("todo-create", input),
+	todoUpdate: (id, patch) => electron.ipcRenderer.invoke("todo-update", id, patch),
+	todoDelete: (id) => electron.ipcRenderer.invoke("todo-delete", id),
+	todoToggleDone: (id) => electron.ipcRenderer.invoke("todo-toggle-done", id),
+	todoTogglePin: (id) => electron.ipcRenderer.invoke("todo-toggle-pin", id),
+	onTodoFocusItem: (callback) => {
+		const handler = (_event, id) => callback(id);
+		electron.ipcRenderer.on("todo-focus-item", handler);
+		return () => electron.ipcRenderer.removeListener("todo-focus-item", handler);
+	},
+	showTodoWindow: () => electron.ipcRenderer.invoke("todo-show-window"),
+	closeTodoWindow: () => electron.ipcRenderer.invoke("todo-close-window"),
+	todoWindowVisible: () => electron.ipcRenderer.invoke("todo-window-visible"),
+	todoToggleAlwaysOnTop: () => electron.ipcRenderer.invoke("todo-toggle-always-on-top"),
+	todoGetSettings: () => electron.ipcRenderer.invoke("todo-get-settings"),
+	todoSetSettings: (patch) => electron.ipcRenderer.invoke("todo-set-settings", patch)
+});
+//#endregion

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTodoDataDir, setTodoLogger, loadItems, saveItems,
          createTodo, updateTodo, deleteTodo, toggleTodoDone,
-         markReminderFired, incompleteTodoCount } from './electron/main/todo-store.ts'
+         markReminderFired, incompleteTodoCount, togglePin, savePinPosition } from './electron/main/todo-store.ts'
 
 let fails = 0
 function eq(actual, expected, msg) {
@@ -42,7 +42,7 @@ teardown()
 // --- 创建 + 持久化 ---
 setup()
 {
-  let items = createTodo({ type: 'todo', title: '买牛奶', content: '<p>备注</p>', priority: 'high', reminder: null, done: false })
+  let items = createTodo({ type: 'todo', content: '买牛奶', priority: 'high', reminder: null, done: false })
   ok(items.length === 1, 'createTodo 返回含新项的全量数组')
   ok(items[0].id && items[0].id.length > 0, 'createTodo 生成 id')
   ok(items[0].createdAt > 0 && items[0].updatedAt > 0, 'createTodo 写入时间戳')
@@ -52,7 +52,7 @@ setup()
 
   // 重新加载（验证持久化）
   const reloaded = loadItems()
-  eq(reloaded[0].title, '买牛奶', '重载后标题一致')
+  eq(reloaded[0].content, '买牛奶', '重载后内容一致')
   eq(reloaded[0].type, 'todo', '重载后 type 一致')
 }
 teardown()
@@ -60,12 +60,12 @@ teardown()
 // --- updateTodo ---
 setup()
 {
-  const [a] = createTodo({ type: 'memo', title: '想法', content: '', priority: 'low', reminder: null, done: false })
+  const [a] = createTodo({ type: 'memo', content: '想法', priority: 'low', reminder: null, done: false })
   const after = updateTodo(a.id, { priority: 'urgent', reminder: '2026-08-15T10:00:00.000Z' })
   eq(after[0].priority, 'urgent', 'updateTodo 更新优先级')
   eq(after[0].reminder, '2026-08-15T10:00:00.000Z', 'updateTodo 更新提醒')
   ok(after[0].updatedAt >= a.updatedAt, 'updateTodo 更新 updatedAt')
-  const missing = updateTodo('nope', { title: 'x' })
+  const missing = updateTodo('nope', { content: 'x' })
   eq(missing.length, 1, 'updateTodo 对不存在 id 静默返回原数组')
 }
 teardown()
@@ -73,7 +73,7 @@ teardown()
 // --- toggleTodoDone / markReminderFired ---
 setup()
 {
-  const [t] = createTodo({ type: 'todo', title: '学习', content: '', priority: 'medium', reminder: null, done: false })
+  const [t] = createTodo({ type: 'todo', content: '学习', priority: 'medium', reminder: null, done: false })
   const done = toggleTodoDone(t.id)
   eq(done[0].done, true, 'toggleTodoDone 置为 true')
   const undone = toggleTodoDone(t.id)
@@ -87,11 +87,11 @@ teardown()
 // --- deleteTodo ---
 setup()
 {
-  const [a] = createTodo({ type: 'todo', title: 'a', content: '', priority: 'low', reminder: null, done: false })
-  createTodo({ type: 'todo', title: 'b', content: '', priority: 'low', reminder: null, done: false })
+  const [a] = createTodo({ type: 'todo', content: 'a', priority: 'low', reminder: null, done: false })
+  createTodo({ type: 'todo', content: 'b', priority: 'low', reminder: null, done: false })
   const after = deleteTodo(a.id)
   eq(after.length, 1, 'deleteTodo 删掉一条，剩 1 条')
-  eq(after[0].title, 'b', '剩余项正确')
+  eq(after[0].content, 'b', '剩余项正确')
 }
 teardown()
 
@@ -115,25 +115,49 @@ teardown()
 // --- 改期会重置 reminderFired ---
 setup()
 {
-  const [t] = createTodo({ type: 'todo', title: '提醒', content: '', priority: 'medium', reminder: '2026-08-14T11:00:00.000Z', done: false })
+  const [t] = createTodo({ type: 'todo', content: '提醒', priority: 'medium', reminder: '2026-08-14T11:00:00.000Z', done: false })
   markReminderFired(t.id)
   ok(loadItems()[0].reminderFired === true, '首次 markReminderFired 置 true')
   // 改成新的提醒时间 → 重置 fired
   const changed = updateTodo(t.id, { reminder: '2026-08-15T11:00:00.000Z' })
   eq(changed[0].reminderFired, false, '改期后重置 reminderFired=false')
-  // 未改提醒（仅改标题）→ 保持 fired
+  // 未改提醒（仅改内容）→ 保持 fired
   const firedAgain = markReminderFired(t.id)
-  const titleOnly = updateTodo(t.id, { title: '改标题' })
-  eq(titleOnly[0].reminderFired, true, '仅改标题不改提醒 → fired 保持不变')
+  const contentOnly = updateTodo(t.id, { content: '改内容' })
+  eq(contentOnly[0].reminderFired, true, '仅改内容不改提醒 → fired 保持不变')
+}
+teardown()
+
+// --- 贴屏：togglePin / savePinPosition ---
+setup()
+{
+  const [a] = createTodo({ type: 'todo', content: '贴我', priority: 'medium', reminder: null, done: false })
+  // 新贴时给初始位置
+  const pinned = togglePin(a.id, { x: 100, y: 200 })
+  eq(pinned[0].pinned, true, 'togglePin 置 pinned=true')
+  eq(pinned[0].pinX, 100, 'togglePin 写初始 pinX')
+  eq(pinned[0].pinY, 200, 'togglePin 写初始 pinY')
+  // 位置移动保存
+  const moved = savePinPosition(a.id, 333, 444)
+  eq(moved[0].pinX, 333, 'savePinPosition 更新 pinX')
+  eq(moved[0].pinY, 444, 'savePinPosition 更新 pinY')
+  ok(moved[0].pinned === true, '保存位置不影响 pinned')
+  // 取消贴屏
+  const unpinned = togglePin(a.id)
+  eq(unpinned[0].pinned, false, 'togglePin 再点取消 pinned=false')
+  // 新创建默认不贴
+  const [b] = createTodo({ type: 'memo', content: 'm', priority: 'low', reminder: null, done: false })
+  eq(b.pinned, false, '新建默认 pinned=false')
+  eq(b.pinX, null, '新建默认 pinX=null')
 }
 teardown()
 
 // --- incompleteTodoCount ---
 setup()
 {
-  createTodo({ type: 'todo', title: '未完成1', content: '', priority: 'low', reminder: null, done: false })
-  createTodo({ type: 'todo', title: '已完成', content: '', priority: 'low', reminder: null, done: true })
-  createTodo({ type: 'memo', title: '备忘录', content: '', priority: 'low', reminder: null, done: false })
+  createTodo({ type: 'todo', content: '未完成1', priority: 'low', reminder: null, done: false })
+  createTodo({ type: 'todo', content: '已完成', priority: 'low', reminder: null, done: true })
+  createTodo({ type: 'memo', content: '备忘录', priority: 'low', reminder: null, done: false })
   const items = loadItems()
   eq(incompleteTodoCount(items), 1, '仅统计未完成的 todo，忽略 done 与 memo')
 }

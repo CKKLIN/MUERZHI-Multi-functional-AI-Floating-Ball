@@ -7,7 +7,7 @@ import type { TodoItem, TodoSettings, TodoType, TodoPriority } from '../env'
 
 export type { TodoItem, TodoSettings, TodoType, TodoPriority }
 
-// 编辑/新建时用的草稿（不含 id/时间戳，由主进程生成）
+// 编辑/新建时用的草稿（不含 id/时间戳，由主进程生成）；title 仅备忘录用，待办空串
 export interface TodoDraft {
   type: TodoType
   title: string
@@ -34,7 +34,7 @@ export const useTodoStore = defineStore('todo', {
   state: (): TodoState => ({
     items: [],
     loaded: false,
-    settings: { badgeVisible: true, windowAlwaysOnTop: true },
+    settings: { badgeVisible: true, windowAlwaysOnTop: true, stickyBoardPos: null },
     editingId: '',
     previewId: '',
     activeType: 'all',
@@ -101,6 +101,10 @@ export const useTodoStore = defineStore('todo', {
 
     async toggleDone(id: string) {
       this.items = await window.electronAPI.todoToggleDone(id)
+    },
+
+    async togglePin(id: string) {
+      this.items = await window.electronAPI.todoTogglePin(id)
     },
 
     startEdit(id: string) { this.editingId = id },
