@@ -23,24 +23,24 @@ pinY: number | null
 ```
 `createTodo` 默认 `pinned:false, pinX:null, pinY:null`。位置随 `todo-notes.json` 持久化（启动时重建便签）。
 
-## 贴屏便签窗口（todo-sticky.ts，我设计的样式）
-- 每条 pinned 项一个独立的**无边框透明 always-on-top** 小窗（类似提醒弹窗），`skipTaskbar:true`。
+## 贴屏便签板（todo-sticky.ts，我设计的样式）—— 已实现为“合并单窗口”
+- **所有 pinned 项合并到一个无边框透明 always-on-top 小窗**（不是每项一个窗口），`skipTaskbar:true`。
+- 每次显示一张便签，**底部圆点 + ‹ › 箭头轮播切换**（当前圆点变长变靛蓝），单张时箭头隐藏。
 - 外观（Apple 高级风，与待办/提醒一致）：
-  - **左侧竖色条**按优先级（紧急橙/高琥珀/中蓝/低灰，复用 PRIO_COLOR）
-  - 顶部小标题栏：**MUERZHI logo + 待办标题**（加粗、单行省略）+ 右上 **✕**（关闭=取消贴屏）
-  - 下方正文摘录（纯文本 2 行省略，去图）
-  - todo 已完成 → 标题加删除线 + 整体淡化
-- **拖动**：便签主体 `-webkit-app-region: drag`；✕ 与任何可点区域 `no-drag`。拖动时主进程记录新位置。
-- 尺寸：固定 250×118 左右（内容少也够，避免自适应的复杂度）。
+  - 左侧**优先级竖色条**（紧急橙/高琥珀/中蓝/低灰）
+  - 顶部小标题栏：MUERZHI logo + 品牌字 + 计数（如 2/3）+ ✕（关闭=取消当前贴屏）
+  - 正文区：待办=正文全文单行省略；备忘=标题+正文；已完成删除线淡化
+- **拖动**：顶部标题栏 `-webkit-app-region: drag`，整板移动。
+- 尺寸：208×120，极简迷你。
 
 ## 实时更新
-主进程维护 `Map<itemId, BrowserWindow>`；任何数据变更（增/删/改/完成/取消贴屏）后调用 `syncStickyNotes()`：
-- 对每条 `pinned` 项：没有便签则创建；已有则用 `executeJavaScript('renderNote(data)')` 就地刷新内容（标题/摘录/完成/优先级），不重建窗口。
-- 不再 `pinned` 的项：关闭对应窗口。
-- 启动时调用一次，按持久化位置重建。
+主进程维护单个 board window；任何数据变更（增/删/改/完成/取消贴屏）后调用 `syncStickyNotes()`：
+- 无 pinned → 关闭板；否则若有板则 `renderNotes(list, index)` 就地刷新（不重建），无板则创建（`ready-to-show` 后补推首帧数据，避免加载中 executeJavaScript 被吞）。
+- 轮播位置在渲染层按当前便签 **id 保持**（list 同步时不跳回第一张）。
 
 ## 位置持久化
-便签 `move` 事件 → 主进程写回该项 `pinX/pinY`（`updateTodo` 的轻量变体，避免每次 move 都整段重渲染；位置保存用 `savePinPosition`，不触发 sticky 重建）。
+整板一个位置，存 `todo-settings.json` 的 `stickyBoardPos`。板 `move` 事件（300ms 去抖）→ `updateTodoSettings({ stickyBoardPos })` 写盘，启动时按它重建。
+（注：`TodoItem.pinX/pinY` 与 `savePinPosition` 为早期设计的残留字段，当前板不使用；`togglePin` 也不再传 initial 位置。）
 
 ## 点击定位
 便签点击 → IPC `todo-sticky-open(itemId)` → `showTodoWindow()` 后向待办窗口发 `todo-focus-item`；渲染层监听后 `store.startPreview(itemId)` 直接打开该条预览。

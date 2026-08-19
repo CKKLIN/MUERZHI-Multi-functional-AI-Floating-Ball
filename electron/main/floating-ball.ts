@@ -1,7 +1,8 @@
-import { BrowserWindow, screen, ipcMain, nativeImage, app } from 'electron'
+import { BrowserWindow, screen, ipcMain, app } from 'electron'
 import nodeFs from 'node:fs'
 import { join } from 'node:path'
 import log from './logger'
+import { getLogoDataUrl } from './logo'
 
 // === 悬浮球窗口 ===
 let floatingBallWindow: BrowserWindow | null = null
@@ -364,29 +365,6 @@ function forwardAction(action: string) {
 }
 
 // === 构建 HTML ===
-// Logo base64 缓存
-let logoBase64: string | null = null
-
-function getLogoDataUrl(size: number = 48): string {
-  if (logoBase64) return logoBase64
-  try {
-    // 查找 logo.png 的几个可能位置
-    const paths = [
-      join(__dirname, '..', '..', 'public', 'logo.png'),
-      join(__dirname, '..', 'public', 'logo.png'),
-      join(__dirname, '..', '..', 'resources', 'logo.png'),
-    ]
-    for (const p of paths) {
-      if (nodeFs.existsSync(p)) {
-        const img = nativeImage.createFromPath(p)
-        const resized = img.resize({ width: size, height: size, quality: 'good' })
-        logoBase64 = resized.toDataURL()
-        return logoBase64
-      }
-    }
-  } catch {}
-  return '' // 找不到就空着
-}
 
 function buildFloatingBallHtml() {
   const logo = getLogoDataUrl(48)

@@ -90,7 +90,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-fam
 <script>
 const {ipcRenderer} = require('electron')
 window.ipc = ipcRenderer
-var NOTES=[], IDX=0
+var NOTES=[], IDX=0, LAST=null
 function act(a){ var n=NOTES[IDX]; if(n) ipc.send('todo-sticky-'+a, n.id) }
 function go(d){ if(NOTES.length<2) return; IDX=(IDX+d+NOTES.length)%NOTES.length; draw() }
 function draw(){
@@ -110,9 +110,13 @@ function draw(){
   })
   document.getElementById('prev').style.visibility = NOTES.length>1?'visible':'hidden'
   document.getElementById('next').style.visibility = NOTES.length>1?'visible':'hidden'
+  LAST = (NOTES[IDX]||{}).id
 }
 function renderNotes(list, idx){
-  NOTES=list||[]; IDX = NOTES.length? Math.max(0, Math.min(idx||0, NOTES.length-1)) : 0
+  NOTES=list||[]; IDX = 0
+  // 尽量保持当前看的这条（按 id 定位），避免任意数据同步把轮播跳回第一张
+  if (LAST !== null) { for (var i=0;i<NOTES.length;i++){ if(NOTES[i].id===LAST){ IDX=i; break } } }
+  if (NOTES.length && (LAST===null || !NOTES.some(function(x){return x.id===LAST}))) IDX = Math.max(0, Math.min(idx||0, NOTES.length-1))
   draw()
 }
 </script></body></html>`
@@ -128,7 +132,12 @@ function createBoard(): void {
   })
   boardWindow.setAlwaysOnTop(true, 'screen-saver')
   boardWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildBoardHtml())}`)
-  boardWindow.once('ready-to-show', () => { if (boardWindow && !boardWindow.isDestroyed()) boardWindow.show() })
+  boardWindow.once('ready-to-show', () => {
+    if (boardWindow && !boardWindow.isDestroyed()) {
+      boardWindow.show()
+      pushNotes() // 首建时在这里补推数据，避免加载中 executeJavaScript 被吞
+    }
+  })
   boardWindow.on('move', () => {
     if (!boardWindow || boardWindow.isDestroyed()) return
     const [x, y] = boardWindow.getPosition()
@@ -151,15 +160,24 @@ export function syncStickyNotes(): void {
     boardWindow = null
     return
   }
-  if (!boardWindow || boardWindow.isDestroyed()) {
-    createBoard()
-  }
   currentIndex = Math.max(0, Math.min(currentIndex, notes.length - 1))
-  boardWindow!.webContents.executeJavaScript(`if(window.renderNotes) renderNotes(${JSON.stringify(notes)}, ${currentIndex})`).catch(() => {})
+  if (!boardWindow || boardWindow.isDestroyed()) {
+    createBoard() // 创建后由 ready-to-show 主动推一次数据（loadURL 异步，不能立刻 executeJavaScript）
+  } else {
+    pushNotes()
+  }
 }
 
-/** 退出前关闭便签板（before-quit 接线）。 */
+/** 把当前便签列表推进板窗口（窗口尚在加载时会吞掉，由 ready-to-show 补推）。 */
+function pushNotes(): void {
+  const notes = pinnedNotes()
+  if (!boardWindow || boardWindow.isDestroyed()) return
+  boardWindow.webContents.executeJavaScript(`if(window.renderNotes) renderNotes(${JSON.stringify(notes)}, ${currentIndex})`).catch(() => {})
+}
+
+/** 退出前关闭便签板（before-quit 接线）：先清去抖定时器，避免 teardown 期间再写位置。 */
 export function closeAllStickyNotes(): void {
+  if (moveTimer) { clearTimeout(moveTimer); moveTimer = null }
   if (boardWindow && !boardWindow.isDestroyed()) boardWindow.destroy()
   boardWindow = null
 }

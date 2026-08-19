@@ -110,16 +110,12 @@ export const useTodoStore = defineStore('todo', {
     startEdit(id: string) { this.editingId = id },
     startCreate() { this.editingId = '__new__'; this.previewId = '' },
     closeEditor() { this.editingId = '' },
-    isNew() { return this.editingId === '__new__' },
 
     startPreview(id: string) { this.previewId = id; this.editingId = '' },
     closePreview() { this.previewId = '' },
 
     async setBadgeVisible(v: boolean) {
       this.settings = await window.electronAPI.todoSetSettings({ badgeVisible: v })
-    },
-    async setWindowAlwaysOnTop(v: boolean) {
-      this.settings = await window.electronAPI.todoSetSettings({ windowAlwaysOnTop: v })
     },
   },
 })

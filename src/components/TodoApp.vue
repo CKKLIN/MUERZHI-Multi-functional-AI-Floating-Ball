@@ -43,8 +43,9 @@ const editingDraft = computed<TodoDraft | null>(() => {
 // 富文本 HTML → 单行纯文本摘录（用于列表；去掉一切标签与图片）。
 // 用内容作 key 做 memo：模板里 v-if 与插值会各调一次、且列表重渲染会反复调，
 // 若不缓存，每次都 createElement+innerHTML 解析整个富文本（含大图 dataURL）会让 UI 卡到
-// “点了没反应”。缓存后同内容只解析一次。
+// “点了没反应”。缓存后同内容只解析一次；并给缓存设上限（内容常含大图 base64，避免无限增长）。
 const plainCache = new Map<string, string>()
+const PLAIN_CACHE_MAX = 120
 function plainText(html: string): string {
   const key = html || ''
   const hit = plainCache.get(key)
@@ -53,6 +54,10 @@ function plainText(html: string): string {
   el.innerHTML = key
   const txt = (el.textContent || '').replace(/\s+/g, ' ').trim()
   plainCache.set(key, txt)
+  if (plainCache.size > PLAIN_CACHE_MAX) {
+    const old = plainCache.keys().next().value // Map 键按插入序，删最老的一条
+    if (old !== undefined) plainCache.delete(old)
+  }
   return txt
 }
 

@@ -3,33 +3,11 @@
 // 系统 Notification 在 Windows 上头部由系统控制、且几秒后自动收起，无法满足
 // “头部显示 MUERZHI / 不自动关闭”。这里改用一个自绘的 always-on-top 小窗：
 // 头部写死 “MUERZHI”，显示待办标题+正文摘录，常驻直到用户点✕关闭 或 点“打开待办”。
-import { BrowserWindow, screen, nativeImage } from 'electron'
-import nodeFs from 'node:fs'
-import { join } from 'node:path'
+import { BrowserWindow, screen } from 'electron'
 import log from './logger'
+import { getLogoDataUrl } from './logo'
 
 let reminderWindow: BrowserWindow | null = null
-
-// logo 缓存：弹窗走 data: URL，没法引用 /logo.png，需内嵌 base64
-let logoDataUrl: string | null = null
-function getLogoDataUrl(size = 18): string {
-  if (logoDataUrl) return logoDataUrl
-  try {
-    const paths = [
-      join(__dirname, '..', '..', 'public', 'logo.png'),
-      join(__dirname, '..', 'public', 'logo.png'),
-      join(__dirname, '..', '..', 'resources', 'logo.png'),
-    ]
-    for (const p of paths) {
-      if (nodeFs.existsSync(p)) {
-        const img = nativeImage.createFromPath(p).resize({ width: size, height: size, quality: 'good' })
-        logoDataUrl = img.toDataURL()
-        return logoDataUrl
-      }
-    }
-  } catch {}
-  return ''
-}
 
 function buildReminderHtml(title: string, body: string): string {
   // 按 2 倍分辨率内嵌，CSS 再缩到 16px 显示 ⇒ 高分屏/视网膜下更清晰
@@ -90,12 +68,22 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;')
 }
 
-/** 弹出一个常驻的提醒小窗（位置：主屏右下角）。重复提醒时先关旧的再开新的。 */
+const reminderQueue: { title: string; body: string }[] = []
+
+/** 入队一条提醒；同一时刻只弹一个，关闭后再弹下一条（多个同时到期不互相覆盖丢弃）。 */
 export function showTodoReminder(title: string, body: string): void {
-  if (reminderWindow && !reminderWindow.isDestroyed()) {
-    reminderWindow.destroy()
-    reminderWindow = null
-  }
+  reminderQueue.push({ title, body })
+  pump()
+}
+
+function pump(): void {
+  if (reminderWindow && !reminderWindow.isDestroyed()) return // 已有一个在显示
+  const next = reminderQueue.shift()
+  if (!next) return
+  openPopup(next.title, next.body)
+}
+
+function openPopup(title: string, body: string): void {
   const W = 300
   const H = 150
   const area = screen.getPrimaryDisplay().workArea
@@ -120,11 +108,19 @@ export function showTodoReminder(title: string, body: string): void {
   reminderWindow.setAlwaysOnTop(true, 'screen-saver')
   reminderWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildReminderHtml(title, body))}`)
   reminderWindow.once('ready-to-show', () => reminderWindow?.show())
-  reminderWindow.on('closed', () => { reminderWindow = null })
+  // 关闭/销毁后弹下一条 queued 提醒
+  reminderWindow.on('closed', () => { reminderWindow = null; pump() })
   log.info('Todo reminder popup shown')
 }
 
 export function hideTodoReminder(): void {
+  if (reminderWindow && !reminderWindow.isDestroyed()) reminderWindow.destroy()
+  // destroy 触发 'closed' → pump() 弹下一条
+}
+
+/** 用户点了「打开待办」：清空未弹队列 + 关闭当前弹窗（打开窗口即视为已查看到期项）。 */
+export function clearTodoReminderQueue(): void {
+  reminderQueue.length = 0
   if (reminderWindow && !reminderWindow.isDestroyed()) reminderWindow.destroy()
   reminderWindow = null
 }

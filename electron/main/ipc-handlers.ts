@@ -13,7 +13,7 @@ import {
 import type { TodoItem, TodoInput } from './todo-store'
 import { refreshTodoBadge } from './todo-badge'
 import { showTodoWindow, closeTodoWindow, isTodoWindowVisible, toggleTodoWindowAlwaysOnTop, focusTodoItem } from './todo-window'
-import { hideTodoReminder } from './todo-reminder-window'
+import { hideTodoReminder, clearTodoReminderQueue } from './todo-reminder-window'
 import { syncStickyNotes } from './todo-sticky'
 import type { AgentBridge } from './agent-bridge'
 import log from './logger'
@@ -478,7 +478,7 @@ export function registerTodoIpcHandlers(): void {
   // 提醒弹窗：✕ 关闭 / 打开待办
   ipcMain.on('todo-reminder-close', () => { hideTodoReminder() })
   ipcMain.on('todo-reminder-open', () => {
-    hideTodoReminder()
+    clearTodoReminderQueue() // 打开窗口即视为已查看到期项，清空未弹队列
     showTodoWindow()
   })
 

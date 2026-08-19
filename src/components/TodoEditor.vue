@@ -80,10 +80,11 @@ onMounted(() => {
         if (!file || !quill) return
         const reader = new FileReader()
         reader.onload = () => {
+          if (!quill) return // 编辑器可能已卸载，读取完成时避免操作已销毁实例
           const dataUrl = reader.result as string
-          const range = quill!.getSelection(true) ?? { index: quill!.getLength() }
-          quill!.insertEmbed(range.index, 'image', dataUrl)
-          quill!.setSelection(range.index + 1)
+          const range = quill.getSelection(true) ?? { index: quill.getLength() }
+          quill.insertEmbed(range.index, 'image', dataUrl)
+          quill.setSelection(range.index + 1)
         }
         reader.readAsDataURL(file)
       }
@@ -169,13 +170,6 @@ defineExpose({ save })
 
 <style scoped>
 .editor { display: flex; flex-direction: column; height: 100%; width: 100%; min-width: 0; padding: 12px 18px 14px; }
-
-/* 顶部：仅左上取消、右上保存 —— 主次里最不打扰的一行 */
-.ed-head { display: flex; align-items: center; justify-content: space-between; padding: 0 0 10px; }
-.head-btn { width: 26px; height: 26px; border: none; border-radius: 7px; background: transparent; color: var(--text-muted); font-size: 14px; cursor: pointer; }
-.head-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
-.head-save { border: none; background: transparent; color: var(--accent); font-size: 14px; font-weight: 600; cursor: pointer; padding: 4px 8px; border-radius: 7px; }
-.head-save:hover { background: var(--accent-bg); }
 
 /* 标题行（备忘用）+ 完成勾选行 */
 .ed-title { display: flex; align-items: center; gap: 10px; padding: 0 0 10px; }

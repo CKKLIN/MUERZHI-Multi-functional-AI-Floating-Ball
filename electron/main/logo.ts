@@ -4,10 +4,12 @@ import { nativeImage } from 'electron'
 import nodeFs from 'node:fs'
 import { join } from 'node:path'
 
-let logoDataUrl: string | null = null
+// 按 size 分 key 缓存：不同窗口要不同分辨率（提醒 32 / 便签 28 / 悬浮球 48），首个调用不能锁死一个尺寸
+const logoCache = new Map<number, string>()
 
 export function getLogoDataUrl(size = 32): string {
-  if (logoDataUrl) return logoDataUrl
+  const hit = logoCache.get(size)
+  if (hit) return hit
   try {
     const paths = [
       join(__dirname, '..', '..', 'public', 'logo.png'),
@@ -17,8 +19,9 @@ export function getLogoDataUrl(size = 32): string {
     for (const p of paths) {
       if (nodeFs.existsSync(p)) {
         const img = nativeImage.createFromPath(p).resize({ width: size, height: size, quality: 'good' })
-        logoDataUrl = img.toDataURL()
-        return logoDataUrl
+        const url = img.toDataURL()
+        logoCache.set(size, url)
+        return url
       }
     }
   } catch {}
