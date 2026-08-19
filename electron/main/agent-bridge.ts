@@ -4,7 +4,6 @@
 import { createAgentStateMachine } from "./agent-state-machine"
 import { createAgentServer, type CardItem, type SafeCard } from "./agent-server"
 import { createClaudeHookManager, type HookManagerStatus } from "./claude-hook-manager"
-import { execSync } from "child_process"
 import nodeFs from "node:fs"
 import { join } from "node:path"
 import log from "./logger"

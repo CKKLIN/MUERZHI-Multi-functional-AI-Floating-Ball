@@ -41,8 +41,10 @@ export function permissionContentSignature(v: any): string {
 /** 在待审卡里找应被「外部完成」关闭的那张，返回队列下标；无匹配返回 -1。
  *  匹配优先级：
  *    1) tool_use_id 精确（仅当卡片与完成事件都带 ID 时，如合成注入/未来桥接）；
- *    2) 内容签名回退——同 session + 同工具名 + 同入参签名判定为同一工具调用
- *       （toolName 与内容签名分开判等，不做字符串拼接，避免分隔符歧义/转义问题）。
+ *    2) 内容签名——同 session + 同工具名 + 同入参签名判定为同一工具调用
+ *       （toolName 与内容签名分开判等，不做字符串拼接，避免分隔符歧义/转义问题）；
+ *    3) 惰性对账兜底——签名对不上时，若该 session 恰好只有一张同名权限卡，按名收起
+ *       （完成事件本身已证明该 tool 的 gate settle，见函数体注释）。
  *  cards 按队列入列顺序，取最先匹配者：工具串行执行，先到的完成事件对应先入队的卡，
  *  避免同一会话重复相同调用时误关后面的卡。 */
 export function findPermissionToResolve(cards: PendingCardLike[], sessionId: string, evt: CompletionEventLike): number {
@@ -51,12 +53,24 @@ export function findPermissionToResolve(cards: PendingCardLike[], sessionId: str
   const inputSig = (name != null && name !== "")
     ? permissionContentSignature(evt?.tool_input ?? evt?.toolInput ?? null)
     : null
+  // 惰性对账：内容签名对不上（tool_input 在请求与执行间漂移/字段丢失）时，
+  // 记录「同 session + 同 tool_name」的候选，最后判断是否可安全按名收起。
+  let nameOnlyIdx = -1
+  let nameOnlyCount = 0
   for (let i = 0; i < cards.length; i++) {
     const c = cards[i]
     if (c.kind !== "permission") continue
     if (c.sessionId !== sessionId) continue
     if (toolUseId && c.toolUseId && c.toolUseId === toolUseId) return i
-    if (inputSig != null && c.toolName === name && permissionContentSignature(c.toolInput ?? null) === inputSig) return i
+    if (name != null && c.toolName === name) {
+      if (inputSig != null && permissionContentSignature(c.toolInput ?? null) === inputSig) return i
+      if (nameOnlyIdx === -1) nameOnlyIdx = i
+      nameOnlyCount++
+    }
   }
+  // 唯一同名卡 → 视为外部已完成审批的那张（Claude 工具串行执行，完成事件到达说明
+  // 该 tool 的 gate 已 settle；此时收起唯一的同名卡是安全的，不存在"用户还在犹豫却被关卡"）。
+  // 多于一张同名卡则无法去重，宁可不关（交给 120s 队首次超时兜底）。
+  if (nameOnlyCount === 1) return nameOnlyIdx
   return -1
 }
