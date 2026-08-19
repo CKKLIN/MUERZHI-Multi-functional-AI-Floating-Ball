@@ -106,7 +106,10 @@ function handleOpenFolder(filePath: string) {
 }
 
 .recording-row:hover {
-  background: var(--bg-hover);
+  background: var(--surface-grad);
+  box-shadow:
+    inset 1px 1px 2px rgba(255, 255, 255, 0.9),
+    0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .recording-row:hover .row-actions {
@@ -166,23 +169,41 @@ function handleOpenFolder(filePath: string) {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-top-color: rgba(255, 255, 255, 0.9);
+  border-left-color: rgba(255, 255, 255, 0.85);
+  border-right-color: rgba(200, 200, 210, 0.4);
+  border-bottom-color: rgba(190, 190, 200, 0.5);
   border-radius: var(--radius-sm);
-  background: transparent;
+  background: var(--surface-grad);
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 10px;
   font-weight: 600;
-  transition: all var(--transition);
+  transition: all 0.2s var(--bevel-ease);
+  box-shadow: var(--bevel-shadow);
 }
 
 .row-btn:hover {
-  background: var(--bg-secondary);
+  background: var(--surface-grad-hover);
   color: var(--text-primary);
+  transform: translate(-1px, -1px);
+  box-shadow: var(--bevel-shadow-hover);
+}
+
+.row-btn:active {
+  background: var(--surface-grad-active);
+  transform: translate(1px, 1px);
+  box-shadow: var(--bevel-shadow-active);
 }
 
 .row-btn.danger:hover {
-  background: var(--accent-bg);
-  color: var(--accent);
+  background: var(--surface-accent-grad);
+  border-color: var(--surface-accent);
+  color: #fff;
+  box-shadow:
+    3px 3px 8px var(--surface-accent-glow),
+    inset 1px 1px 2px rgba(255, 255, 255, 0.4),
+    inset -1px -1px 0 rgba(0, 0, 0, 0.1);
 }
 </style>

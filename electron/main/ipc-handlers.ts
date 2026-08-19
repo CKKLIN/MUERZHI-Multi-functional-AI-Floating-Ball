@@ -12,7 +12,7 @@ import {
 } from './todo-store'
 import type { TodoItem, TodoInput } from './todo-store'
 import { refreshTodoBadge } from './todo-badge'
-import { showTodoWindow, closeTodoWindow, isTodoWindowVisible, toggleTodoWindowAlwaysOnTop, focusTodoItem } from './todo-window'
+import { showTodoWindow, closeTodoWindow, isTodoWindowVisible, toggleTodoWindowAlwaysOnTop, focusTodoItem, broadcastTodoUpdate } from './todo-window'
 import { hideTodoReminder, clearTodoReminderQueue } from './todo-reminder-window'
 import { syncStickyNotes } from './todo-sticky'
 import type { AgentBridge } from './agent-bridge'
@@ -490,6 +490,8 @@ export function registerTodoIpcHandlers(): void {
     togglePin(id)
     syncStickyNotes()
     refreshTodoBadge()
+    // 主进程侧改了 pinned，需把新数据推给已打开的待办窗口，让它及时刷新列表的贴屏按钮状态
+    broadcastTodoUpdate(loadItems())
   })
 
   // 退出前关闭全部便签（由 before-quit 调用；这里也兜底注册，避免重复注册）

@@ -200,9 +200,9 @@ defineExpose({ save })
 .field select, .field input[type="datetime-local"] { border: none; outline: none; background: transparent; color: var(--text-primary); font-size: 13px; }
 .field select { cursor: pointer; }
 .field.reminder input[type="datetime-local"] { min-width: 116px; }
-.seg { display: flex; border-radius: 7px; overflow: hidden; }
+.seg { display: flex; border-radius: 7px; overflow: hidden; background: linear-gradient(180deg, #e8e8ec 0%, #dedee4 100%); box-shadow: inset 0 1px 2px rgba(0,0,0,0.10); }
 .seg button { padding: 4px 10px; border: none; background: transparent; color: var(--text-muted); cursor: pointer; font-size: 13px; }
-.seg button.on { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+.seg button.on { background: var(--surface-grad); color: var(--text-primary); font-weight: 600; box-shadow: inset 0 1px 0 rgba(255,255,255,0.9); }
 .clear-sm { border: none; background: none; color: var(--text-muted); cursor: pointer; font-size: 12px; padding: 2px; }
 </style>
 

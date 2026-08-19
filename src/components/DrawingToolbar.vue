@@ -109,22 +109,32 @@ const tools = [
   display: flex;
   align-items: center;
   justify-content: center;
-  border: none;
+  border: 1px solid transparent;
   background: transparent;
   color: var(--text-secondary);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all var(--transition);
+  transition: all 0.2s var(--bevel-ease);
 }
 
 .toolbar-btn:hover {
-  background: var(--bg-hover);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.toolbar-btn:active {
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 .toolbar-btn.active {
-  background: var(--accent-bg);
-  color: var(--accent);
+  background: var(--surface-accent-grad);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
+  box-shadow:
+    inset 1px 1px 2px rgba(255, 255, 255, 0.4),
+    inset -1px -1px 0 rgba(0, 0, 0, 0.25);
 }
 
 .color-dot {

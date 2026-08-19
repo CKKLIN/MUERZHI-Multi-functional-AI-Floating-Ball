@@ -160,97 +160,13 @@ function showAbout() {
   height: 100%;
 }
 
-.about-footer {
-  padding: 16px 0;
-  display: flex;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.about-btn {
-  padding: 10px 28px;
-  background: linear-gradient(135deg, #ffffff 0%, #e8e8f0 100%);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  border-top-color: rgba(255, 255, 255, 0.9);
-  border-left-color: rgba(255, 255, 255, 0.85);
-  border-right-color: rgba(200, 200, 210, 0.4);
-  border-bottom-color: rgba(190, 190, 200, 0.5);
-  border-radius: 12px;
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow:
-    4px 4px 12px rgba(0, 0, 0, 0.1),
-    1px 1px 3px rgba(0, 0, 0, 0.06),
-    inset 1px 1px 2px rgba(255, 255, 255, 0.9),
-    inset -1px -1px 0 rgba(0, 0, 0, 0.04);
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
-}
-
-.about-btn:hover {
-  background: linear-gradient(135deg, #ffffff 0%, #ededf4 100%);
-  border-top-color: rgba(255, 255, 255, 0.95);
-  border-left-color: rgba(255, 255, 255, 0.9);
-  color: var(--text-primary);
-  box-shadow:
-    6px 6px 18px rgba(0, 0, 0, 0.12),
-    2px 2px 5px rgba(0, 0, 0, 0.08),
-    inset 1px 1px 2px rgba(255, 255, 255, 0.95),
-    inset -1px -1px 0 rgba(0, 0, 0, 0.03);
-  transform: translate(-1px, -1px);
-}
-
-.about-btn:active {
-  background: linear-gradient(135deg, #ebebf0 0%, #dedee6 100%);
-  border-color: rgba(175, 175, 190, 0.5);
-  border-top-color: rgba(190, 190, 205, 0.6);
-  border-left-color: rgba(185, 185, 200, 0.55);
-  border-right-color: rgba(160, 160, 175, 0.45);
-  border-bottom-color: rgba(155, 155, 170, 0.5);
-  box-shadow:
-    inset 3px 3px 8px rgba(0, 0, 0, 0.15),
-    inset 1px 1px 3px rgba(0, 0, 0, 0.1),
-    inset -1px -1px 1px rgba(255, 255, 255, 0.2);
-  transform: translate(1px, 1px);
-}
-
 .settings-body {
-  /* background-color:red; */
   overflow-y: auto;
   flex: 1;
-  padding: 0 50px;
+  padding: 20px 50px 24px;
 }
 
-.settings-group {
-  padding-top: 4px;
-}
-
-.settings-group + .settings-group {
-  margin-top: 8px;
-}
-
-.group-header {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  padding: 8px 0;
-  border-bottom: 2px solid var(--border);
-  margin-bottom: 4px;
-}
-
-.settings-section {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.settings-section:last-child {
-  border-bottom: none;
-}
-
+/* 卡片内的小节标题（输出/视频/音频/...）：壳层 .settings-section 已是全局斜切卡片 */
 .settings-section h4 {
   font-size: 12px;
   font-weight: 600;
@@ -260,21 +176,13 @@ function showAbout() {
   margin-bottom: 10px;
 }
 
-.setting-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-  gap: 12px;
-}
-
+/* 行内控件排版（label + 控件）：壳层 .setting-row 是全局斜切行 */
 .setting-row label {
   font-size: 13px;
   color: var(--text-secondary);
   white-space: nowrap;
   min-width: 60px;
 }
-
 .setting-control {
   display: flex;
   gap: 6px;
@@ -287,7 +195,6 @@ function showAbout() {
   flex-direction: column;
   gap: 6px;
 }
-
 .shortcut-item {
   display: flex;
   align-items: center;
@@ -295,15 +202,58 @@ function showAbout() {
   font-size: 13px;
   color: var(--text-secondary);
 }
-
 kbd {
-  background: var(--bg-input);
-  border: 1px solid var(--border);
+  background: linear-gradient(180deg, #f1f1f4 0%, #fafafc 100%);
+  border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 4px;
   padding: 2px 8px;
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-primary);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
+.about-footer {
+  padding: 16px 0;
+  display: flex;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* 关于按钮：白色斜切（与录屏标准一致） */
+.about-btn {
+  padding: 10px 28px;
+  background: var(--surface-grad);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-top-color: rgba(255, 255, 255, 0.9);
+  border-left-color: rgba(255, 255, 255, 0.85);
+  border-right-color: rgba(200, 200, 210, 0.4);
+  border-bottom-color: rgba(190, 190, 200, 0.5);
+  border-radius: 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s var(--bevel-ease);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+  box-shadow: var(--bevel-shadow);
+}
+
+.about-btn:hover {
+  background: var(--surface-grad-hover);
+  border-top-color: rgba(255, 255, 255, 0.95);
+  color: var(--text-primary);
+  box-shadow: var(--bevel-shadow-hover);
+  transform: translate(-1px, -1px);
+}
+
+.about-btn:active {
+  background: var(--surface-grad-active);
+  border-color: rgba(175, 175, 190, 0.5);
+  border-top-color: rgba(190, 190, 205, 0.6);
+  box-shadow: var(--bevel-shadow-active);
+  transform: translate(1px, 1px);
+}
 </style>

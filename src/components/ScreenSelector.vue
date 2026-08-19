@@ -80,18 +80,30 @@ onMounted(async () => {
   cursor: pointer;
   border-radius: var(--radius);
   overflow: hidden;
-  border: 2px solid transparent;
-  transition: all var(--transition);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-top-color: rgba(255, 255, 255, 0.9);
+  border-left-color: rgba(255, 255, 255, 0.85);
+  border-right-color: rgba(200, 200, 210, 0.4);
+  border-bottom-color: rgba(190, 190, 200, 0.5);
+  background: var(--surface-grad);
+  box-shadow:
+    3px 3px 8px rgba(0, 0, 0, 0.1),
+    1px 1px 2px rgba(0, 0, 0, 0.06),
+    inset 1px 1px 2px rgba(255, 255, 255, 0.9);
+  transition: all 0.2s var(--bevel-ease);
 }
 
 .source-item:hover {
-  border-color: var(--border-light);
-  transform: translateY(-2px);
+  transform: translate(-1px, -1px);
+  box-shadow: var(--bevel-shadow-hover);
 }
 
 .source-item.selected {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
+  border-color: var(--surface-accent);
+  box-shadow:
+    4px 4px 12px var(--surface-accent-glow),
+    1px 1px 3px rgba(0, 0, 0, 0.1),
+    inset 1px 1px 2px rgba(255, 255, 255, 0.9);
 }
 
 .region-item {
@@ -99,14 +111,12 @@ onMounted(async () => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
   min-height: 140px;
   gap: 8px;
 }
 
 .region-item:hover {
-  border-color: var(--accent);
+  border-color: var(--surface-accent);
 }
 
 .region-icon {

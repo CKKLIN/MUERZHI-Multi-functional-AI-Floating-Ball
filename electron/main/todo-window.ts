@@ -99,3 +99,19 @@ export function focusTodoItem(id: string): void {
     send()
   }
 }
+
+/** 把待办数据变更推给已打开的待办窗口（渲染层 store 订阅 todo-data-changed 刷新镜像）。
+    用于"主进程侧发起的更改"——比如便签板 ✕ 取消贴屏；渲染层自己发起时本就收到返回值，无需推送。 */
+export function broadcastTodoUpdate(items: unknown[]): void {
+  if (!todoWindow || todoWindow.isDestroyed()) return
+  const send = () => {
+    if (todoWindow && !todoWindow.isDestroyed()) {
+      todoWindow.webContents.send('todo-data-changed', items)
+    }
+  }
+  if (todoWindow.webContents.isLoading()) {
+    todoWindow.webContents.once('did-finish-load', send)
+  } else {
+    send()
+  }
+}

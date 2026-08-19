@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // TodoApp.vue —— 待办便签主面板（Apple 高级风）
 // 列表只给"一目了然"的信息：标题 + 一行轻量元信息 + 单行纯文本摘要（不含图片）；图文在点开编辑器看。
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useTodoStore, type TodoDraft } from '../stores/todo'
 import TodoEditor from './TodoEditor.vue'
 import TodoPreview from './TodoPreview.vue'
+import Tooltip from './Tooltip.vue'
 
 const store = useTodoStore()
 
@@ -24,6 +25,22 @@ const tabs = [
   { key: 'todo', label: '待办' },
   { key: 'memo', label: '备忘' },
 ] as const
+
+// 分段控件（全部/待办/备忘）滑条高亮过渡：一个斜切凸起的圆角胶囊，
+// 随激活标签用 transform/width 平滑滑动过去（offsetParent 是 position:relative 的 .segmented）。
+const segNav = ref<HTMLElement | null>(null)
+const segIndicator = ref({ left: 0, width: 0 })
+function moveSegIndicator() {
+  const nav = segNav.value
+  if (!nav) return
+  const on = nav.querySelector<HTMLElement>('.segmented button.on')
+  if (!on) return
+  segIndicator.value = { left: on.offsetLeft, width: on.offsetWidth }
+}
+watch(() => store.activeType, async () => {
+  await nextTick() // 等 .on 落到新按钮后再量位置，保证滑条跟对目标
+  moveSegIndicator()
+})
 
 const inEditor = computed(() => store.editingId !== '')
 const isNew = computed(() => store.editingId === '__new__')
@@ -103,6 +120,8 @@ async function onPreviewDelete() {
   store.toastMsg('已删除')
 }
 
+let unsubDataChanged: (() => void) | null = null
+
 onMounted(() => {
   store.load()
   // 贴屏便签点击“打开待办”→ 主进程广播定位到该条预览
@@ -110,6 +129,18 @@ onMounted(() => {
     if (!store.loaded) await store.load()
     store.startPreview(id)
   })
+  // 便签板等主进程侧改数据（如 ✕ 取消贴屏）时，推送全量 items 刷新列表镜像，
+  // 保证贴屏按钮等状态及时同步
+  unsubDataChanged = window.electronAPI.onTodoDataChanged((items) => {
+    store.items = items
+  })
+  moveSegIndicator()
+  window.addEventListener('resize', moveSegIndicator)
+})
+
+onUnmounted(() => {
+  unsubDataChanged?.()
+  window.removeEventListener('resize', moveSegIndicator)
 })
 </script>
 
@@ -170,7 +201,9 @@ onMounted(() => {
     </div>
 
     <template v-else>
-      <nav class="segmented">
+      <nav class="segmented" ref="segNav">
+        <span class="seg-indicator"
+          :style="{ transform: `translateX(${segIndicator.left}px)`, width: `${segIndicator.width}px` }"></span>
         <button v-for="t in tabs" :key="t.key" :class="{ on: store.activeType === t.key }"
           @click="store.activeType = t.key">
           {{ t.label }}<span v-if="t.key === 'todo'" class="cnt">{{ store.incompleteCount }}</span>
@@ -189,13 +222,17 @@ onMounted(() => {
             @click="store.toggleDone(it.id)"><span v-if="it.done">✓</span></button>
           <button class="check check-memo" v-else></button>
           <div class="body" @click="store.startPreview(it.id)">
-            <div class="title">{{ it.type === 'memo' ? (it.title || '(无标题)') : (plainText(it.content) || '(无内容)') }}</div>
+            <Tooltip :text="it.type === 'memo' ? (it.title || '') : (plainText(it.content) || '')">
+              <div class="title">{{ it.type === 'memo' ? (it.title || '(无标题)') : (plainText(it.content) || '(无内容)') }}</div>
+            </Tooltip>
             <div class="meta">
               <span class="type" :class="it.type">{{ TYPE_NM[it.type] }}</span>
               <span class="prio"><i class="dot" :style="{ background: PRIO_COLOR[it.priority] }"></i>{{ PRIO_NM[it.priority] }}</span>
               <span class="time">{{ fmtCreated(it.createdAt) }}</span>
               <span v-if="it.reminder" class="time">提醒 {{ fmtTime(it.reminder) }}</span>
-              <span class="excerpt" v-if="it.type === 'memo' && plainText(it.content)">{{ plainText(it.content) }}</span>
+              <Tooltip v-if="it.type === 'memo' && plainText(it.content)" :text="plainText(it.content)" class="vtip-excerpt">
+                <span class="excerpt">{{ plainText(it.content) }}</span>
+              </Tooltip>
             </div>
           </div>
           <div class="actions">
@@ -231,12 +268,13 @@ onMounted(() => {
 .count { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
 .top-actions { display: flex; align-items: center; gap: 6px; }
 
-.add-btn { padding: 4px 11px; border: none; border-radius: 9px; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: 0 1px 3px rgba(78,92,212,0.35); transition: transform 0.15s, box-shadow 0.15s; }
-.add-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(78,92,212,0.4); }
-.back-btn {  padding: 4px 11px; border: none; border-radius: 8px; background: var(--bg-surface); color: var(--text-secondary); box-shadow: var(--shadow); cursor: pointer; font-size: 14px; flex-shrink: 0; }
-.back-btn:hover { color: var(--text-primary); }
-.del-btn { padding: 4px 11px; border: none; border-radius: 9px; background: var(--bg-hover); color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer; }
-.del-btn:hover { color: var(--accent); background: var(--accent-bg); }
+.add-btn { padding: 4px 11px; border: 1px solid rgba(255,255,255,0.35); border-radius: 9px; background: var(--surface-accent-grad); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; text-shadow: 0 1px 2px rgba(0,0,0,0.15); box-shadow: 3px 3px 8px var(--surface-accent-glow), inset 1px 1px 2px rgba(255,255,255,0.4), inset -1px -1px 0 rgba(0,0,0,0.1); transition: all 0.2s var(--bevel-ease); }
+.add-btn:hover { transform: translate(-1px,-1px); filter: brightness(1.06); box-shadow: 5px 5px 12px var(--surface-accent-glow), inset 1px 1px 2px rgba(255,255,255,0.45); }
+.add-btn:active { transform: translate(1px,1px); filter: brightness(0.92); box-shadow: inset 2px 2px 5px rgba(0,0,0,0.2); }
+.back-btn { padding: 4px 11px; border: 1px solid rgba(255,255,255,0.7); border-top-color: rgba(255,255,255,0.9); border-left-color: rgba(255,255,255,0.85); border-right-color: rgba(200,200,210,0.4); border-bottom-color: rgba(190,190,200,0.5); border-radius: 8px; background: var(--surface-grad); color: var(--text-secondary); box-shadow: var(--bevel-shadow); cursor: pointer; font-size: 14px; flex-shrink: 0; transition: all 0.2s var(--bevel-ease); }
+.back-btn:hover { color: var(--text-primary); transform: translate(-1px,-1px); box-shadow: var(--bevel-shadow-hover); }
+.del-btn { padding: 4px 11px; border: 1px solid rgba(255,255,255,0.7); border-top-color: rgba(255,255,255,0.9); border-left-color: rgba(255,255,255,0.85); border-right-color: rgba(200,200,210,0.4); border-bottom-color: rgba(190,190,200,0.5); border-radius: 9px; background: var(--surface-grad); color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: var(--bevel-shadow); transition: all 0.2s var(--bevel-ease); }
+.del-btn:hover { color: #fff; background: var(--surface-accent-grad); border-color: var(--surface-accent); box-shadow: 3px 3px 8px var(--surface-accent-glow), inset 1px 1px 2px rgba(255,255,255,0.4); }
 
 /* “⋯”更多菜单 */
 .more { position: relative; }
@@ -248,25 +286,26 @@ onMounted(() => {
 .more-backdrop { position: fixed; inset: 0; z-index: 30; }
 .more-menu {
   position: absolute; top: 34px; right: 0; z-index: 40; width: 140px;
-  background: var(--bg-surface); border: 1px solid var(--border); border-radius: 11px;
-  padding: 5px; box-shadow: var(--shadow-lg);
+  background: var(--surface-grad); border: 1px solid rgba(255,255,255,0.7); border-top-color: rgba(255,255,255,0.9); border-left-color: rgba(255,255,255,0.85); border-right-color: rgba(200,200,210,0.4); border-bottom-color: rgba(190,190,200,0.5); border-radius: 11px;
+  padding: 5px; box-shadow: 4px 4px 12px rgba(0,0,0,0.1), inset 1px 1px 2px rgba(255,255,255,0.9);
 }
 .mi { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 9px; border-radius: 8px; font-size: 12.5px; color: var(--text-secondary); cursor: pointer; }
 .mi:hover { background: var(--bg-hover); }
 .mi input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
 
-/* 分段控件（Apple 式） */
-.segmented { display: flex; margin: 2px 16px 10px; background: var(--bg-secondary); border-radius: 10px; padding: 3px; }
-.segmented button { flex: 1; padding: 5px 0; border: none; border-radius: 8px; background: transparent; color: var(--text-secondary); font-size: 13px; cursor: pointer; transition: background 0.15s, color 0.15s; }
-.segmented button.on { background: var(--bg-surface); color: var(--text-primary); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.8); }
+/* 分段控件（Apple 式）：凹陷轨道 + 凸起选中（滑条 .seg-indicator 平滑滑动过渡） */
+.segmented { position: relative; display: flex; margin: 2px 16px 10px; background: linear-gradient(180deg, #e6e6ea 0%, #dcdce2 100%); border: 1px solid rgba(255,255,255,0.7); border-radius: 10px; padding: 3px; box-shadow: inset 1px 1px 2px rgba(0,0,0,0.10); }
+.seg-indicator { position: absolute; left: 0; top: 3px; height: calc(100% - 6px); border-radius: 8px; background: var(--surface-grad); border: 1px solid rgba(255,255,255,0.7); border-top-color: rgba(255,255,255,0.9); border-left-color: rgba(255,255,255,0.85); border-right-color: rgba(200,200,210,0.4); border-bottom-color: rgba(190,190,200,0.5); box-shadow: var(--bevel-shadow); transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), width 0.28s cubic-bezier(0.4, 0, 0.2, 1); pointer-events: none; z-index: 0; }
+.segmented button { position: relative; z-index: 1; flex: 1; padding: 5px 0; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text-secondary); font-size: 13px; cursor: pointer; transition: color 0.2s ease; }
+.segmented button.on { color: var(--text-primary); font-weight: 600; }
 .cnt { margin-left: 4px; font-size: 11px; color: var(--accent); font-weight: 700; }
 
 /* 列表 */
 .list { flex: 1; overflow: auto; padding: 2px 16px 18px; }
 .hint { text-align: center; color: var(--text-muted); font-size: 13px; }
 .empty { padding: 64px 12px; text-align: center; }
-.empty-add { margin-top: 14px; padding: 6px 18px; border: none; border-radius: 9px; background: var(--bg-surface); color: var(--text-secondary); font-size: 13px; cursor: pointer; box-shadow: var(--shadow); }
-.empty-add:hover { color: var(--accent); box-shadow: var(--shadow-lg); }
+.empty-add { margin-top: 14px; padding: 6px 18px; border: 1px solid rgba(255,255,255,0.7); border-top-color: rgba(255,255,255,0.9); border-left-color: rgba(255,255,255,0.85); border-right-color: rgba(200,200,210,0.4); border-bottom-color: rgba(190,190,200,0.5); border-radius: 9px; background: var(--surface-grad); color: var(--text-secondary); font-size: 13px; cursor: pointer; box-shadow: var(--bevel-shadow); transition: all 0.2s var(--bevel-ease); }
+.empty-add:hover { color: var(--accent); transform: translate(-1px,-1px); box-shadow: var(--bevel-shadow-hover); }
 
 /* Apple 式 3D 卡片：柔和多层阴影 + 顶部高光 + 悬停上浮；参考录屏窗口的"环境辉光"做发光立体 */
 .card {
@@ -320,6 +359,9 @@ onMounted(() => {
 .prio .dot { width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 0 2px rgba(0,0,0,0.02); }
 .time { color: var(--text-muted); }
 .excerpt { color: var(--text-muted); max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 悬浮提示包裹器（备忘摘要用）：外层保持 45% 上限；内层 excerpt 填满锚点以触发省略号 */
+.vtip-excerpt { max-width: 45%; flex-shrink: 1; min-width: 0; }
+.vtip-excerpt :deep(.excerpt) { display: block; max-width: 100%; }
 
 .actions { display: flex; gap: 2px; opacity: 0; transition: opacity 0.15s; }
 .card:hover .actions { opacity: 1; }

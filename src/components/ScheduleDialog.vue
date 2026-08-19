@@ -187,31 +187,42 @@ scheduledTime.value = nowTime.toTimeString().slice(0, 5)
 
 .mode-tabs {
   display: flex;
-  gap: 0;
+  gap: 2px;
   margin-bottom: 16px;
-  border: 1px solid var(--border);
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: var(--radius);
-  overflow: hidden;
+  background: linear-gradient(180deg, #e6e6ea 0%, #dcdce2 100%);
+  box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.12);
 }
 
 .tab {
   flex: 1;
   padding: 6px 12px;
-  border: none;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius) - 4px);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 13px;
-  transition: all var(--transition);
+  transition: all 0.2s var(--bevel-ease);
 }
 
 .tab.active {
-  background: var(--accent-bg);
-  color: var(--accent);
+  background: var(--surface-grad);
+  color: var(--text-primary);
+  font-weight: 600;
+  border-color: rgba(255, 255, 255, 0.7);
+  border-top-color: rgba(255, 255, 255, 0.9);
+  border-left-color: rgba(255, 255, 255, 0.85);
+  border-right-color: rgba(200, 200, 210, 0.4);
+  border-bottom-color: rgba(190, 190, 200, 0.5);
+  box-shadow: var(--bevel-shadow);
 }
 
 .tab:hover:not(.active) {
-  background: var(--bg-hover);
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--text-primary);
 }
 
 .schedule-form {
