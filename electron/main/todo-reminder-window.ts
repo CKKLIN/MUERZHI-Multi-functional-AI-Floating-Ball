@@ -17,7 +17,7 @@ function buildReminderHtml(title: string, body: string): string {
 html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-family:'Segoe UI',system-ui,sans-serif}
 .card{
   height:100%; border-radius:14px; background:#ffffff;
-  border:1px solid #e3e4ea; box-shadow:0 10px 34px rgba(20,24,50,0.24);
+  border:1px solid #e3e4ea;
   display:flex; flex-direction:column; overflow:hidden;
 }
 /* 头部：仿待办窗口标题栏（logo + MUERZHI + 关闭按钮） */
@@ -94,6 +94,7 @@ function openPopup(title: string, body: string): void {
     x, y, width: W, height: H,
     frame: false,
     transparent: true,
+    backgroundColor: '#00000000',
     resizable: false,
     movable: false,
     alwaysOnTop: true,
