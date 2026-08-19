@@ -43,7 +43,7 @@ function buildBoardHtml(): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box;user-select:none}
 html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-family:'Segoe UI',system-ui,sans-serif}
-.board{height:100%;background:#ffffff;border:1px solid #e3e4ea;border-radius:16px;box-shadow:0 12px 36px rgba(20,24,50,0.26);display:flex;flex-direction:column;overflow:hidden}
+.board{height:100%;background:#ffffff;border:1px solid #e3e4ea;border-radius:16px;display:flex;flex-direction:column;overflow:hidden}
 .bar{height:26px;background:#f3f4f8;border-bottom:1px solid #e6e7ec;padding:0 3px 0 10px;display:flex;align-items:center;gap:7px;-webkit-app-region:drag;flex-shrink:0}
 .logo{width:13px;height:13px;border-radius:3px;object-fit:cover}
 .brand{font-size:10px;font-weight:800;color:#2a2a3a;letter-spacing:1.2px}
@@ -126,7 +126,7 @@ function createBoard(): void {
   const pos = loadTodoSettings().stickyBoardPos ?? defaultBoardPos()
   boardWindow = new BrowserWindow({
     x: pos.x, y: pos.y, width: BOARD_W, height: BOARD_H,
-    frame: false, transparent: true, resizable: false,
+    frame: false, transparent: true, backgroundColor: '#00000000', resizable: false,
     alwaysOnTop: true, skipTaskbar: true, hasShadow: false, show: false,
     webPreferences: { nodeIntegration: true, contextIsolation: false },
   })
