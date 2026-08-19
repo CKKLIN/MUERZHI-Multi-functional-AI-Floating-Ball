@@ -35,10 +35,20 @@ function evt(session, toolName, toolInput, toolUseId = null) {
   const cards = [perm('s1', 'Bash', { command: 'ls -la' })]
   eq(findPermissionToResolve(cards, 's1', evt('s1', 'Read', { command: 'ls -la' })), -1, '不同工具名 → 不命中')
 }
-// 不同入参不命中
+// 不同入参但唯一同名卡 → 惰性对账按名命中（完成事件证明该 tool 的 gate 已 settle，唯一同名卡必是它）
 {
   const cards = [perm('s1', 'Bash', { command: 'ls -la' })]
-  eq(findPermissionToResolve(cards, 's1', evt('s1', 'Bash', { command: 'pwd' })), -1, '不同入参 → 不命中')
+  eq(findPermissionToResolve(cards, 's1', evt('s1', 'Bash', { command: 'pwd' })), 0, '唯一同名卡 + 入参漂移 → 惰性对账按名收起')
+}
+// 多张同名卡 + 入参都对不上 → 无法去重，不关（交 120s 超时兜底）
+{
+  const cards = [perm('s1', 'Bash', { command: 'a' }), perm('s1', 'Bash', { command: 'b' })]
+  eq(findPermissionToResolve(cards, 's1', evt('s1', 'Bash', { command: 'c' })), -1, '多张同名卡且签名对不上 → 不命中')
+}
+// 多张同名卡但第一张签名命中 → 仍按 FIFO 命中第一张
+{
+  const cards = [perm('s1', 'Bash', { command: 'a' }), perm('s1', 'Bash', { command: 'b' })]
+  eq(findPermissionToResolve(cards, 's1', evt('s1', 'Bash', { command: 'a' })), 0, '多张同名卡但首张签名命中 → 命中第一张')
 }
 
 // === 入参键序不影响匹配（同一工具调用的不同序列化）===
