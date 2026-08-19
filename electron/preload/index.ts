@@ -188,10 +188,19 @@ const electronAPI = {
     visible: boolean
     alwaysOnTop: boolean
     openAtLogin: boolean
+    locale: 'zh' | 'en'
     menuItems: Record<'record' | 'music' | 'ai' | 'todo' | 'settings', boolean>
   }>) =>
     ipcRenderer.invoke('set-floating-ball-settings', patch),
   resetFloatingBallPosition: () => ipcRenderer.invoke('reset-floating-ball-position'),
+
+  // i18n / 双语
+  getAppI18n: () => ipcRenderer.invoke('get-app-i18n'),
+  onAppLocaleChanged: (callback: (data: { locale: 'zh' | 'en' }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { locale: 'zh' | 'en' }) => callback(data)
+    ipcRenderer.on('app-locale-changed', handler)
+    return () => ipcRenderer.removeListener('app-locale-changed', handler)
+  },
 
   // Todo / 待办便签
   todoGet: () => ipcRenderer.invoke('todo-get'),

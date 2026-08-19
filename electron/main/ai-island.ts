@@ -7,6 +7,7 @@ import * as path from 'path'
 import nodeFs from 'node:fs'
 import { join } from 'node:path'
 import log from './logger'
+import { t } from './i18n'
 
 let aiIsland: BrowserWindow | null = null
 /** AI 岛拖动的基准（绝对增量 + setBounds，仿悬浮球）；用户拖过后锁定位置不再被 resize 拉回 */
@@ -81,8 +82,41 @@ function questionCardUtilsPath(): string {
     : path.join(__dirname, 'question-card-utils.js')
 }
 
+/** AI 岛内联 HTML 的全部用户文案，构建时按当前语言取词条并内联进页面（data URL 构建机，
+ *  语言切换后重建/重载窗口即生效）。 */
+function aiIslandStrings() {
+  return {
+    idle: t('aiIsland.idle'),
+    thinking: t('aiIsland.thinking'),
+    working: t('aiIsland.working'),
+    error: t('aiIsland.error'),
+    notification: t('aiIsland.notification'),
+    done: t('aiIsland.done'),
+    viewDetail: t('aiIsland.viewDetail'),
+    permTitle: t('aiIsland.permTitle'),
+    permTool: t('aiIsland.permTool'),
+    permInput: t('aiIsland.permInput'),
+    allow: t('common.allow'),
+    alwaysAllow: t('common.alwaysAllow'),
+    deny: t('common.deny'),
+    questionTitle: t('aiIsland.questionTitle'),
+    prev: t('aiIsland.prevQuestion'),
+    next: t('aiIsland.nextQuestion'),
+    submit: t('aiIsland.submitAnswer'),
+    know: t('aiIsland.know'),
+    otherPlaceholder: t('aiIsland.otherPlaceholder'),
+    otherHint: t('aiIsland.otherHint'),
+    answerInClaude: t('aiIsland.answerInClaude'),
+    unknown: t('aiIsland.unknown'),
+    other: t('aiIsland.other'),
+    progress: t('aiIsland.progress'),
+    close: t('common.close'),
+  }
+}
+
 function buildAiIslandHtml(): string {
   const flat = getAiIslandSettings().flat
+  const S = JSON.stringify(aiIslandStrings())
   return `<!DOCTYPE html>
 <html><head><style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -189,43 +223,43 @@ body.flat .ai-label.active{color:#fff}
 </style></head><body${flat ? ' class="flat"' : ''}>
 <div class="island" id="island">
   <div class="island-row" id="islandRow">
-    <div class="ai-indicator" id="aiIndicator" onclick="showAiDetail()" title="点击查看详情">
+    <div class="ai-indicator" id="aiIndicator" onclick="showAiDetail()" title="${t('aiIsland.viewDetail')}">
       <span class="ai-dot idle" id="aiDot"></span>
-      <span class="ai-label" id="aiLabel">AI 待机</span>
+      <span class="ai-label" id="aiLabel">${t('aiIsland.idle')}</span>
     </div>
   </div>
   <div class="perm-card" id="permCard">
     <div class="perm-banner">
       <span class="perm-banner-dot"></span>
-      <span class="perm-banner-text">权限请求</span>
+      <span class="perm-banner-text">${t('aiIsland.permTitle')}</span>
     </div>
     <div class="perm-body">
       <div class="perm-row">
-        <span class="perm-row-label">工具</span>
+        <span class="perm-row-label">${t('aiIsland.permTool')}</span>
         <span class="perm-tool" id="permTool">—</span>
       </div>
       <div class="perm-row" id="permInputRow" style="display:none">
-        <span class="perm-row-label">参数</span>
+        <span class="perm-row-label">${t('aiIsland.permInput')}</span>
         <div class="perm-input" id="permInput"></div>
       </div>
     </div>
     <div class="perm-actions">
-      <button class="perm-btn allow" onclick="doAllow()">允许</button>
-      <button class="perm-btn always" onclick="doAlwaysAllow()">始终允许</button>
-      <button class="perm-btn deny" onclick="doDeny()">拒绝</button>
+      <button class="perm-btn allow" onclick="doAllow()">${t('common.allow')}</button>
+      <button class="perm-btn always" onclick="doAlwaysAllow()">${t('common.alwaysAllow')}</button>
+      <button class="perm-btn deny" onclick="doDeny()">${t('common.deny')}</button>
     </div>
   </div>
   <div class="question-card" id="questionCard">
     <div class="question-banner">
       <span class="question-banner-dot"></span>
-      <span class="question-banner-text">AI 正在提问</span>
+      <span class="question-banner-text">${t('aiIsland.questionTitle')}</span>
       <span class="question-progress" id="questionProgress"></span>
-      <span class="question-close" id="questionClose" onclick="closeQuestion()" title="关闭">✕</span>
+      <span class="question-close" id="questionClose" onclick="closeQuestion()" title="${t('common.close')}">✕</span>
     </div>
     <div class="question-body" id="questionBody"></div>
     <div class="question-actions">
-      <button class="question-btn" id="questionPrevBtn" onclick="prevQuestion()">上一题</button>
-      <button class="question-btn" id="questionBtn" onclick="stepQuestion()">知道了</button>
+      <button class="question-btn" id="questionPrevBtn" onclick="prevQuestion()">${t('aiIsland.prevQuestion')}</button>
+      <button class="question-btn" id="questionBtn" onclick="stepQuestion()">${t('aiIsland.know')}</button>
     </div>
   </div>
 </div>
@@ -234,6 +268,9 @@ const __QCU_UTILS_PATH__=${JSON.stringify(questionCardUtilsPath())}
 const quiz=require(__QCU_UTILS_PATH__)
 const {resolveQuestionList,toQuestionItem,buttonLabel,progressText,questionKey,multiSelectOf,withOther,toggleOption,buildAnswers}=quiz
 const {ipcRenderer}=require('electron')
+// 语言词条：主进程构建 HTML 时按当前语言注入，切语言后重载窗口即更新
+const S=${S};
+const OTHER=S.other; // 「其他」选项的本地化标签：与内部 sentinel 逻辑解耦，展示/答案都走它
 function resizeIsland(){
   const island=document.getElementById('island')
   const w=island.scrollWidth
@@ -256,11 +293,11 @@ function fitIslandWidth(){
 }
 const ro=new ResizeObserver(()=>resizeIsland())
 ro.observe(document.getElementById('island'))
-const aiLabels={idle:'AI 待机',thinking:'AI 思考中',working:'AI 工作中',error:'AI 出错了',notification:'等待审批',done:'任务完成'}
+const aiLabels={idle:S.idle,thinking:S.thinking,working:S.working,error:S.error,notification:S.notification,done:S.done}
 function applyState(data){
   const ind=document.getElementById('aiIndicator'),dot=document.getElementById('aiDot'),lb=document.getElementById('aiLabel')
-  if(!data||(data.state==='idle'&&(!data.sessions||!data.sessions.length))){ind.style.display='flex';dot.className='ai-dot idle';lb.textContent='AI 待机';lb.classList.remove('active');setTimeout(resizeIsland,50);return}
-  ind.style.display='flex';dot.className='ai-dot '+data.state;lb.textContent=aiLabels[data.state]||'AI '+data.state;lb.classList.toggle('active',data.state!=='idle')
+  if(!data||(data.state==='idle'&&(!data.sessions||!data.sessions.length))){ind.style.display='flex';dot.className='ai-dot idle';lb.textContent=S.idle;lb.classList.remove('active');setTimeout(resizeIsland,50);return}
+  ind.style.display='flex';dot.className='ai-dot '+data.state;lb.textContent=aiLabels[data.state]||S.idle;lb.classList.toggle('active',data.state!=='idle')
   setTimeout(resizeIsland,50)
 }
 function applyPermission(data){
@@ -268,7 +305,7 @@ function applyPermission(data){
   document.getElementById('questionCard').classList.remove('show')
   try{
     document.getElementById('permCard').classList.add('show')
-    document.getElementById('permTool').textContent=data.toolName||'未知操作'
+    document.getElementById('permTool').textContent=data.toolName||S.unknown
     const inputRow=document.getElementById('permInputRow')
     const inputEl=document.getElementById('permInput')
     const ti=data.toolInput
@@ -297,9 +334,9 @@ function renderCurrentQuestion(){
   const body=document.getElementById('questionBody'); body.innerHTML=''
   const total=qList.length
   const view=toQuestionItem(qList[qIndex]||qList[0], qIndex)
-  // 进度：单题隐藏，多题显示「第 X/N 题」
+  // 进度：单题隐藏，多题显示「第 X/N 题」（本地化）
   const prog=document.getElementById('questionProgress')
-  const pt=progressText(qIndex,total)
+  const pt=total>1 ? S.progress.replace('{n}',String(qIndex+1)).replace('{t}',String(total)) : null
   prog.style.display=pt?'inline':'none'; prog.textContent=pt||''
   const closeEl=document.getElementById('questionClose')
   // 当前题标题
@@ -309,7 +346,7 @@ function renderCurrentQuestion(){
     // 可作答：选项可点选，末尾按需追加「其他」自由输入；单选/多选依据 multiSelect
     const item=qList[qIndex]
     const multi=multiSelectOf(item)
-    const opts=withOther(view.options)
+    const opts=withOther(view.options, OTHER)
     const draft=currentDraft()
     opts.forEach(function(opt){
       const row=document.createElement('div');row.className='question-opt selectable'+(draft.selected.has(opt.label)?' selected':'')
@@ -324,25 +361,25 @@ function renderCurrentQuestion(){
         row.appendChild(d)
       }
       row.addEventListener('click',function(){
-        const r=toggleOption(draft.selected,opt.label,multi)
+        const r=toggleOption(draft.selected,opt.label,multi, OTHER)
         draft.selected=r.selected
         renderCurrentQuestion()
       })
       body.appendChild(row)
-      if(opt.isOther&&draft.selected.has('其他')){
-        const inp=document.createElement('input');inp.className='question-other';inp.placeholder='输入其他内容…';inp.value=draft.otherText||''
+      if(opt.isOther&&draft.selected.has(OTHER)){
+        const inp=document.createElement('input');inp.className='question-other';inp.placeholder=S.otherPlaceholder;inp.value=draft.otherText||''
         inp.addEventListener('click',function(e){e.stopPropagation()})
         inp.addEventListener('input',function(){draft.otherText=inp.value})
         body.appendChild(inp)
         if(multi){
-          const h=document.createElement('div');h.className='question-hint';h.textContent='可与其他选项同时选择。'
+          const h=document.createElement('div');h.className='question-hint';h.textContent=S.otherHint
           body.appendChild(h)
         }
       }
     })
     if(closeEl) closeEl.style.display='inline-block'
     // 末题「提交答案」（回 allow+answers）；非末题「下一题」仅本地推进
-    document.getElementById('questionBtn').textContent=(qIndex<total-1)?'下一题':'提交答案'
+    document.getElementById('questionBtn').textContent=(qIndex<total-1)?S.next:S.submit
   }else{
     // 只读（现状）：仅展示选项，提示去 Claude 界面作答
     view.options.forEach(function(opt){
@@ -356,10 +393,10 @@ function renderCurrentQuestion(){
       body.appendChild(row)
     })
     const hint=document.createElement('div');hint.className='question-hint'
-    hint.textContent='请到 Claude Code 界面作答，这里仅作提醒。'
+    hint.textContent=S.answerInClaude
     body.appendChild(hint)
     if(closeEl) closeEl.style.display='none'
-    document.getElementById('questionBtn').textContent=buttonLabel(qIndex,total)
+    document.getElementById('questionBtn').textContent=(qIndex<total-1)?S.next:S.know
   }
   document.getElementById('questionPrevBtn').disabled=qIndex<=0
   fitIslandWidth()
@@ -388,7 +425,7 @@ function applyQuestion(q){
 function stepQuestion(){
   if(qIndex<qList.length-1){ qIndex++; renderCurrentQuestion(); return }
   if(qAnswerable){
-    const payload=buildAnswers(qList,qDrafts)
+    const payload=buildAnswers(qList,qDrafts, OTHER)
     ipcRenderer.invoke('agent-submit-question', qSessionId, payload)
     document.getElementById('questionCard').classList.remove('show')
     resetQuestion()
@@ -550,6 +587,15 @@ export function hideAiIsland() {
     aiIsland.close()
     aiIsland = null
     log.info('AI island hidden')
+  }
+}
+
+/** 语言切换后重建已打开的岛（HTML 按词条内联，须重新 loadURL；窗口不存在时静默）。
+ *  懒创建的岛下次 show 自然用新语言，无需处理。 */
+export function reloadAiIsland() {
+  if (aiIsland && !aiIsland.isDestroyed()) {
+    aiIsland.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildAiIslandHtml())}`).catch(() => {})
+    log.info('AI island reloaded for locale')
   }
 }
 

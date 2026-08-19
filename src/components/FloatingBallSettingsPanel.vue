@@ -2,23 +2,25 @@
 // 悬浮球专属设置面板 —— 复用 AiSettingsPanel 的 CSS 变量与 .settings-group/.setting-row/.toggle-btn 结构
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import type { BallMenuKey, FloatingBallSettings } from '../env.d.ts'
+import type { BallMenuKey, FloatingBallSettings, AppLocale } from '../env.d.ts'
+import { t } from '../stores/i18n'
 
 const visible = ref(true)
 const alwaysOnTop = ref(true)
 const openAtLogin = ref(false)
+const locale = ref<AppLocale>('zh')
 const menuItems = ref<Record<BallMenuKey, boolean>>({
   record: true, music: true, ai: true, todo: true, settings: true,
 })
 const loading = ref(true)
 
-/** 悬浮球菜单开关清单（key 与主进程 MENU_CATALOG / 设置 menuItems 一致） */
-const BALL_MENUS: { key: BallMenuKey; label: string }[] = [
-  { key: 'record', label: '录屏' },
-  { key: 'music', label: '音乐' },
-  { key: 'ai', label: 'AI助手' },
-  { key: 'todo', label: '待办便签' },
-  { key: 'settings', label: '设置' },
+/** 悬浮球菜单开关清单（key 与主进程 MENU_CATALOG / 设置 menuItems 一致）；label 走 i18n */
+const BALL_MENUS: { key: BallMenuKey; labelKey: string }[] = [
+  { key: 'record', labelKey: 'ball.menu.record' },
+  { key: 'music', labelKey: 'ball.menu.music' },
+  { key: 'ai', labelKey: 'ball.menu.ai' },
+  { key: 'todo', labelKey: 'ball.menu.todo' },
+  { key: 'settings', labelKey: 'ball.menu.settings' },
 ]
 
 async function loadSettings() {
@@ -27,11 +29,26 @@ async function loadSettings() {
     visible.value = s.visible
     alwaysOnTop.value = s.alwaysOnTop
     openAtLogin.value = s.openAtLogin
+    locale.value = s.locale ?? 'zh'
     menuItems.value = s.menuItems
   } catch (e) {
     console.error('[FloatingBallSettingsPanel] loadSettings error:', e)
   }
   loading.value = false
+}
+
+// 切换语言：经悬浮球设置落盘（locale 是全局偏好唯一真源）+ 主进程广播，各窗口 store 即时切换
+async function setLocale(l: AppLocale) {
+  if (l === locale.value) return
+  const prev = locale.value
+  locale.value = l
+  try {
+    const s = await window.electronAPI.setFloatingBallSettings({ locale: l })
+    locale.value = s.locale
+  } catch (e) {
+    console.error('[FloatingBallSettingsPanel] setLocale error:', e)
+    locale.value = prev
+  }
 }
 
 // 切换显示/隐藏：乐观更新，失败回滚
@@ -101,12 +118,12 @@ onMounted(loadSettings)
   <div class="fb-settings-panel">
     <div class="settings-body">
       <div class="settings-group">
-        <div class="group-header">悬浮球</div>
+        <div class="group-header">{{ t('settings.group.ball') }}</div>
         <div class="settings-section">
           <div class="setting-row">
             <div class="row-text">
-              <div class="row-label">显示悬浮球</div>
-              <div class="row-desc">关闭后悬浮球隐藏，可从托盘「显示设置窗口」重新打开</div>
+              <div class="row-label">{{ t('settings.ball.show') }}</div>
+              <div class="row-desc">{{ t('settings.ball.showDesc') }}</div>
             </div>
             <button class="toggle-btn" :class="{ on: visible }" @click="toggleVisible">
               <span class="toggle-knob"></span>
@@ -114,8 +131,8 @@ onMounted(loadSettings)
           </div>
           <div class="setting-row">
             <div class="row-text">
-              <div class="row-label">始终置顶</div>
-              <div class="row-desc">关闭后悬浮球可被其他窗口遮挡</div>
+              <div class="row-label">{{ t('settings.ball.alwaysOnTop') }}</div>
+              <div class="row-desc">{{ t('settings.ball.alwaysOnTopDesc') }}</div>
             </div>
             <button class="toggle-btn" :class="{ on: alwaysOnTop }" @click="toggleAlwaysOnTop">
               <span class="toggle-knob"></span>
@@ -123,16 +140,16 @@ onMounted(loadSettings)
           </div>
           <div class="setting-row">
             <div class="row-text">
-              <div class="row-label">重置位置</div>
-              <div class="row-desc">把悬浮球移回屏幕中心</div>
+              <div class="row-label">{{ t('settings.ball.resetPos') }}</div>
+              <div class="row-desc">{{ t('settings.ball.resetPosDesc') }}</div>
             </div>
-            <button class="reset-btn" @click="resetPosition">重置</button>
+            <button class="reset-btn" @click="resetPosition">{{ t('common.reset') }}</button>
           </div>
         </div>
       </div>
 
       <div class="settings-group">
-        <div class="group-header">悬浮球菜单</div>
+        <div class="group-header">{{ t('settings.group.menu') }}</div>
         <div class="settings-section">
           <div class="menu-chips">
             <button
@@ -142,19 +159,43 @@ onMounted(loadSettings)
               :class="{ on: menuItems[m.key] }"
               @click="toggleMenuItem(m.key)"
             >
-              {{ m.label }}
+              {{ t(m.labelKey) }}
             </button>
           </div>
         </div>
       </div>
 
       <div class="settings-group">
-        <div class="group-header">系统</div>
+        <div class="group-header">{{ t('settings.group.language') }}</div>
         <div class="settings-section">
           <div class="setting-row">
             <div class="row-text">
-              <div class="row-label">开机自启</div>
-              <div class="row-desc">登录系统时自动启动本应用</div>
+              <div class="row-label">{{ t('settings.language.label') }}</div>
+              <div class="row-desc">{{ t('settings.language.desc') }}</div>
+            </div>
+            <div class="lang-switcher">
+              <button
+                class="lang-btn"
+                :class="{ on: locale === 'zh' }"
+                @click="setLocale('zh')"
+              >中</button>
+              <button
+                class="lang-btn"
+                :class="{ on: locale === 'en' }"
+                @click="setLocale('en')"
+              >EN</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <div class="group-header">{{ t('settings.group.system') }}</div>
+        <div class="settings-section">
+          <div class="setting-row">
+            <div class="row-text">
+              <div class="row-label">{{ t('settings.system.openAtLogin') }}</div>
+              <div class="row-desc">{{ t('settings.system.openAtLoginDesc') }}</div>
             </div>
             <button class="toggle-btn" :class="{ on: openAtLogin }" @click="toggleOpenAtLogin">
               <span class="toggle-knob"></span>
@@ -166,7 +207,7 @@ onMounted(loadSettings)
       <div class="settings-group" v-if="loading">
         <div class="loading-row">
           <span class="loading-dot"></span>
-          <span>加载中...</span>
+          <span>{{ t('common.loading') }}</span>
         </div>
       </div>
     </div>
@@ -242,5 +283,42 @@ onMounted(loadSettings)
 @keyframes fbFadeIn {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* 语言切换：两个胶囊按钮，选中态用品牌靛蓝实底 */
+.lang-switcher {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.lang-btn {
+  min-width: 40px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-top-color: rgba(255, 255, 255, 0.9);
+  border-left-color: rgba(255, 255, 255, 0.85);
+  border-right-color: rgba(200, 200, 210, 0.4);
+  border-bottom-color: rgba(190, 190, 200, 0.5);
+  background: var(--surface-grad);
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+  box-shadow: var(--bevel-shadow);
+  transition: all 0.2s var(--bevel-ease);
+}
+.lang-btn:hover {
+  background: var(--surface-grad-hover);
+  color: var(--text-primary);
+  transform: translate(-1px, -1px);
+}
+.lang-btn.on {
+  background: var(--surface-accent-grad);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.4);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--surface-accent-glow);
 }
 </style>
