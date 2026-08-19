@@ -88,7 +88,32 @@ function saveAgentSettings(settings: AgentSettings) {
 }
 
 export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
-  const stateMachine = createAgentStateMachine()
+  // checkClaudeRunning 结果缓存：避免高频同步 tasklist spawn 阻塞主线程。
+  // 被 getStatus（每 5s）与状态机 cleanStaleSessions（每 10s）调用，用于判断"是否仍有 claude 进程",
+  // 但 claude 进程启停不需要秒级精度，缓存 30s 足够。
+  let claudeRunningCache: boolean | null = null
+  let claudeRunningCacheAt = 0
+  const CLAUDE_RUNNING_TTL = 30_000
+
+  function checkClaudeRunning(): boolean {
+    const now = Date.now()
+    if (claudeRunningCache !== null && now - claudeRunningCacheAt < CLAUDE_RUNNING_TTL) {
+      return claudeRunningCache
+    }
+    try {
+      const { execSync } = require("child_process")
+      const result = execSync("tasklist /NH /FI \"IMAGENAME eq claude.exe\"", { encoding: "utf8", timeout: 2000 })
+      claudeRunningCache = result.includes("claude.exe")
+    } catch {
+      claudeRunningCache = false
+    }
+    claudeRunningCacheAt = now
+    return claudeRunningCache!
+  }
+
+  // 状态机注入 isClaudeRunning：cleanStaleSessions 用"是否仍有 claude 进程"区分
+  // 长思考的活跃会话（claude 在跑 → 不降级）与真僵尸（claude 全退出 → 5min 回收）。
+  const stateMachine = createAgentStateMachine({ isClaudeRunning: checkClaudeRunning })
   const server = createAgentServer(stateMachine)
   const hookManager = createClaudeHookManager(() => server.getPort())
 
@@ -162,28 +187,6 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
   function uninstallHooks() { hookManager.uninstall() }
   function setAutoAllow(enabled: boolean) { autoAllow = enabled; saveAgentSettings({ autoAllow }); log.info(`[AgentBridge] autoAllow=${enabled} (persisted)`) }
   function getAutoAllow() { return autoAllow }
-
-  // checkClaudeRunning 结果缓存：避免高频同步 tasklist spawn 阻塞主线程。
-  // getStatus 每 5s 被调用，但 claude 进程启停不需要秒级精度，缓存 30s 足够。
-  let claudeRunningCache: boolean | null = null
-  let claudeRunningCacheAt = 0
-  const CLAUDE_RUNNING_TTL = 30_000
-
-  function checkClaudeRunning(): boolean {
-    const now = Date.now()
-    if (claudeRunningCache !== null && now - claudeRunningCacheAt < CLAUDE_RUNNING_TTL) {
-      return claudeRunningCache
-    }
-    try {
-      const { execSync } = require("child_process")
-      const result = execSync("tasklist /NH /FI \"IMAGENAME eq claude.exe\"", { encoding: "utf8", timeout: 2000 })
-      claudeRunningCache = result.includes("claude.exe")
-    } catch {
-      claudeRunningCache = false
-    }
-    claudeRunningCacheAt = now
-    return claudeRunningCache!
-  }
 
   function getStatus(): AgentBridgeStatus {
     const sessionsRaw = stateMachine.getSessions()

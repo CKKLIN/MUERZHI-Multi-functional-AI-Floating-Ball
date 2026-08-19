@@ -11,6 +11,7 @@ import { createAgentBridge, type AgentBridge } from './agent-bridge'
 import { hideAiIsland } from './ai-island'
 import { setRegistryLogger, killAllConversions } from './conversion-registry'
 import { setHwEncoderLogger } from './hw-encoder'
+import { setStateMachineLogger } from './agent-state-machine'
 import { registerLocalVideoScheme, registerLocalVideoProtocol } from './local-video-protocol'
 import { showTodoWindow, closeTodoWindow } from './todo-window'
 import { hideTodoReminder } from './todo-reminder-window'
@@ -93,6 +94,7 @@ app.whenReady().then(() => {
   log.info('App starting...')
   setRegistryLogger(log)
   setHwEncoderLogger(log)
+  setStateMachineLogger(log)
   const preloadPath = join(__dirname, '..', 'preload', 'index.cjs')
 
   // 清掉渲染层 HTTP 磁盘缓存：开发模式下 vite 资产 URL 不带版本号，Chromium 会把旧 CSS/JS
