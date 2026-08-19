@@ -45,5 +45,10 @@ import TodoApp from '../components/TodoApp.vue'
   --border-light: #d4d4d9;
   --shadow: 0 1px 2px rgba(0,0,0,0.05), 0 6px 16px rgba(0,0,0,0.05);
   --shadow-lg: 0 4px 8px rgba(0,0,0,0.06), 0 18px 40px rgba(0,0,0,0.12);
+  /* 3D 斜切立体：把全局强调色也换成待办的靛蓝（全局 style.css 默认是红） */
+  --surface-accent: #4e5cd4;
+  --surface-accent-grad: linear-gradient(135deg, #6a7bde 0%, #4e5cd4 100%);
+  --surface-accent-glow: rgba(78, 92, 212, 0.35);
+  --surface-accent-bg: rgba(78, 92, 212, 0.15);
 }
 </style>

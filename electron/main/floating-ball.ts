@@ -50,16 +50,37 @@ function setBallBounds(b: { x: number; y: number; width: number; height: number 
 // === 悬浮球设置（主进程文件为唯一真相源，渲染层经 IPC get/set） ===
 const BALL_SETTINGS_FILE = 'floating-ball-settings.json'
 
+/** 悬浮球环形菜单项 key——与页面内 ITEMS 的 action 对应；设为 false 则不显示该花瓣 */
+export type BallMenuKey = 'record' | 'music' | 'ai' | 'todo' | 'settings'
+
+/** 环形菜单目录（key 与 FloatingBallSettings.menuItems 对应），构建 HTML 时按可见性过滤 */
+const MENU_CATALOG: { key: BallMenuKey; label: string; icon: string; action: string }[] = [
+  { key: 'record', label: '录屏', icon: '●', action: 'record' },
+  { key: 'music', label: '音乐', icon: '♪', action: 'music' },
+  { key: 'ai', label: 'AI助手', icon: '✦', action: 'ai' },
+  { key: 'todo', label: '待办便签', icon: '☑', action: 'todo' },
+  { key: 'settings', label: '设置', icon: '⚙', action: 'settings' },
+]
+
+const BALL_MENU_KEYS: BallMenuKey[] = MENU_CATALOG.map(m => m.key)
+
 export interface FloatingBallSettings {
   visible: boolean
   alwaysOnTop: boolean
   openAtLogin: boolean
+  /** 悬浮球菜单里显示哪些入口（花瓣）；默认全开 */
+  menuItems: Record<BallMenuKey, boolean>
+}
+
+const DEFAULT_MENU_ITEMS: Record<BallMenuKey, boolean> = {
+  record: true, music: true, ai: true, todo: true, settings: true,
 }
 
 const DEFAULT_SETTINGS: FloatingBallSettings = {
   visible: true,
   alwaysOnTop: true,
   openAtLogin: false,
+  menuItems: { ...DEFAULT_MENU_ITEMS },
 }
 
 let cachedSettings: FloatingBallSettings | null = null
@@ -74,10 +95,16 @@ function loadBallSettings(): FloatingBallSettings {
     const data = nodeFs.readFileSync(ballSettingsFilePath(), 'utf-8')
     const parsed = JSON.parse(data)
     // 与默认值合并，缺字段补默认（容错老版本/手改坏文件）
+    // menuItems 逐 key 白名单校验：非布尔一律回退默认，避免把坏类型写进缓存/HTML
+    const menuItems = { ...DEFAULT_MENU_ITEMS }
+    for (const k of BALL_MENU_KEYS) {
+      if (typeof parsed?.menuItems?.[k] === 'boolean') menuItems[k] = parsed.menuItems[k]
+    }
     return {
       visible: typeof parsed.visible === 'boolean' ? parsed.visible : DEFAULT_SETTINGS.visible,
       alwaysOnTop: typeof parsed.alwaysOnTop === 'boolean' ? parsed.alwaysOnTop : DEFAULT_SETTINGS.alwaysOnTop,
       openAtLogin: typeof parsed.openAtLogin === 'boolean' ? parsed.openAtLogin : DEFAULT_SETTINGS.openAtLogin,
+      menuItems,
     }
   } catch {}
   return { ...DEFAULT_SETTINGS }
@@ -102,6 +129,22 @@ export function updateBallSettings(patch: Partial<FloatingBallSettings>): Floati
   saveBallSettings(next)
   cachedSettings = next
   return next
+}
+
+/** 当前应显示的菜单项（按 menuItems 设置过滤目录）；构建悬浮球 HTML 时内联为页内 ITEMS */
+function getVisibleMenuItems() {
+  const s = getBallSettings()
+  return MENU_CATALOG.filter(m => s.menuItems[m.key])
+}
+
+/** 悬浮球菜单项变更后重建窗口内容：花瓣形制嵌入 HTML，须重新走 buildFloatingBallHtml 生成新 HTML
+ *  （webContents.reload() 只会重载旧的 data URL，带不上新菜单），再 loadURL 替换当前内容 */
+function reloadFloatingBall() {
+  if (floatingBallWindow && !floatingBallWindow.isDestroyed()) {
+    floatingBallWindow.loadURL(
+      `data:text/html;charset=utf-8,${encodeURIComponent(buildFloatingBallHtml())}`
+    ).catch(() => {})
+  }
 }
 
 /** 清空位置缓存 + 删 pos 文件，下次 show 回屏幕中心 */
@@ -368,6 +411,8 @@ function forwardAction(action: string) {
 
 function buildFloatingBallHtml() {
   const logo = getLogoDataUrl(48)
+  // 内联当前可见菜单项（按设置过滤）：花瓣数/弧度会随可见项数变化
+  const itemsJson = JSON.stringify(getVisibleMenuItems())
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -539,13 +584,7 @@ body.expanded #ballBadge{display:none} /* 展开态让出花瓣，避免遮挡�
 <script>
 const {ipcRenderer} = require('electron')
 
-const ITEMS = [
-  {label:'录屏',icon:'●',action:'record'},
-  {label:'音乐',icon:'♪',action:'music'},
-  {label:'AI助手',icon:'✦',action:'ai'},
-  {label:'待办便签',icon:'☑',action:'todo'},
-  {label:'设置',icon:'⚙',action:'settings'},
-]
+const ITEMS = ${itemsJson};
 
 let isExpanded = false
 let menuCreated = false
@@ -571,6 +610,17 @@ function arcPath(cx, cy, r1, r2, sa, ea){
   const x2i=cx+r1*Math.cos(er), y2i=cy+r1*Math.sin(er)
   const laf=(ea-sa)>180?1:0
   return 'M'+x1i+','+y1i+' L'+x1o+','+y1o+' A'+r2+','+r2+' 0 '+laf+',1 '+x2o+','+y2o+' L'+x2i+','+y2i+' A'+r1+','+r1+' 0 '+laf+',0 '+x1i+','+y1i+' Z'
+}
+
+// 单菜单专用：整圈 360° 时 arcPath 的圆弧起点==终点，SVG 单段弧会退化而整片不渲染。
+// 改为两段 180° 弧拼外圈 + 两段 180° 弧拼内圈，配合调用处 fill-rule=evenodd 镂空出内孔成圆环。
+function fullRingPath(cx, cy, r1, r2){
+  return 'M'+(cx+r2)+','+cy+
+    ' A'+r2+','+r2+' 0 1,1 '+(cx-r2)+','+cy+
+    ' A'+r2+','+r2+' 0 1,1 '+(cx+r2)+','+cy+' Z'+
+    ' M'+(cx+r1)+','+cy+
+    ' A'+r1+','+r1+' 0 1,1 '+(cx-r1)+','+cy+
+    ' A'+r1+','+r1+' 0 1,1 '+(cx+r1)+','+cy+' Z'
 }
 
 // 构造线性渐变（卡片高光/悬停色）
@@ -609,10 +659,12 @@ function ensureMenu(){
   ITEMS.forEach(function(item, i){
     const sa = startOff + i * segArc
     const ea = sa + segArc
-    const d = arcPath(cx, cy, r1, r2, sa, ea)
+    // 单菜单(整圈360°)用完整圆环路径，否则 arcPath 圆弧退化不渲染
+    const d = total === 1 ? fullRingPath(cx, cy, r1, r2) : arcPath(cx, cy, r1, r2, sa, ea)
     const path = document.createElementNS('http://www.w3.org/2000/svg','path')
     path.setAttribute('class','arc-item')
     path.setAttribute('d',d)
+    if(total === 1) path.setAttribute('fill-rule','evenodd') // 镂空圆环内孔
     path.setAttribute('data-action',item.action)
     path.style.transitionDelay = (i*0.10)+'s'
     path.style.setProperty('--swing', ((i%2?-1:1) * (6 + i)) + 'deg') // 错落的角度摆动，模拟花瓣散开
@@ -622,10 +674,10 @@ function ensureMenu(){
     svg.appendChild(path)
   })
 
-  // 第二遍：每片阴影，画在全部花瓣之上。
+  // 第二遍：每片阴影，画在全部花瓣之上（单菜单无相邻花瓣，无需投影）。
   // 每片用自己的遮罩裁掉"本瓣自身"区域；阴影沿顺时针旋转 SHADOW_ROT，只露出落在
   // 相邻顺时针花瓣左沿的一侧影 ⇒ 每片仅一侧有影，且一片压一片均匀堆叠（方位一致）。
-  ITEMS.forEach(function(item, i){
+  if(total > 1) ITEMS.forEach(function(item, i){
     const NS = 'http://www.w3.org/2000/svg'
     const sa = startOff + i * segArc
     const ea = sa + segArc
@@ -850,6 +902,7 @@ export function registerFloatingBallHandlers() {
   ipcMain.handle('get-floating-ball-settings', () => getBallSettings())
 
   ipcMain.handle('set-floating-ball-settings', (_event, patch: Partial<FloatingBallSettings>) => {
+    const prev = { ...getBallSettings() }
     const next = updateBallSettings(patch)
     // 把变更实时作用到悬浮球（显隐 / 置顶层级）
     applyFloatingBallSettings(next)
@@ -858,6 +911,10 @@ export function registerFloatingBallHandlers() {
       try { app.setLoginItemSettings({ openAtLogin: patch.openAtLogin }) } catch (e) {
         log.error('setLoginItemSettings failed:', e)
       }
+    }
+    // 菜单项变更：花瓣形制嵌入 HTML，reload 悬浮球让新菜单立即生效
+    if (patch.menuItems && JSON.stringify(prev.menuItems) !== JSON.stringify(next.menuItems)) {
+      reloadFloatingBall()
     }
     return next
   })

@@ -5,6 +5,8 @@ import { createAgentStateMachine } from "./agent-state-machine"
 import { createAgentServer, type CardItem, type SafeCard } from "./agent-server"
 import { createClaudeHookManager, type HookManagerStatus } from "./claude-hook-manager"
 import { execSync } from "child_process"
+import nodeFs from "node:fs"
+import { join } from "node:path"
 import log from "./logger"
 
 export type { CardItem, SafeCard, HookManagerStatus }
@@ -47,6 +49,44 @@ export interface AgentBridge {
   getAutoAllow: () => boolean
 }
 
+// === 自动允许/同意设置持久化 ===
+// 独立小 JSON（agent-settings.json），不与其他设置文件混用。写入端与读取端做对称白名单校验：
+// 非布尔 autoAllow 一律丢弃，避免把非法类型持久化进文件（否则重启后校验失败会静默回退默认值）。
+const AGENT_SETTINGS_FILE = 'agent-settings.json'
+
+interface AgentSettings {
+  autoAllow: boolean
+}
+
+const DEFAULT_AGENT_SETTINGS: AgentSettings = { autoAllow: false }
+
+function agentSettingsFilePath(): string {
+  // 懒加载 electron：保持本文件在纯 Node 下可 import（与 conversion-registry / hw-encoder 同约定）。
+  // 路径与 ai-island-settings.json 保持一致：打包走 userData，dev 落在项目根。
+  const { app } = require('electron') as typeof import('electron')
+  const dir = app.isPackaged ? app.getPath('userData') : join(__dirname, '..', '..')
+  return join(dir, AGENT_SETTINGS_FILE)
+}
+
+function loadAgentSettings(): AgentSettings {
+  try {
+    const data = nodeFs.readFileSync(agentSettingsFilePath(), 'utf-8')
+    const parsed = JSON.parse(data)
+    return {
+      autoAllow: typeof parsed.autoAllow === 'boolean' ? parsed.autoAllow : DEFAULT_AGENT_SETTINGS.autoAllow,
+    }
+  } catch {}
+  return { ...DEFAULT_AGENT_SETTINGS }
+}
+
+function saveAgentSettings(settings: AgentSettings) {
+  try {
+    nodeFs.writeFileSync(agentSettingsFilePath(), JSON.stringify(settings), 'utf-8')
+  } catch (e) {
+    log.warn('[AgentBridge] save agent settings failed:', (e as Error)?.message ?? e)
+  }
+}
+
 export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
   const stateMachine = createAgentStateMachine()
   const server = createAgentServer(stateMachine)
@@ -54,7 +94,9 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
 
   let stateListener: ((state: DisplayState, sessions: AgentSession[]) => void) | null = null
   let cardListener: ((card: CardItem | null) => void) | null = null
-  let autoAllow = false
+  // 自动同意开关持久化到 agent-settings.json（主进程 JSON 为真相源），启动时读回、切换时落盘。
+  // 与 ai-island-settings.json 同模式：独立小 JSON + 白名单校验，避免把非法类型写进文件。
+  let autoAllow = loadAgentSettings().autoAllow
 
   stateMachine.subscribe((state, sessions) => {
     if (stateListener) stateListener(state, sessions)
@@ -118,7 +160,7 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
 
   function installHooks() { hookManager.install() }
   function uninstallHooks() { hookManager.uninstall() }
-  function setAutoAllow(enabled: boolean) { autoAllow = enabled; log.info(`[AgentBridge] autoAllow=${enabled}`) }
+  function setAutoAllow(enabled: boolean) { autoAllow = enabled; saveAgentSettings({ autoAllow }); log.info(`[AgentBridge] autoAllow=${enabled} (persisted)`) }
   function getAutoAllow() { return autoAllow }
 
   // checkClaudeRunning 结果缓存：避免高频同步 tasklist spawn 阻塞主线程。

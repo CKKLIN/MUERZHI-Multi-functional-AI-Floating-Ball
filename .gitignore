@@ -34,3 +34,4 @@ floating-ball-pos.json
 
 # 运行时状态文件（dev 下写在仓库根）：不入库，避免本地偏好污染版本库/产生脏 diff
 ai-island-settings.json
+agent-settings.json

@@ -6,10 +6,13 @@ export interface CaptureSource {
   thumbnail: string
 }
 
+export type BallMenuKey = 'record' | 'music' | 'ai' | 'todo' | 'settings'
+
 export interface FloatingBallSettings {
   visible: boolean
   alwaysOnTop: boolean
   openAtLogin: boolean
+  menuItems: Record<BallMenuKey, boolean>
 }
 
 export interface AiIslandSettings {
@@ -182,6 +185,7 @@ export interface ElectronAPI {
   todoToggleDone: (id: string) => Promise<TodoItem[]>
   todoTogglePin: (id: string) => Promise<TodoItem[]>
   onTodoFocusItem: (callback: (id: string) => void) => () => void
+  onTodoDataChanged: (callback: (items: TodoItem[]) => void) => () => void
   showTodoWindow: () => Promise<void>
   closeTodoWindow: () => Promise<void>
   todoWindowVisible: () => Promise<boolean>

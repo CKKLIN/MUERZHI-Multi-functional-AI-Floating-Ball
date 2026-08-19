@@ -184,7 +184,12 @@ const electronAPI = {
   showSettingsWindow: () => ipcRenderer.invoke('show-settings-window'),
   showMainWindow: () => ipcRenderer.invoke('show-main-window'),
   getFloatingBallSettings: () => ipcRenderer.invoke('get-floating-ball-settings'),
-  setFloatingBallSettings: (patch: Partial<{ visible: boolean; alwaysOnTop: boolean; openAtLogin: boolean }>) =>
+  setFloatingBallSettings: (patch: Partial<{
+    visible: boolean
+    alwaysOnTop: boolean
+    openAtLogin: boolean
+    menuItems: Record<'record' | 'music' | 'ai' | 'todo' | 'settings', boolean>
+  }>) =>
     ipcRenderer.invoke('set-floating-ball-settings', patch),
   resetFloatingBallPosition: () => ipcRenderer.invoke('reset-floating-ball-position'),
 
@@ -200,6 +205,11 @@ const electronAPI = {
     const handler = (_event: Electron.IpcRendererEvent, id: string) => callback(id)
     ipcRenderer.on('todo-focus-item', handler)
     return () => ipcRenderer.removeListener('todo-focus-item', handler)
+  },
+  onTodoDataChanged: (callback: (items: unknown[]) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, items: unknown[]) => callback(items)
+    ipcRenderer.on('todo-data-changed', handler)
+    return () => ipcRenderer.removeListener('todo-data-changed', handler)
   },
   showTodoWindow: () => ipcRenderer.invoke('todo-show-window'),
   closeTodoWindow: () => ipcRenderer.invoke('todo-close-window'),

@@ -14,7 +14,7 @@ const BOARD_H = 120
 let boardWindow: BrowserWindow | null = null
 let currentIndex = 0
 
-interface NoteData { id: string; title: string; body: string; done: boolean; priority: 'urgent' | 'high' | 'medium' | 'low' }
+interface NoteData { id: string; type: 'todo' | 'memo'; title: string; body: string; done: boolean; priority: 'urgent' | 'high' | 'medium' | 'low' }
 
 function pinnedNotes(): NoteData[] {
   return loadItems()
@@ -24,7 +24,8 @@ function pinnedNotes(): NoteData[] {
       const memoTitle = it.type === 'memo' ? stripHtml(it.title).trim() : ''
       return {
         id: it.id,
-        // 待办：标题=正文全文（单行省略）；备忘：标题=标题，正文另起
+        type: it.type,
+        // 待办：标题=正文全文（换行省略）；备忘：标题=标题，正文另起
         title: memoTitle || txt,
         body: memoTitle ? txt : '',
         done: it.done,
@@ -56,6 +57,17 @@ html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-fam
 .in{padding:7px 10px 4px 13px;display:flex;flex-direction:column;min-width:0;width:100%}
 .t{font-size:12px;font-weight:700;color:#1d1d1f;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .b{font-size:11px;color:#6e6e76;line-height:1.4;margin-top:2px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+/* 贴的是待办时：正文放 .t 里，允许多行换行（最多3行），省略时悬浮 title 看全文 */
+.board.todo .t{white-space:normal;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;word-break:break-word}
+/* 悬浮提示：悬浮被截断的行时，在便签卡内就地展示全文（原生 title 样式不可控，改用自绘气泡） */
+.tip{position:absolute;top:4px;left:12px;right:6px;z-index:8;max-height:calc(100% - 8px);overflow:auto;padding:6px 8px;border-radius:8px;background:rgba(29,29,31,0.94);color:#fff;font-size:11px;line-height:1.5;white-space:normal;word-break:break-word;box-shadow:0 4px 12px rgba(0,0,0,0.25);opacity:0;pointer-events:none;transform:translateY(-3px);transition:opacity .15s ease,transform .15s ease}
+/* 简洁细滚动条（tip 是 pointer-events:none 装饰层，滚动用 .note 的 wheel 事件转发） */
+.tip::-webkit-scrollbar{width:3px}
+.tip::-webkit-scrollbar-track{background:transparent}
+.tip::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.28);border-radius:2px}
+.tip::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.45)}
+.note:hover .tip{opacity:1;transform:none}
+.tip.none{display:none}
 .open-hint{margin-top:auto;align-self:flex-end;font-size:8.5px;color:#c6c7d1}
 .board.done .t{text-decoration:line-through;color:#9a9aa6}
 .board.done .b{color:#a8a8b0}
@@ -80,6 +92,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-fam
       <div class="b" id="b"></div>
       <div class="open-hint">点击打开</div>
     </div>
+    <div class="tip none" id="tip"></div>
   </div>
   <div class="foot">
     <button class="arw" id="prev" onclick="go(-1)">‹</button>
@@ -93,6 +106,16 @@ window.ipc = ipcRenderer
 var NOTES=[], IDX=0, LAST=null
 function act(a){ var n=NOTES[IDX]; if(n) ipc.send('todo-sticky-'+a, n.id) }
 function go(d){ if(NOTES.length<2) return; IDX=(IDX+d+NOTES.length)%NOTES.length; draw() }
+function isTrunc(el){ if(!el || el.style.display==='none') return false; return el.scrollWidth>el.clientWidth+1 || el.scrollHeight>el.clientHeight+1 }
+/* 便签卡内全文提示：滚轮滚动（tip 是 pointer-events:none 的装饰层，滚轮落在 .note 上，转发给 tip） */
+document.getElementById('note').addEventListener('wheel', function(e){
+  var tip=document.getElementById('tip')
+  if(!tip || tip.className.indexOf('none')>=0) return
+  if(tip.scrollHeight > tip.clientHeight){
+    tip.scrollTop += e.deltaY
+    e.preventDefault()
+  }
+}, {passive:false})
 function draw(){
   var n=NOTES[IDX]
   var board=document.getElementById('board'), t=document.getElementById('t'), b=document.getElementById('b'),
@@ -100,7 +123,7 @@ function draw(){
   if(!n){ return }
   t.textContent = n.title || '（无内容）'
   if (n.body) { b.textContent = n.body; b.style.display = '' } else { b.style.display = 'none' }
-  board.className = 'board' + (n.done?' done':'')
+  board.className = 'board' + (n.done?' done':'') + (n.type==='todo' ? ' todo':'')
   accent.style.background = {urgent:'#f97316',high:'#f59e0b',medium:'#60a5fa',low:'#b0b0b8'}[n.priority] || '#60a5fa'
   counter.textContent = NOTES.length>1 ? (IDX+1)+'/'+NOTES.length : ''
   // 圆点
@@ -110,6 +133,12 @@ function draw(){
   })
   document.getElementById('prev').style.visibility = NOTES.length>1?'visible':'hidden'
   document.getElementById('next').style.visibility = NOTES.length>1?'visible':'hidden'
+  // 悬浮提示：被截断的行（t 或 b）悬浮时就地展示全文
+  var tip=document.getElementById('tip'), tipText=''
+  if (isTrunc(t)) tipText = t.textContent
+  else if (isTrunc(b)) tipText = b.textContent
+  tip.textContent = tipText || ''
+  tip.className = 'tip' + (tipText ? '' : ' none')
   LAST = (NOTES[IDX]||{}).id
 }
 function renderNotes(list, idx){

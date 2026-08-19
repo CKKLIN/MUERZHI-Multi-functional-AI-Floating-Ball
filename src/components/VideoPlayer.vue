@@ -70,8 +70,12 @@ onUnmounted(() => {
 
 <style scoped>
 .video-modal {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  background: linear-gradient(180deg, #ffffff 0%, #f5f5f8 100%);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-top-color: rgba(255, 255, 255, 0.9);
+  border-left-color: rgba(255, 255, 255, 0.85);
+  border-right-color: rgba(200, 200, 210, 0.4);
+  border-bottom-color: rgba(190, 190, 200, 0.5);
   border-radius: var(--radius-lg);
   width: 720px;
   max-width: 90vw;
@@ -79,7 +83,9 @@ onUnmounted(() => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  box-shadow: var(--shadow-lg);
+  box-shadow:
+    var(--shadow-lg),
+    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
 }
 
 .modal-header {

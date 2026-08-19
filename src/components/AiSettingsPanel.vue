@@ -196,6 +196,12 @@ onUnmounted(() => {
 
 <style scoped>
 .ai-settings-panel {
+  /* AI 窗口主题色 = 绿（AI 岛 working 态），覆盖全局默认红 */
+  --surface-accent: #34d399;
+  --surface-accent-grad: linear-gradient(135deg, #5ed9ab 0%, #34d399 100%);
+  --surface-accent-glow: rgba(52, 211, 153, 0.35);
+  --surface-accent-bg: rgba(52, 211, 153, 0.15);
+
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -207,18 +213,30 @@ onUnmounted(() => {
   padding: 16px 20px;
 }
 
-/* 状态概览卡片 */
+/* 状态概览卡片：白色斜切立体 */
 .status-card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  background: var(--surface-grad);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-top-color: rgba(255, 255, 255, 0.9);
+  border-left-color: rgba(255, 255, 255, 0.85);
+  border-right-color: rgba(200, 200, 210, 0.4);
+  border-bottom-color: rgba(190, 190, 200, 0.5);
   border-radius: 12px;
   padding: 14px 16px;
   margin-bottom: 16px;
+  box-shadow:
+    4px 4px 12px rgba(0, 0, 0, 0.1),
+    1px 1px 3px rgba(0, 0, 0, 0.06),
+    inset 1px 1px 2px rgba(255, 255, 255, 0.9);
   transition: all 0.2s;
 }
 .status-card.active {
   border-color: rgba(78, 205, 196, 0.4);
-  box-shadow: 0 0 0 1px rgba(78, 205, 196, 0.15);
+  box-shadow:
+    4px 4px 12px rgba(0, 0, 0, 0.1),
+    1px 1px 3px rgba(0, 0, 0, 0.06),
+    0 0 0 1px rgba(78, 205, 196, 0.15),
+    inset 1px 1px 2px rgba(255, 255, 255, 0.9);
 }
 .status-card-top {
   display: flex;
@@ -276,98 +294,4 @@ onUnmounted(() => {
   background: currentColor;
 }
 .status-server.on .server-dot { box-shadow: 0 0 6px #34d399; }
-
-/* 设置分组 */
-.settings-group + .settings-group {
-  margin-top: 12px;
-}
-.group-header {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  margin-bottom: 6px;
-  padding: 0 2px;
-}
-.settings-section {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 12px 14px;
-}
-.setting-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.row-text {
-  flex: 1;
-  min-width: 0;
-}
-.row-label {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-.row-desc {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-top: 2px;
-  line-height: 1.4;
-}
-
-/* 开关按钮 */
-.toggle-btn {
-  width: 40px;
-  height: 22px;
-  border-radius: 11px;
-  background: rgba(158, 158, 158, 0.25);
-  border: none;
-  cursor: pointer;
-  position: relative;
-  transition: background 0.2s;
-  flex-shrink: 0;
-  padding: 0;
-}
-.toggle-btn.on {
-  background: #34d399;
-}
-.toggle-knob {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #fff;
-  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-.toggle-btn.on .toggle-knob {
-  transform: translateX(18px);
-}
-
-/* 加载 */
-.loading-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  justify-content: center;
-  color: var(--text-muted);
-  font-size: 12px;
-  padding: 16px 0;
-}
-.loading-dot {
-  width: 6px;
-  height: 6px;
-  background: var(--text-muted);
-  border-radius: 50%;
-  animation: pulse 1s ease-in-out infinite;
-}
-@keyframes pulse {
-  0%, 100% { opacity: 0.3; transform: scale(0.8); }
-  50% { opacity: 1; transform: scale(1.2); }
-}
 </style>
