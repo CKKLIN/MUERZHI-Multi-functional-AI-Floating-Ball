@@ -3302,8 +3302,32 @@ html,body{width:100%;height:100%;overflow:hidden}
 	};
 }));
 //#endregion
-//#region electron/main/floating-ball.ts
+//#region electron/main/logo.ts
 var import_region_selector = require_region_selector();
+var logoCache = /* @__PURE__ */ new Map();
+function getLogoDataUrl(size = 32) {
+	const hit = logoCache.get(size);
+	if (hit) return hit;
+	try {
+		const paths = [
+			(0, node_path.join)(__dirname, "..", "..", "public", "logo.png"),
+			(0, node_path.join)(__dirname, "..", "public", "logo.png"),
+			(0, node_path.join)(__dirname, "..", "..", "resources", "logo.png")
+		];
+		for (const p of paths) if (node_fs.default.existsSync(p)) {
+			const url = electron.nativeImage.createFromPath(p).resize({
+				width: size,
+				height: size,
+				quality: "good"
+			}).toDataURL();
+			logoCache.set(size, url);
+			return url;
+		}
+	} catch {}
+	return "";
+}
+//#endregion
+//#region electron/main/floating-ball.ts
 init_logger();
 var floatingBallWindow = null;
 var ballPos = null;
@@ -3575,26 +3599,6 @@ function forwardAction(action) {
 	}
 	collapseBall();
 }
-var logoBase64 = null;
-function getLogoDataUrl$2(size = 48) {
-	if (logoBase64) return logoBase64;
-	try {
-		const paths = [
-			(0, node_path.join)(__dirname, "..", "..", "public", "logo.png"),
-			(0, node_path.join)(__dirname, "..", "public", "logo.png"),
-			(0, node_path.join)(__dirname, "..", "..", "resources", "logo.png")
-		];
-		for (const p of paths) if (node_fs.default.existsSync(p)) {
-			logoBase64 = electron.nativeImage.createFromPath(p).resize({
-				width: size,
-				height: size,
-				quality: "good"
-			}).toDataURL();
-			return logoBase64;
-		}
-	} catch {}
-	return "";
-}
 function buildFloatingBallHtml() {
 	return `<!DOCTYPE html>
 <html>
@@ -3756,7 +3760,7 @@ body.expanded #ballBadge{display:none} /* 展开态让出花瓣，避免遮挡�
   </svg>
   <div class="core">
     <button id="trigger">
-      <img id="logoImg" class="logo-img" src="${getLogoDataUrl$2(48)}" alt="logo" />
+      <img id="logoImg" class="logo-img" src="${getLogoDataUrl(48)}" alt="logo" />
     </button>
     <!-- 待办数量气泡：悬浮球右上角红色数字胶囊。放在恒 66px 的 .core 内（始终贴球心居中），
          锚点是球而非随展开放大的容器 ⇒ 展开菜单时不偏移；top/right=0 落在窗口内，不会被裁切 -->
@@ -5066,28 +5070,8 @@ function focusTodoItem(id) {
 //#region electron/main/todo-reminder-window.ts
 init_logger();
 var reminderWindow = null;
-var logoDataUrl$1 = null;
-function getLogoDataUrl$1(size = 18) {
-	if (logoDataUrl$1) return logoDataUrl$1;
-	try {
-		const paths = [
-			(0, node_path.join)(__dirname, "..", "..", "public", "logo.png"),
-			(0, node_path.join)(__dirname, "..", "public", "logo.png"),
-			(0, node_path.join)(__dirname, "..", "..", "resources", "logo.png")
-		];
-		for (const p of paths) if (node_fs.default.existsSync(p)) {
-			logoDataUrl$1 = electron.nativeImage.createFromPath(p).resize({
-				width: size,
-				height: size,
-				quality: "good"
-			}).toDataURL();
-			return logoDataUrl$1;
-		}
-	} catch {}
-	return "";
-}
 function buildReminderHtml(title, body) {
-	const logo = getLogoDataUrl$1(32);
+	const logo = getLogoDataUrl(32);
 	return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box;user-select:none}
 html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-family:'Segoe UI',system-ui,sans-serif}
@@ -5138,12 +5122,22 @@ window.ipc = ipcRenderer
 function escapeHtml(s) {
 	return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
-/** 弹出一个常驻的提醒小窗（位置：主屏右下角）。重复提醒时先关旧的再开新的。 */
+var reminderQueue = [];
+/** 入队一条提醒；同一时刻只弹一个，关闭后再弹下一条（多个同时到期不互相覆盖丢弃）。 */
 function showTodoReminder(title, body) {
-	if (reminderWindow && !reminderWindow.isDestroyed()) {
-		reminderWindow.destroy();
-		reminderWindow = null;
-	}
+	reminderQueue.push({
+		title,
+		body
+	});
+	pump();
+}
+function pump() {
+	if (reminderWindow && !reminderWindow.isDestroyed()) return;
+	const next = reminderQueue.shift();
+	if (!next) return;
+	openPopup(next.title, next.body);
+}
+function openPopup(title, body) {
 	const W = 300;
 	const H = 150;
 	const area = electron.screen.getPrimaryDisplay().workArea;
@@ -5170,34 +5164,18 @@ function showTodoReminder(title, body) {
 	reminderWindow.once("ready-to-show", () => reminderWindow?.show());
 	reminderWindow.on("closed", () => {
 		reminderWindow = null;
+		pump();
 	});
 	logger_default.info("Todo reminder popup shown");
 }
 function hideTodoReminder() {
 	if (reminderWindow && !reminderWindow.isDestroyed()) reminderWindow.destroy();
-	reminderWindow = null;
 }
-//#endregion
-//#region electron/main/logo.ts
-var logoDataUrl = null;
-function getLogoDataUrl(size = 32) {
-	if (logoDataUrl) return logoDataUrl;
-	try {
-		const paths = [
-			(0, node_path.join)(__dirname, "..", "..", "public", "logo.png"),
-			(0, node_path.join)(__dirname, "..", "public", "logo.png"),
-			(0, node_path.join)(__dirname, "..", "..", "resources", "logo.png")
-		];
-		for (const p of paths) if (node_fs.default.existsSync(p)) {
-			logoDataUrl = electron.nativeImage.createFromPath(p).resize({
-				width: size,
-				height: size,
-				quality: "good"
-			}).toDataURL();
-			return logoDataUrl;
-		}
-	} catch {}
-	return "";
+/** 用户点了「打开待办」：清空未弹队列 + 关闭当前弹窗（打开窗口即视为已查看到期项）。 */
+function clearTodoReminderQueue() {
+	reminderQueue.length = 0;
+	if (reminderWindow && !reminderWindow.isDestroyed()) reminderWindow.destroy();
+	reminderWindow = null;
 }
 //#endregion
 //#region electron/main/todo-text.ts
@@ -5283,7 +5261,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-fam
 <script>
 const {ipcRenderer} = require('electron')
 window.ipc = ipcRenderer
-var NOTES=[], IDX=0
+var NOTES=[], IDX=0, LAST=null
 function act(a){ var n=NOTES[IDX]; if(n) ipc.send('todo-sticky-'+a, n.id) }
 function go(d){ if(NOTES.length<2) return; IDX=(IDX+d+NOTES.length)%NOTES.length; draw() }
 function draw(){
@@ -5303,9 +5281,13 @@ function draw(){
   })
   document.getElementById('prev').style.visibility = NOTES.length>1?'visible':'hidden'
   document.getElementById('next').style.visibility = NOTES.length>1?'visible':'hidden'
+  LAST = (NOTES[IDX]||{}).id
 }
 function renderNotes(list, idx){
-  NOTES=list||[]; IDX = NOTES.length? Math.max(0, Math.min(idx||0, NOTES.length-1)) : 0
+  NOTES=list||[]; IDX = 0
+  // 尽量保持当前看的这条（按 id 定位），避免任意数据同步把轮播跳回第一张
+  if (LAST !== null) { for (var i=0;i<NOTES.length;i++){ if(NOTES[i].id===LAST){ IDX=i; break } } }
+  if (NOTES.length && (LAST===null || !NOTES.some(function(x){return x.id===LAST}))) IDX = Math.max(0, Math.min(idx||0, NOTES.length-1))
   draw()
 }
 <\/script></body></html>`;
@@ -5332,7 +5314,10 @@ function createBoard() {
 	boardWindow.setAlwaysOnTop(true, "screen-saver");
 	boardWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildBoardHtml())}`);
 	boardWindow.once("ready-to-show", () => {
-		if (boardWindow && !boardWindow.isDestroyed()) boardWindow.show();
+		if (boardWindow && !boardWindow.isDestroyed()) {
+			boardWindow.show();
+			pushNotes();
+		}
 	});
 	boardWindow.on("move", () => {
 		if (!boardWindow || boardWindow.isDestroyed()) return;
@@ -5359,12 +5344,22 @@ function syncStickyNotes() {
 		boardWindow = null;
 		return;
 	}
-	if (!boardWindow || boardWindow.isDestroyed()) createBoard();
 	currentIndex = Math.max(0, Math.min(currentIndex, notes.length - 1));
+	if (!boardWindow || boardWindow.isDestroyed()) createBoard();
+	else pushNotes();
+}
+/** 把当前便签列表推进板窗口（窗口尚在加载时会吞掉，由 ready-to-show 补推）。 */
+function pushNotes() {
+	const notes = pinnedNotes();
+	if (!boardWindow || boardWindow.isDestroyed()) return;
 	boardWindow.webContents.executeJavaScript(`if(window.renderNotes) renderNotes(${JSON.stringify(notes)}, ${currentIndex})`).catch(() => {});
 }
-/** 退出前关闭便签板（before-quit 接线）。 */
+/** 退出前关闭便签板（before-quit 接线）：先清去抖定时器，避免 teardown 期间再写位置。 */
 function closeAllStickyNotes() {
+	if (moveTimer) {
+		clearTimeout(moveTimer);
+		moveTimer = null;
+	}
 	if (boardWindow && !boardWindow.isDestroyed()) boardWindow.destroy();
 	boardWindow = null;
 }
@@ -5818,7 +5813,7 @@ function registerTodoIpcHandlers() {
 		hideTodoReminder();
 	});
 	electron.ipcMain.on("todo-reminder-open", () => {
-		hideTodoReminder();
+		clearTodoReminderQueue();
 		showTodoWindow();
 	});
 	electron.ipcMain.on("todo-sticky-open", (_event, id) => {
