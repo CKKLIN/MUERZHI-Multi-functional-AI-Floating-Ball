@@ -3,6 +3,8 @@ import nodeFs from 'node:fs'
 import { join } from 'node:path'
 import log from './logger'
 import { getLogoDataUrl } from './logo'
+import { setI18nLocale, isLocale, t, type Locale } from './i18n'
+import { reloadAiIsland } from './ai-island'
 
 // === 悬浮球窗口 ===
 let floatingBallWindow: BrowserWindow | null = null
@@ -53,13 +55,15 @@ const BALL_SETTINGS_FILE = 'floating-ball-settings.json'
 /** 悬浮球环形菜单项 key——与页面内 ITEMS 的 action 对应；设为 false 则不显示该花瓣 */
 export type BallMenuKey = 'record' | 'music' | 'ai' | 'todo' | 'settings'
 
-/** 环形菜单目录（key 与 FloatingBallSettings.menuItems 对应），构建 HTML 时按可见性过滤 */
-const MENU_CATALOG: { key: BallMenuKey; label: string; icon: string; action: string }[] = [
-  { key: 'record', label: '录屏', icon: '●', action: 'record' },
-  { key: 'music', label: '音乐', icon: '♪', action: 'music' },
-  { key: 'ai', label: 'AI助手', icon: '✦', action: 'ai' },
-  { key: 'todo', label: '待办便签', icon: '☑', action: 'todo' },
-  { key: 'settings', label: '设置', icon: '⚙', action: 'settings' },
+/** 环形菜单目录（key 与 FloatingBallSettings.menuItems 对应），构建 HTML 时按可见性过滤。
+ *  labelKey 指向 i18n 词条（ball.menu.<key>），构建时按当前语言解析——不能在此评估 label，
+ *  模块加载发生在 setI18nLocale(启动) 之前，这里求值会拿到旧语言 */
+const MENU_CATALOG: { key: BallMenuKey; labelKey: string; icon: string; action: string }[] = [
+  { key: 'record', labelKey: 'ball.menu.record', icon: '●', action: 'record' },
+  { key: 'music', labelKey: 'ball.menu.music', icon: '♪', action: 'music' },
+  { key: 'ai', labelKey: 'ball.menu.ai', icon: '✦', action: 'ai' },
+  { key: 'todo', labelKey: 'ball.menu.todo', icon: '☑', action: 'todo' },
+  { key: 'settings', labelKey: 'ball.menu.settings', icon: '⚙', action: 'settings' },
 ]
 
 const BALL_MENU_KEYS: BallMenuKey[] = MENU_CATALOG.map(m => m.key)
@@ -68,6 +72,8 @@ export interface FloatingBallSettings {
   visible: boolean
   alwaysOnTop: boolean
   openAtLogin: boolean
+  /** 界面语言（全应用双语），为 i18n 全局偏好，写在此文件保证单真源 */
+  locale: Locale
   /** 悬浮球菜单里显示哪些入口（花瓣）；默认全开 */
   menuItems: Record<BallMenuKey, boolean>
 }
@@ -80,6 +86,7 @@ const DEFAULT_SETTINGS: FloatingBallSettings = {
   visible: true,
   alwaysOnTop: true,
   openAtLogin: false,
+  locale: 'zh',
   menuItems: { ...DEFAULT_MENU_ITEMS },
 }
 
@@ -104,6 +111,7 @@ function loadBallSettings(): FloatingBallSettings {
       visible: typeof parsed.visible === 'boolean' ? parsed.visible : DEFAULT_SETTINGS.visible,
       alwaysOnTop: typeof parsed.alwaysOnTop === 'boolean' ? parsed.alwaysOnTop : DEFAULT_SETTINGS.alwaysOnTop,
       openAtLogin: typeof parsed.openAtLogin === 'boolean' ? parsed.openAtLogin : DEFAULT_SETTINGS.openAtLogin,
+      locale: isLocale(parsed.locale) ? parsed.locale : DEFAULT_SETTINGS.locale,
       menuItems,
     }
   } catch {}
@@ -123,18 +131,20 @@ export function getBallSettings(): FloatingBallSettings {
   return cachedSettings
 }
 
-/** 主进程内部唯一变更入口：合并→save→刷新缓存→返回新值 */
+/** 主进程内部唯一变更入口：合并→save→刷新缓存→返回新值。locale 变更时同步 i18n 进程内缓存 */
 export function updateBallSettings(patch: Partial<FloatingBallSettings>): FloatingBallSettings {
   const next = { ...getBallSettings(), ...patch }
+  if (patch.locale !== undefined) setI18nLocale(next.locale)
   saveBallSettings(next)
   cachedSettings = next
   return next
 }
 
-/** 当前应显示的菜单项（按 menuItems 设置过滤目录）；构建悬浮球 HTML 时内联为页内 ITEMS */
+/** 当前应显示的菜单项（按 menuItems 设置过滤目录）；label 在此按当前语言动态解析。
+ *  构建悬浮球 HTML 时内联为页内 ITEMS */
 function getVisibleMenuItems() {
   const s = getBallSettings()
-  return MENU_CATALOG.filter(m => s.menuItems[m.key])
+  return MENU_CATALOG.filter(m => s.menuItems[m.key]).map(m => ({ ...m, label: t(m.labelKey) }))
 }
 
 /** 悬浮球菜单项变更后重建窗口内容：花瓣形制嵌入 HTML，须重新走 buildFloatingBallHtml 生成新 HTML
@@ -915,6 +925,18 @@ export function registerFloatingBallHandlers() {
     // 菜单项变更：花瓣形制嵌入 HTML，reload 悬浮球让新菜单立即生效
     if (patch.menuItems && JSON.stringify(prev.menuItems) !== JSON.stringify(next.menuItems)) {
       reloadFloatingBall()
+    }
+    // 语言切换：花瓣标签嵌入 HTML 须 reload；同时向所有渲染窗口广播，让 Vue 侧 store 即时切换
+    if (patch.locale !== undefined && prev.locale !== next.locale) {
+      reloadFloatingBall()
+      reloadAiIsland()
+      const wins = BrowserWindow.getAllWindows()
+      for (const win of wins) {
+        if (!win.isDestroyed()) {
+          try { win.webContents.send('app-locale-changed', { locale: next.locale }) } catch {}
+        }
+      }
+      log.info(`Floating ball locale changed: ${prev.locale} -> ${next.locale}`)
     }
     return next
   })

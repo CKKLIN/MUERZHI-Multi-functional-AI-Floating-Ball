@@ -7,11 +7,13 @@ export interface CaptureSource {
 }
 
 export type BallMenuKey = 'record' | 'music' | 'ai' | 'todo' | 'settings'
+export type AppLocale = 'zh' | 'en'
 
 export interface FloatingBallSettings {
   visible: boolean
   alwaysOnTop: boolean
   openAtLogin: boolean
+  locale: AppLocale
   menuItems: Record<BallMenuKey, boolean>
 }
 
@@ -172,6 +174,8 @@ export interface ElectronAPI {
   getFloatingBallSettings: () => Promise<FloatingBallSettings>
   setFloatingBallSettings: (patch: Partial<FloatingBallSettings>) => Promise<FloatingBallSettings>
   resetFloatingBallPosition: () => Promise<void>
+  getAppI18n: () => Promise<{ locale: AppLocale; messages: Record<string, string> }>
+  onAppLocaleChanged: (callback: (data: { locale: AppLocale }) => void) => () => void
   showAiIsland: () => Promise<void>
   hideAiIsland: () => Promise<void>
   getAiIslandSettings: () => Promise<AiIslandSettings>

@@ -12,6 +12,7 @@ import { hideAiIsland } from './ai-island'
 import { setRegistryLogger, killAllConversions } from './conversion-registry'
 import { setHwEncoderLogger } from './hw-encoder'
 import { setStateMachineLogger } from './agent-state-machine'
+import { setI18nLocale, getAppI18nBundle } from './i18n'
 import { registerLocalVideoScheme, registerLocalVideoProtocol } from './local-video-protocol'
 import { showTodoWindow, closeTodoWindow } from './todo-window'
 import { hideTodoReminder } from './todo-reminder-window'
@@ -95,6 +96,8 @@ app.whenReady().then(() => {
   setRegistryLogger(log)
   setHwEncoderLogger(log)
   setStateMachineLogger(log)
+  // 启动即同步全局界面语言（悬浮球设置的 locale 是唯一真源），保证任何窗口创建前已就绪
+  setI18nLocale(getBallSettings().locale)
   const preloadPath = join(__dirname, '..', 'preload', 'index.cjs')
 
   // 清掉渲染层 HTTP 磁盘缓存：开发模式下 vite 资产 URL 不带版本号，Chromium 会把旧 CSS/JS
@@ -144,6 +147,8 @@ app.whenReady().then(() => {
   ipcMain.handle('show-settings-window', () => {
     showSettingsWindow()
   })
+  // 渲染层 i18n：一次拉齐 locale + 当前语言词条表
+  ipcMain.handle('get-app-i18n', () => getAppI18nBundle())
   ipcMain.handle('show-main-window', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.show()
