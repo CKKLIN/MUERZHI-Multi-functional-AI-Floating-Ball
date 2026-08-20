@@ -9,6 +9,7 @@ const visible = ref(true)
 const alwaysOnTop = ref(true)
 const openAtLogin = ref(false)
 const locale = ref<AppLocale>('zh')
+const snapGutter = ref(0)
 const menuItems = ref<Record<BallMenuKey, boolean>>({
   record: true, music: true, ai: true, todo: true, settings: true,
 })
@@ -30,6 +31,7 @@ async function loadSettings() {
     alwaysOnTop.value = s.alwaysOnTop
     openAtLogin.value = s.openAtLogin
     locale.value = s.locale ?? 'zh'
+    snapGutter.value = typeof s.snapGutter === 'number' ? s.snapGutter : 0
     menuItems.value = s.menuItems
   } catch (e) {
     console.error('[FloatingBallSettingsPanel] loadSettings error:', e)
@@ -48,6 +50,17 @@ async function setLocale(l: AppLocale) {
   } catch (e) {
     console.error('[FloatingBallSettingsPanel] setLocale error:', e)
     locale.value = prev
+  }
+}
+
+// 贴边留白（px）：数字输入即落盘，0-80 防呆
+async function setSnapGutter(v: string) {
+  const n = Math.max(0, Math.min(80, Number(v) || 0))
+  snapGutter.value = n
+  try {
+    await window.electronAPI.setFloatingBallSettings({ snapGutter: n })
+  } catch (e) {
+    console.error('[FloatingBallSettingsPanel] setSnapGutter error:', e)
   }
 }
 
@@ -144,6 +157,20 @@ onMounted(loadSettings)
               <div class="row-desc">{{ t('settings.ball.resetPosDesc') }}</div>
             </div>
             <button class="reset-btn" @click="resetPosition">{{ t('common.reset') }}</button>
+          </div>
+          <div class="setting-row">
+            <div class="row-text">
+              <div class="row-label">{{ t('settings.ball.snapGutter') }}</div>
+              <div class="row-desc">{{ t('settings.ball.snapGutterDesc') }}</div>
+            </div>
+            <input
+              class="gutter-input"
+              type="number"
+              min="0"
+              max="80"
+              :value="snapGutter"
+              @change="(e: any) => setSnapGutter((e.target as HTMLInputElement).value)"
+            />
           </div>
         </div>
       </div>
@@ -320,5 +347,26 @@ onMounted(loadSettings)
   border-color: rgba(255, 255, 255, 0.4);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
   box-shadow: var(--surface-accent-glow);
+}
+
+/* 贴边留白数字输入：与切换胶囊同底色，右对齐 */
+.gutter-input {
+  width: 64px;
+  padding: 5px 8px;
+  font-size: 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-top-color: rgba(255, 255, 255, 0.9);
+  border-left-color: rgba(255, 255, 255, 0.85);
+  border-right-color: rgba(200, 200, 210, 0.4);
+  border-bottom-color: rgba(190, 190, 200, 0.5);
+  background: var(--surface-grad);
+  color: var(--text-primary);
+  box-shadow: var(--bevel-shadow);
+  outline: none;
+  text-align: right;
+}
+.gutter-input:focus {
+  border-color: var(--surface-accent);
 }
 </style>

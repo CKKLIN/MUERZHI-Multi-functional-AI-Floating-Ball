@@ -14,6 +14,7 @@ export interface FloatingBallSettings {
   alwaysOnTop: boolean
   openAtLogin: boolean
   locale: AppLocale
+  snapGutter: number
   menuItems: Record<BallMenuKey, boolean>
 }
 
