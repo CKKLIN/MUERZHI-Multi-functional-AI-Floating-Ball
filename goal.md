@@ -168,7 +168,12 @@ G3 的 i18n 基建**优先建**——这样 G4 的 AI 图标窗口、G6 的音�
 - **风险与对策**：不得触碰承重约束（如 `backgroundThrottling:false` 对录制、串行合并勿改并行、绘制循环的 rVFC 门控）；任何"性能修复"以可测数据为准，不凭直觉下改。
   - **跨目标张力**：音乐频谱/歌词这类高频渲染窗口若被背景节流会影响体验，但**不能为迁就它而无差别改节流策略**（违反承重约束）——需在"保持节流"与"音乐窗口不卡顿"间取平衡（如仅对该覆盖窗口单独豁免，且不波及主窗口录制）。
 - **KPI 建议**：以优化前基线为参照，记录 内存 / CPU(空闲与活跃) / 句柄数 / 子进程数 / 常驻定时器与监听器 的量化对比。
-- **完成**：
+- **完成**：围绕「新增持续资源全量接入清理咽喉 + 子进程节流」落地，并对仓库全量常驻资源盘点。
+  - **G4 工具注册表** 10s 轮询 → 已接入 `agentBridge.stop()`（before-quit → toolRegistry.stop()）；codex 探测 tasklist 缓存 30s。
+  - **G6 音乐**：SMTC 轮询是持续子进程开销（每次拉 powershell）→ 节流（5s + in-flight 防重叠 + 隐藏不轮询，见 eaa2405）；回环采集随窗口卸载清理。
+  - **全量 setInterval 盘点**（before-quit 覆盖）：状态机 cleanup(agentBridge.stop) / hook 看护(stopWatcher) / retryPending(clear) / region 各 overlay(hideRegionBorder/hideFloatingIsland/hideCameraPreview) / todo 调度(stopTodoScheduler) / floating-ball snapTimer(动画瞬态，drag-end 清) / registry(toolRegistry.stop)。
+  - 诚实备注：本环境无法跑 packaged 应用量 MB/CPU 基线，量化对比留给实机；本目标落实的是**清理咽喉接线完备 + 新功能持续占用不冲回轻量化**（G4/G6 已纳入审计），符合 goal 承重约束（未动 backgroundThrottling/串行合并/rVFC 门控）。
+- 完成: eaa2405 2026-08-19 持续资源盘点 + SMTC 轮询节流
 
 ---
 
