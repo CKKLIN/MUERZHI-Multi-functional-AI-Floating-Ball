@@ -183,6 +183,10 @@ const electronAPI = {
   showAiWindow: () => ipcRenderer.invoke('show-ai-window'),
   showSettingsWindow: () => ipcRenderer.invoke('show-settings-window'),
   showMainWindow: () => ipcRenderer.invoke('show-main-window'),
+  showMusicWindow: () => ipcRenderer.invoke('show-music-window'),
+  closeMusicWindow: () => ipcRenderer.invoke('close-music-window'),
+  musicGetStatus: () => ipcRenderer.invoke('music-get-status'),
+  musicControl: (cmd: string) => ipcRenderer.invoke('music-control', cmd),
   getFloatingBallSettings: () => ipcRenderer.invoke('get-floating-ball-settings'),
   setFloatingBallSettings: (patch: Partial<{
     visible: boolean

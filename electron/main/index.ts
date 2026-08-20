@@ -17,6 +17,7 @@ import { registerLocalVideoScheme, registerLocalVideoProtocol } from './local-vi
 import { showTodoWindow, closeTodoWindow } from './todo-window'
 import { hideTodoReminder } from './todo-reminder-window'
 import { syncStickyNotes, closeAllStickyNotes } from './todo-sticky'
+import { showMusicWindow, closeMusicWindow } from './music-window'
 import { registerTodoBadgeHandlers, refreshTodoBadge } from './todo-badge'
 import { startTodoScheduler, stopTodoScheduler } from './todo-scheduler'
 
@@ -172,6 +173,9 @@ app.whenReady().then(() => {
   process.on('clawd-show-todo-window' as any, () => {
     showTodoWindow()
   })
+  process.on('clawd-show-music-window' as any, () => {
+    showMusicWindow()
+  })
 
   retryPendingTimer = setInterval(retryPending, 30_000)
   app.on('activate', () => {
@@ -209,6 +213,7 @@ app.on('before-quit', () => {
   closeTodoWindow()
   hideTodoReminder()
   closeAllStickyNotes()
+  closeMusicWindow()
   unregisterGlobalShortcuts()
   destroyTray()
   if (retryPendingTimer) {
