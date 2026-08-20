@@ -74,6 +74,8 @@ export interface FloatingBallSettings {
   openAtLogin: boolean
   /** 界面语言（全应用双语），为 i18n 全局偏好，写在此文件保证单真源 */
   locale: Locale
+  /** 屏幕边缘吸附时的贴边留白（px）；0 = 全贴合 */
+  snapGutter: number
   /** 悬浮球菜单里显示哪些入口（花瓣）；默认全开 */
   menuItems: Record<BallMenuKey, boolean>
 }
@@ -87,6 +89,7 @@ const DEFAULT_SETTINGS: FloatingBallSettings = {
   alwaysOnTop: true,
   openAtLogin: false,
   locale: 'zh',
+  snapGutter: 0,
   menuItems: { ...DEFAULT_MENU_ITEMS },
 }
 
@@ -112,6 +115,9 @@ function loadBallSettings(): FloatingBallSettings {
       alwaysOnTop: typeof parsed.alwaysOnTop === 'boolean' ? parsed.alwaysOnTop : DEFAULT_SETTINGS.alwaysOnTop,
       openAtLogin: typeof parsed.openAtLogin === 'boolean' ? parsed.openAtLogin : DEFAULT_SETTINGS.openAtLogin,
       locale: isLocale(parsed.locale) ? parsed.locale : DEFAULT_SETTINGS.locale,
+      snapGutter: typeof parsed.snapGutter === 'number' && parsed.snapGutter >= 0 && parsed.snapGutter <= 80
+        ? parsed.snapGutter
+        : DEFAULT_SETTINGS.snapGutter,
       menuItems,
     }
   } catch {}
@@ -150,6 +156,7 @@ function getVisibleMenuItems() {
 /** 悬浮球菜单项变更后重建窗口内容：花瓣形制嵌入 HTML，须重新走 buildFloatingBallHtml 生成新 HTML
  *  （webContents.reload() 只会重载旧的 data URL，带不上新菜单），再 loadURL 替换当前内容 */
 function reloadFloatingBall() {
+  clearSnap() // 重建 HTML 会重置 DOM 的圆角 class，吸附态一并清掉保持一致
   if (floatingBallWindow && !floatingBallWindow.isDestroyed()) {
     floatingBallWindow.loadURL(
       `data:text/html;charset=utf-8,${encodeURIComponent(buildFloatingBallHtml())}`
@@ -548,6 +555,11 @@ body.expanded .arc-label{
   pointer-events:none;
 }
 #trigger:active{transform:scale(0.95)}
+/* 水滴吸附贴边：贴哪条边就把该边两角收平成直角，形成"粘在屏幕边缘"的半圆水滴感（G5） */
+body.snap-left #trigger{border-radius:0 33px 33px 0}
+body.snap-right #trigger{border-radius:33px 0 0 33px}
+body.snap-top #trigger{border-radius:0 0 33px 33px}
+body.snap-bottom #trigger{border-radius:33px 33px 0 0}
 
 /* 恒 66px 的球心容器：trigger 与气泡都锚在这，展开（#ball 变 240）时仍贴球心不动 */
 .core{
@@ -808,6 +820,11 @@ ipcRenderer.on('ball-state',function(_event,state){
     isExpanded=false
   }
 })
+// 屏幕边缘水滴吸附：主进程松手贴边后广播吸附边，切圆角贴合视觉；null = 未吸附
+ipcRenderer.on('ball-snap',function(_event,side){
+  document.body.classList.remove('snap-left','snap-right','snap-top','snap-bottom')
+  if(side) document.body.classList.add('snap-'+side)
+})
 
 // === 点击外部收起 ===
 // 展开态下，只有点到中心按钮(#trigger)或菜单花瓣(.arc-item)才算"点在悬浮球/菜单上"；
@@ -820,6 +837,62 @@ document.addEventListener('click',function(e){
 </script>
 </body>
 </html>`
+}
+
+// === 屏幕边缘水滴吸附（G5） ===
+// 松手靠近屏幕某边（阈值内）→ 弹性过渡贴到该边，视觉呈"水滴粘在边缘"的圆润贴合
+//（渲染层按吸附边把对应两角收平为直角，形成粘边半圆）。拖动即脱离（drag-start 清理）。
+let snappedSide: 'top' | 'bottom' | 'left' | 'right' | null = null
+let snapTimer: ReturnType<typeof setInterval> | null = null
+
+/** 通知渲染层悬浮球吸附边（null = 未吸附），由内联 script 切换 body.snap-* class 触发圆角贴合。 */
+function sendSnapVisual(side: 'top' | 'bottom' | 'left' | 'right' | null) {
+  if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
+  try { floatingBallWindow.webContents.send('ball-snap', side) } catch {}
+}
+
+/** 弹性 out 缓动：末尾轻微过冲回弹，模拟水滴/弹簧贴边手感（参考 easeOutBack 微调）。 */
+function elasticOut(t: number): number {
+  if (t <= 0) return 0
+  if (t >= 1) return 1
+  const c4 = (2 * Math.PI) / 3
+  return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1
+}
+
+/** 从当前 (x,y) 弹性动画贴到目标边；落稳后读回修正 DWM 1px 偏移、记录吸附边并持久化位置。 */
+function animateSnapToEdge(x: number, y: number, to: { x: number; y: number }, side: 'top' | 'bottom' | 'left' | 'right') {
+  if (snapTimer) { clearInterval(snapTimer); snapTimer = null }
+  const DUR = 420
+  const start = Date.now()
+  const step = () => {
+    if (!floatingBallWindow || floatingBallWindow.isDestroyed()) {
+      if (snapTimer) { clearInterval(snapTimer); snapTimer = null }
+      return
+    }
+    const t = Math.min(1, (Date.now() - start) / DUR)
+    const e = elasticOut(t)
+    setBallBounds({ x: Math.round(x + (to.x - x) * e), y: Math.round(y + (to.y - y) * e), width: BALL_SIZE, height: BALL_SIZE })
+    if (t >= 1) {
+      if (snapTimer) { clearInterval(snapTimer); snapTimer = null }
+      // 落稳后读回修正 DWM 1px 偏移（同 drag-move 手法）
+      const [ax, ay] = floatingBallWindow.getPosition()
+      if (ax !== to.x || ay !== to.y) setBallBounds({ x: to.x, y: to.y, width: BALL_SIZE, height: BALL_SIZE })
+      snappedSide = side
+      sendSnapVisual(side)
+      if (ballPos) { ballPos = { x: to.x, y: to.y }; saveBallPosition(ballPos) }
+      log.info('Floating ball snapped (elastic) to edge:', [to.x, to.y], side)
+    }
+  }
+  snapTimer = setInterval(step, 16)
+}
+
+/** 清除吸附态（拖动开始/隐藏时）：停动画、清边标记、收圆角。 */
+function clearSnap() {
+  if (snapTimer) { clearInterval(snapTimer); snapTimer = null }
+  if (snappedSide) {
+    snappedSide = null
+    sendSnapVisual(null)
+  }
 }
 
 // === IPC 处理器注册 ===
@@ -854,6 +927,8 @@ export function registerFloatingBallHandlers() {
 
   ipcMain.on('floating-ball-drag-start', (_event: any, sx: number, sy: number) => {
     if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
+    // 开始拖动即脱离吸附：清吸附动画与圆角贴合态，后续 move 全程纯跟手
+    clearSnap()
     const [wx, wy] = floatingBallWindow.getPosition()
     const [ww, wh] = floatingBallWindow.getSize()
     dragOrigin = { winX: wx, winY: wy, scrX: sx, scrY: sy }
@@ -879,31 +954,33 @@ export function registerFloatingBallHandlers() {
   ipcMain.on('floating-ball-drag-end', () => {
     dragOrigin = null
     dragSize = null
-    // 屏幕边缘磁吸：松手时若球靠近屏幕某边缘（阈值内）则吸附贴边。
-    // 吸附放在 drag-end 而不是 move，保证拖动全程纯跟手（不触发反向漂移）。
+    // 屏幕边缘水滴吸附：松手时若球靠近某边缘（阈值内）则弹性贴边。
+    // 吸附放在 drag-end 而不是 move，保证拖动全程纯跟手（不触发反向漂移）；
+    // 用球当前所在显示器（而非固定主屏）判定，否则多屏下拖到副屏会被
+    // 误判为"距主屏右缘很负"而拉回主屏——即"拖不到分屏"。
     if (floatingBallWindow && !floatingBallWindow.isDestroyed()) {
       const [x, y] = floatingBallWindow.getPosition()
       const [w, h] = floatingBallWindow.getSize()
-      // 用球当前所在显示器（而非固定主屏）做磁吸，否则多屏下拖到副屏会被
-      // 误判为"距主屏右缘很负"而拉回主屏——即"拖不到分屏"。
       const b = screen.getDisplayMatching(floatingBallWindow.getBounds()).bounds
+      const gutter = getBallSettings().snapGutter // 贴边留白（px）
       const SNAP = 40 // 吸附阈值（px）
-      let nx = x, ny = y
-      if (x - b.x < SNAP) nx = b.x
-      else if ((b.x + b.width) - (x + w) < SNAP) nx = b.x + b.width - w
-      if (y - b.y < SNAP) ny = b.y
-      else if ((b.y + b.height) - (y + h) < SNAP) ny = b.y + b.height - h
-      if (nx !== x || ny !== y) {
-        setBallBounds({ x: nx, y: ny, width: w, height: h })
-        // 读回修正 DWM 1px 偏移（与 drag-move 一致）
-        const [ax, ay] = floatingBallWindow.getPosition()
-        setBallBounds({ x: nx + (nx - ax), y: ny + (ny - ay), width: w, height: h })
-        if (ballPos) {
-          ballPos = { x: nx, y: ny }
-          saveBallPosition(ballPos)
-        }
-        log.info('Floating ball snapped to edge:', [nx, ny])
-      }
+      // 四方向各自到"贴边目标"的距离（含留白）；取最近且 < 阈值的一边 —— 角上只贴最近的边，
+      // 避免同时贴两条边形成别扭的角落状态
+      const dl = Math.abs(x - (b.x + gutter))
+      const dr = Math.abs((b.x + b.width - gutter) - (x + w))
+      const dt = Math.abs(y - (b.y + gutter))
+      const db = Math.abs((b.y + b.height - gutter) - (y + h))
+      let best: 'left' | 'right' | 'top' | 'bottom' | null = null
+      let bestD = Number.MAX_VALUE
+      if (dl < SNAP && dl < bestD) { bestD = dl; best = 'left' }
+      if (dr < SNAP && dr < bestD) { bestD = dr; best = 'right' }
+      if (dt < SNAP && dt < bestD) { bestD = dt; best = 'top' }
+      if (db < SNAP && db < bestD) { bestD = db; best = 'bottom' }
+      if (best === 'left') animateSnapToEdge(x, y, { x: b.x + gutter, y }, 'left')
+      else if (best === 'right') animateSnapToEdge(x, y, { x: b.x + b.width - gutter - w, y }, 'right')
+      else if (best === 'top') animateSnapToEdge(x, y, { x, y: b.y + gutter }, 'top')
+      else if (best === 'bottom') animateSnapToEdge(x, y, { x, y: b.y + b.height - gutter - h }, 'bottom')
+      // 未贴近任何边：吸附状态自然保持"未吸附"（drag-start 已清圆角）
     }
     if (ballPos) saveBallPosition(ballPos)
   })
@@ -946,6 +1023,7 @@ export function registerFloatingBallHandlers() {
     // （hide→close→立即 show 会让旧窗口的 'closed' 事件把新窗口引用清成 null，
     //  导致悬浮球"消失"——见 closed handler 的异步陷阱）
     clearBallPosition()
+    clearSnap() // 重置位置 → 回屏幕中心，吸附态一并清除
     if (floatingBallWindow && !floatingBallWindow.isDestroyed()) {
       const display = screen.getPrimaryDisplay().bounds
       const nx = Math.round(display.x + (display.width - BALL_SIZE) / 2)
