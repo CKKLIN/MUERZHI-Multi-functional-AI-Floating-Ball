@@ -24,15 +24,22 @@ const loopFail = ref(false)
 
 // === 6a: SMTC 轮询 ===
 let smtcTimer: ReturnType<typeof setInterval> | null = null
+let smtcInFlight = false // 防重叠：上次 PowerShell 未返回前不再发起新一轮（超时 8s > 轮询间隔）
 async function pollSmtc() {
+  if (smtcInFlight) return
+  // 页面隐藏时不轮询（每次轮询会拉起一个 powershell 子进程，是持续开销，G7 节流）
+  if (document.hidden) return
+  smtcInFlight = true
   try {
     const s = await window.electronAPI.musicGetStatus()
     if (s) status.value = s
   } catch { /* 轮询失败保持上次展示 */ }
+  finally { smtcInFlight = false }
 }
 function ctrl(cmd: 'play' | 'pause' | 'next' | 'prev') {
   window.electronAPI.musicControl(cmd).catch(() => {})
   // 控制后立即回读一次，尽快反映状态变化
+  smtcInFlight = false
   setTimeout(pollSmtc, 500)
 }
 
@@ -120,7 +127,8 @@ function stopLoop() {
 
 onMounted(() => {
   pollSmtc()
-  smtcTimer = setInterval(pollSmtc, 3000)
+  // 3s 轮询每次会拉起一个 powershell 子进程，是持续子进程开销（G7）；加密轮询间隔到 5s 减少进程 churn
+  smtcTimer = setInterval(pollSmtc, 5000)
 })
 
 onUnmounted(() => {
