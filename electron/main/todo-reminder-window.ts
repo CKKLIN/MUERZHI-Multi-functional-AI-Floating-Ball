@@ -6,6 +6,7 @@
 import { BrowserWindow, screen } from 'electron'
 import log from './logger'
 import { getLogoDataUrl } from './logo'
+import { t } from './i18n'
 
 let reminderWindow: BrowserWindow | null = null
 
@@ -44,14 +45,14 @@ html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-fam
   <div class="bar">
     <div class="brand">${logo ? `<img class="logo" src="${logo}">` : '<div class="logo">MU</div>'}<div class="brand-txt">MUERZHI</div></div>
     <div class="bar-right">
-      <div class="ring">到点了</div>
-      <button class="close" title="关闭" onclick="ipc.send('todo-reminder-close')">✕</button>
+      <div class="ring">${t('todo.reminderRing')}</div>
+      <button class="close" title="${t('common.close')}" onclick="ipc.send('todo-reminder-close')">✕</button>
     </div>
   </div>
   <div class="body">
-    <div class="t">${escapeHtml(title) || '待办提醒'}</div>
-    <div class="b">${escapeHtml(body) || '到时间了，记得处理一下。'}</div>
-    <div class="foot"><button class="open" onclick="ipc.send('todo-reminder-open')">打开待办</button></div>
+    <div class="t">${escapeHtml(title) || t('todo.reminTitle')}</div>
+    <div class="b">${escapeHtml(body) || t('todo.reminderBody')}</div>
+    <div class="foot"><button class="open" onclick="ipc.send('todo-reminder-open')">${t('todo.openTodo')}</button></div>
   </div>
 </div>
 <script>

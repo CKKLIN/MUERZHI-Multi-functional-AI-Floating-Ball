@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRecordingStore } from '../stores/recording'
 import log from '../log'
+import { t } from '../stores/i18n'
 
 const props = defineProps<{
   filePath: string
@@ -14,7 +15,7 @@ const emit = defineEmits<{
 
 const store = useRecordingStore()
 const progress = ref(0)
-const statusText = ref('准备中...')
+const statusText = ref(t('convert.preparingDots'))
 const isDone = ref(false)
 const gifPath = ref('')
 
@@ -29,13 +30,13 @@ let cleanup: (() => void) | null = null
 onMounted(async () => {
   cleanup = window.electronAPI.onConversionProgress((p) => {
     progress.value = p.percent
-    statusText.value = `转换中... ${Math.round(p.percent)}%`
+    statusText.value = t('convert.progress', { n: Math.round(p.percent) })
   })
 
   try {
     const outputPath = props.filePath.replace(/\.[^.]+$/, '.gif')
 
-    statusText.value = '开始转换...'
+    statusText.value = t('convert.startDots')
 
     const result = await window.electronAPI.convertToGif(props.filePath, outputPath, {
       width: 480,
@@ -45,7 +46,7 @@ onMounted(async () => {
     if (result.success) {
       isDone.value = true
       gifPath.value = outputPath
-      statusText.value = '转换完成!'
+      statusText.value = t('convert.doneEx')
       progress.value = 100
 
       const size = await window.electronAPI.getFileSize(outputPath)
@@ -59,11 +60,11 @@ onMounted(async () => {
       })
       log.info('GIF conversion completed:', outputPath)
     } else {
-      statusText.value = `转换失败: ${result.error}`
+      statusText.value = t('convert.failedColon', { e: result.error })
       log.error('GIF conversion failed:', result.error)
     }
   } catch (err: any) {
-    statusText.value = `转换失败: ${err.message}`
+    statusText.value = t('convert.failedColon', { e: err.message })
     log.error('GIF conversion error:', err.message)
   }
 })
@@ -77,7 +78,7 @@ onUnmounted(() => {
   <div class="modal-overlay">
     <div class="conversion-modal modal">
       <div class="modal-header">
-        <h3>导出 GIF</h3>
+        <h3>{{ t('record.exportGif') }}</h3>
         <button class="btn btn-icon btn-sm" @click="emit('close')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -92,9 +93,9 @@ onUnmounted(() => {
       </div>
       <div v-if="isDone" class="conversion-actions">
         <button class="btn btn-primary btn-sm" @click="handleOpenFolder">
-          打开文件夹
+          {{ t('record.openFolder') }}
         </button>
-        <button class="btn btn-sm" @click="emit('close')">关闭</button>
+        <button class="btn btn-sm" @click="emit('close')">{{ t('common.close') }}</button>
       </div>
     </div>
   </div>

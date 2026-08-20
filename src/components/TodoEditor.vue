@@ -6,6 +6,7 @@ import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import Quill from 'quill'
 import 'quill/dist/quill.snow.css'
 import type { TodoDraft, TodoPriority, TodoType } from '../stores/todo'
+import { t } from '../stores/i18n'
 
 const props = defineProps<{
   initial?: TodoDraft | null                 // 编辑已有项时的初值；null/缺省=新建
@@ -125,13 +126,13 @@ defineExpose({ save })
 
     <!-- 备忘：标题输入（待办无标题，正文即内容） -->
     <div class="ed-title" v-if="type === 'memo'">
-      <input v-model="title" class="title-input" placeholder="标题" />
+      <input v-model="title" class="title-input" :placeholder="t('todo.titlePlaceholder')" />
     </div>
 
     <!-- 编辑态完成勾选行（仅待办编辑） -->
     <div class="ed-title" v-if="!isCreating && type === 'todo'">
       <button class="chk" :class="{ on: done }" @click="done = !done"><span v-if="done">✓</span></button>
-      <span class="done-label">{{ done ? '已完成' : '标记完成' }}</span>
+      <span class="done-label">{{ done ? t('todo.completed') : t('todo.markDone') }}</span>
     </div>
 
     <!-- Quill 富文本正文：书写区主体 -->
@@ -139,29 +140,29 @@ defineExpose({ save })
 
     <!-- 次要信息（类型/优先级/提醒）收进“更多选项”，默认不抢占主次 -->
     <div class="meta">
-      <button class="meta-toggle" :title="showMore ? '收起选项' : '类型、优先级、提醒'"
-        @click="showMore = !showMore"><span class="dot">⋯</span> {{ showMore ? '收起选项' : '更多选项' }}</button>
+      <button class="meta-toggle" :title="showMore ? t('todo.collapseOptions') : t('todo.moreTitle')"
+        @click="showMore = !showMore"><span class="dot">⋯</span> {{ showMore ? t('todo.collapseOptions') : t('todo.moreOptions') }}</button>
       <div class="meta-body" v-if="showMore">
         <label class="field">
-          <span>类型</span>
+          <span>{{ t('todo.typeField') }}</span>
           <div class="seg">
-            <button :class="{ on: type === 'todo' }" @click="type = 'todo'">待办</button>
-            <button :class="{ on: type === 'memo' }" @click="type = 'memo'">备忘</button>
+            <button :class="{ on: type === 'todo' }" @click="type = 'todo'">{{ t('todo.typeTodo') }}</button>
+            <button :class="{ on: type === 'memo' }" @click="type = 'memo'">{{ t('todo.typeMemo') }}</button>
           </div>
         </label>
         <label class="field">
-          <span>优先级</span>
+          <span>{{ t('todo.priority') }}</span>
           <select v-model="priority">
-            <option value="urgent">紧急</option>
-            <option value="high">高</option>
-            <option value="medium">中</option>
-            <option value="low">低</option>
+            <option value="urgent">{{ t('todo.priorityUrgent') }}</option>
+            <option value="high">{{ t('todo.priorityHigh') }}</option>
+            <option value="medium">{{ t('todo.priorityMedium') }}</option>
+            <option value="low">{{ t('todo.priorityLow') }}</option>
           </select>
         </label>
         <label class="field reminder">
-          <span>提醒</span>
+          <span>{{ t('todo.reminder') }}</span>
           <input type="datetime-local" v-model="reminderLocal" />
-          <button class="clear-sm" v-if="reminderLocal" @click="reminderLocal = ''" title="清除提醒">✕</button>
+          <button class="clear-sm" v-if="reminderLocal" @click="reminderLocal = ''" :title="t('todo.clearReminder')">✕</button>
         </label>
       </div>
     </div>

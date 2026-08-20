@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRecordingStore } from '../stores/recording'
+import { t } from '../stores/i18n'
 
 const emit = defineEmits<{
   close: []
@@ -33,7 +34,7 @@ function scheduleDatetime() {
   if (!scheduledDate.value || !scheduledTime.value) return
   const target = new Date(`${scheduledDate.value}T${scheduledTime.value}`).getTime()
   if (target <= Date.now()) {
-    alert('请选择一个未来的时间')
+    alert(t('sched.future'))
     return
   }
   startCountdown(target)
@@ -76,7 +77,7 @@ scheduledTime.value = nowTime.toTimeString().slice(0, 5)
   <div class="modal-overlay" @click.self="emit('close')">
     <div class="schedule-modal modal">
       <div class="modal-header">
-        <h3>定时录制</h3>
+        <h3>{{ t('sched.title') }}</h3>
         <button class="btn btn-icon btn-sm" @click="emit('close')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -90,8 +91,8 @@ scheduledTime.value = nowTime.toTimeString().slice(0, 5)
           <polyline points="12 6 12 12 16 14"/>
         </svg>
         <p class="countdown-time">{{ countdown }}</p>
-        <p class="countdown-label">录制即将开始...</p>
-        <button class="btn btn-sm" @click="cancelSchedule">取消</button>
+        <p class="countdown-label">{{ t('sched.aboutToStart') }}...</p>
+        <button class="btn btn-sm" @click="cancelSchedule">{{ t('common.cancel') }}</button>
       </div>
 
       <div v-else class="schedule-body">
@@ -101,18 +102,18 @@ scheduledTime.value = nowTime.toTimeString().slice(0, 5)
             class="tab"
             :class="{ active: mode === 'minutes' }"
             @click="mode = 'minutes'"
-          >倒计时</button>
+          >{{ t('sched.countdown') }}</button>
           <button
             class="tab"
             :class="{ active: mode === 'datetime' }"
             @click="mode = 'datetime'"
-          >指定时间</button>
+          >{{ t('sched.scheduled') }}</button>
         </div>
 
         <!-- 倒计时模式 -->
         <div v-if="mode === 'minutes'" class="schedule-form">
           <div class="form-group">
-            <label>延迟（分钟）</label>
+            <label>{{ t('sched.delay') }}（{{ t('sched.minutes') }}）</label>
             <input
               type="number"
               class="input"
@@ -123,26 +124,26 @@ scheduledTime.value = nowTime.toTimeString().slice(0, 5)
           </div>
           <div class="quick-options">
             <button v-for="m in [1, 5, 10, 30]" :key="m" class="btn btn-sm" @click="delayMinutes = m">
-              {{ m }}分钟
+              {{ m }}{{ t('sched.minutes') }}
             </button>
           </div>
           <button class="btn btn-primary" @click="scheduleMinutes">
-            开始倒计时
+            {{ t('sched.startCountdown') }}
           </button>
         </div>
 
         <!-- 指定时间模式 -->
         <div v-if="mode === 'datetime'" class="schedule-form">
           <div class="form-group">
-            <label>日期</label>
+            <label>{{ t('sched.date') }}</label>
             <input type="date" class="input" v-model="scheduledDate" :min="today" />
           </div>
           <div class="form-group">
-            <label>时间</label>
+            <label>{{ t('sched.time') }}</label>
             <input type="time" class="input" v-model="scheduledTime" />
           </div>
           <button class="btn btn-primary" @click="scheduleDatetime">
-            设置定时
+            {{ t('sched.set') }}
           </button>
         </div>
       </div>

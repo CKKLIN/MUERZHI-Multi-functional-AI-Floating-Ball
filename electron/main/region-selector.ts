@@ -1,8 +1,39 @@
 import { BrowserWindow, ipcMain, screen } from 'electron'
 import { join } from 'node:path'
 import log from './logger'
+import { t } from './i18n'
 
 let mainWindow: BrowserWindow | null = null
+
+/** 录制悬浮岛/工具栏内联 HTML 的 i18n 词条（label/title）。JS 内联部分在脚本头部注入 I18N JSON。 */
+function recorderI18n() {
+  return {
+    mic: t('record.toggleMic'),
+    sys: t('record.toggleSys'),
+    cam: t('record.toggleCamera'),
+    rec: t('record.recBtn'),
+    start: t('record.start'),
+    stop: t('record.stop'),
+    pause: t('record.pause'),
+    resume: t('record.resume'),
+    cancel: t('common.cancel'),
+    closeStop: t('record.closeAndStop'),
+    viewDetail: t('aiIsland.viewDetail'),
+    idle: t('aiIsland.idle'),
+    thinking: t('aiIsland.thinking'),
+    working: t('aiIsland.working'),
+    error: t('aiIsland.error'),
+    notification: t('aiIsland.notification'),
+    done: t('aiIsland.done'),
+    unknown: t('aiIsland.unknown'),
+    allow: t('common.allow'),
+    deny: t('common.deny'),
+    alwaysAllow: t('common.alwaysAllow'),
+    requestTitle: t('record.claudeRequest'),
+    toolName: t('aiIsland.permTool'),
+    targetInfo: t('record.targetInfo'),
+  }
+}
 
 function setMainWindow(win: BrowserWindow) {
   mainWindow = win
@@ -303,61 +334,62 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
   <span class="recording-dot" id="dot" style="display:none"></span>
   <span class="timer" id="timer">00:00</span>
   <div class="btn-group">
-    <button id="micBtn" title="麦克风" onclick="doToggleMic()">
+    <button id="micBtn" title="${t('record.toggleMic')}" onclick="doToggleMic()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
     </button>
     <div class="meter-group" id="micMeter"></div>
   </div>
   <!-- <div class="btn-group">
-    <button id="sysBtn" title="系统音频" onclick="doToggleSys()">
+    <button id="sysBtn" title="${t('record.toggleSys')}" onclick="doToggleSys()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
     </button>
     <div class="meter-group" id="sysMeter"></div>
   </div> -->
   <div class="btn-group">
-    <button id="camBtn" title="摄像头" onclick="doToggleCam()">
+    <button id="camBtn" title="${t('record.toggleCamera')}" onclick="doToggleCam()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
     </button>
   </div>
   <div class="sep"></div>
   <button class="action-btn start-btn" id="startBtn" onclick="doStart()">
     <svg width="10" height="10" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="currentColor"/></svg>
-    <span>录制</span>
+    <span>${t('record.recBtn')}</span>
   </button>
-  <button class="stop-btn" id="stopBtn" style="display:none" onclick="doStop()" title="停止">
+  <button class="stop-btn" id="stopBtn" style="display:none" onclick="doStop()" title="${t('record.stop')}">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
   </button>
-  <button class="pause-btn" id="pauseBtn" style="display:none" onclick="doPause()" title="暂停">
+  <button class="pause-btn" id="pauseBtn" style="display:none" onclick="doPause()" title="${t('record.pause')}">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
   </button>
-  <button id="resumeBtn" style="display:none" onclick="doResume()" title="继续">
+  <button id="resumeBtn" style="display:none" onclick="doResume()" title="${t('record.resume')}">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
   </button>
-  <button class="close-btn" onclick="doClose()" title="取消">
+  <button class="close-btn" onclick="doClose()" title="${t('common.cancel')}">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
   </button>
 </div>
 <div class="sep" id="aiSep" style="display:none"></div>
-<div class="ai-indicator" id="aiIndicator" style="display:none" onclick="showAiDetail()" title="点击查看详情">
+<div class="ai-indicator" id="aiIndicator" style="display:none" onclick="showAiDetail()" title="${t('aiIsland.viewDetail')}">
   <span class="ai-dot idle" id="aiDot"></span>
-  <span class="ai-label" id="aiLabel">AI 待机</span>
+  <span class="ai-label" id="aiLabel">${t('aiIsland.idle')}</span>
 </div>
 <div class="perm-card" id="permCard">
   <div class="perm-header">
     <span>🤖</span>
-    <span>Claude Code 请求权限</span>
+    <span>${t('record.claudeRequest')}</span>
   </div>
   <div class="perm-detail">
-    <span class="perm-tool" id="permTool">工具名</span>
-    <span id="permTarget">目标信息</span>
+    <span class="perm-tool" id="permTool">${t('aiIsland.permTool')}</span>
+    <span id="permTarget">${t('record.targetInfo')}</span>
   </div>
   <div class="perm-actions">
-    <button class="perm-btn allow" onclick="doAllow()">✅ 允许</button>
-    <button class="perm-btn deny" onclick="doDeny()">❌ 拒绝</button>
-    <button class="perm-btn always" onclick="doAlwaysAllow()">📌 始终允许</button>
+    <button class="perm-btn allow" onclick="doAllow()">${t('common.allow')}</button>
+    <button class="perm-btn deny" onclick="doDeny()">${t('common.deny')}</button>
+    <button class="perm-btn always" onclick="doAlwaysAllow()">${t('common.alwaysAllow')}</button>
   </div>
 </div>
 <script>
+const I18N=${JSON.stringify(recorderI18n())};
 const {ipcRenderer}=require('electron')
 let timerInterval=null,seconds=0,micOn=${audioState?.micEnabled ? 'true' : 'false'},sysOn=${audioState?.sysEnabled ? 'true' : 'false'},camOn=${audioState?.cameraEnabled ? 'true' : 'false'},isRecording=false
 function updateTimer(){
@@ -437,19 +469,19 @@ const ro=new ResizeObserver(()=>resizeIsland())
 ro.observe(document.getElementById('island'))
 // AI 状态管理
 let currentAiState='idle'
-const aiLabels={idle:'AI 待机',thinking:'AI 思考中',working:'AI 工作中',error:'AI 出错了',notification:'等待审批',done:'任务完成'}
+const aiLabels={idle:I18N.idle,thinking:I18N.thinking,working:I18N.working,error:I18N.error,notification:I18N.notification,done:I18N.done}
 ipcRenderer.on('agent-state-update',(e,data)=>{
   const ind=document.getElementById('aiIndicator'),dot=document.getElementById('aiDot'),lb=document.getElementById('aiLabel'),sp=document.getElementById('aiSep')
   if(!data||(data.state==='idle'&&(!data.sessions||!data.sessions.length))){ind.style.display='none';sp.style.display='none';return}
   ind.style.display='flex';sp.style.display='block';currentAiState=data.state
-  dot.className='ai-dot '+data.state;lb.textContent=aiLabels[data.state]||'AI '+data.state;lb.classList.toggle('active',data.state!=='idle')
+  dot.className='ai-dot '+data.state;lb.textContent=aiLabels[data.state]||I18N.idle;lb.classList.toggle('active',data.state!=='idle')
   setTimeout(resizeIsland,50)
 })
 // 录制悬浮岛也展示权限卡：只关心队首为权限卡的情况（提问卡无对应 UI，忽略）
 ipcRenderer.on('agent-card-update',(e,card)=>{
   if(!card||card.kind!=='permission'){ document.getElementById('permCard').classList.remove('show'); setTimeout(resizeIsland,50); return }
   document.getElementById('permCard').classList.add('show')
-  document.getElementById('permTool').textContent=card.toolName||'未知操作'
+  document.getElementById('permTool').textContent=card.toolName||I18N.unknown
   const istr=card.toolInput?JSON.stringify(card.toolInput).slice(0,80):''
   document.getElementById('permTarget').textContent=istr?': '+istr:''
   setTimeout(resizeIsland,50)
@@ -643,37 +675,38 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Segoe UI',system-u
 <div class="toolbar" id="toolbar" data-pos="${tbPos}">
   <span class="recording-dot" id="dot"></span>
   <span class="timer" id="timer">00:00</span>
-  <button class="audio-toggle" id="micBtn" title="麦克风" onclick="doToggleMic()">
+  <button class="audio-toggle" id="micBtn" title="${t('record.toggleMic')}" onclick="doToggleMic()">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
   </button>
   <div class="meter-group" id="micMeter"></div>
-  <!-- <button class="audio-toggle" id="sysBtn" title="系统音频" onclick="doToggleSys()">
+  <!-- <button class="audio-toggle" id="sysBtn" title="${t('record.toggleSys')}" onclick="doToggleSys()">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
   </button>
   <div class="meter-group" id="sysMeter"></div> -->
-  <button class="audio-toggle" id="camBtn" title="摄像头" onclick="doToggleCam()">
+  <button class="audio-toggle" id="camBtn" title="${t('record.toggleCamera')}" onclick="doToggleCam()">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
   </button>
   <div class="sep"></div>
-  <button class="rec" id="startBtn" onclick="doStart()" title="开始录制">
+  <button class="rec" id="startBtn" onclick="doStart()" title="${t('record.start')}">
     <svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="currentColor"/></svg>
-    <span>录制</span>
+    <span>${t('record.recBtn')}</span>
   </button>
-  <button class="stop-btn" id="stopBtn" style="display:none" onclick="doStop()" title="停止">
+  <button class="stop-btn" id="stopBtn" style="display:none" onclick="doStop()" title="${t('record.stop')}">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
   </button>
-  <button class="pause-btn" id="pauseBtn" style="display:none" onclick="doPause()" title="暂停">
+  <button class="pause-btn" id="pauseBtn" style="display:none" onclick="doPause()" title="${t('record.pause')}">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
   </button>
-  <button id="resumeBtn" style="display:none" onclick="doResume()" title="继续">
+  <button id="resumeBtn" style="display:none" onclick="doResume()" title="${t('record.resume')}">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
   </button>
   <span class="size-label" id="sizeLabel">${region.width}×${region.height}</span>
-  <button class="close-btn" onclick="doClose()" title="关闭并停止录制">
+  <button class="close-btn" onclick="doClose()" title="${t('record.closeAndStop')}">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
   </button>
 </div>
 <script>
+const I18N=${JSON.stringify(recorderI18n())};
 const {ipcRenderer}=require('electron')
 let timerInterval=null,seconds=0,micOn=${audioState?.micEnabled ? 'true' : 'false'},sysOn=${audioState?.sysEnabled ? 'true' : 'false'},camOn=${audioState?.cameraEnabled ? 'true' : 'false'},isRecording=false
 function updateTimer(){

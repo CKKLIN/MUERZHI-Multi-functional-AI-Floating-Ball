@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import { useDrawingCanvas } from '../composables/useDrawingCanvas'
 import { useSettingsStore } from '../stores/settings'
+import { t } from '../stores/i18n'
 
 const settingsStore = useSettingsStore()
 const drawing = useDrawingCanvas()
 
 const colors = ['#ff0000', '#ff6600', '#ffff00', '#00ff00', '#00aaff', '#ffffff', '#000000']
 const tools = [
-  { key: 'pen' as const, label: '画笔', icon: 'M12 19l7-7 3 3-7 7-3-3zM18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5zM2 2l7.586 7.586' },
-  { key: 'eraser' as const, label: '橡皮', icon: 'M20 20H7L3 16l9-9 8 8-4 4zM6 11l4 4' },
-  { key: 'arrow' as const, label: '箭头', icon: 'M5 12h14M12 5l7 7-7 7' },
-  { key: 'rectangle' as const, label: '矩形', icon: 'M3 3h18v18H3z' },
+  { key: 'pen' as const, labelKey: 'draw.pen', icon: 'M12 19l7-7 3 3-7 7-3-3zM18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5zM2 2l7.586 7.586' },
+  { key: 'eraser' as const, labelKey: 'draw.eraser', icon: 'M20 20H7L3 16l9-9 8 8-4 4zM6 11l4 4' },
+  { key: 'arrow' as const, labelKey: 'draw.arrow', icon: 'M5 12h14M12 5l7 7-7 7' },
+  { key: 'rectangle' as const, labelKey: 'draw.rect', icon: 'M3 3h18v18H3z' },
 ]
 </script>
 
@@ -24,7 +25,7 @@ const tools = [
         class="toolbar-btn"
         :class="{ active: drawing.tool.value === t.key }"
         @click="drawing.tool.value = t.key"
-        :title="t.label"
+        :title="t(t.labelKey)"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path :d="t.icon" />
@@ -52,20 +53,20 @@ const tools = [
         max="12"
         v-model.number="drawing.lineWidth.value"
         class="width-slider"
-        title="线条粗细"
+        :title="t('draw.lineWidth')"
       />
       <span class="width-label">{{ drawing.lineWidth.value }}px</span>
     </div>
 
     <!-- 操作 -->
     <div class="toolbar-group">
-      <button class="toolbar-btn" @click="drawing.undoLastStroke()" title="撤销">
+      <button class="toolbar-btn" @click="drawing.undoLastStroke()" :title="t('draw.undo')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="1 4 1 10 7 10"/>
           <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
         </svg>
       </button>
-      <button class="toolbar-btn" @click="drawing.clearStrokes()" title="清除全部">
+      <button class="toolbar-btn" @click="drawing.clearStrokes()" :title="t('draw.clear')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="3 6 5 6 21 6"/>
           <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>

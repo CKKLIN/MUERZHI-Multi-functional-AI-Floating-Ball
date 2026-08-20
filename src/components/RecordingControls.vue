@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRecordingStore } from '../stores/recording'
+import { t } from '../stores/i18n'
 
 const store = useRecordingStore()
 
@@ -26,7 +27,7 @@ const hasSource = computed(() => !!store.selectedSource)
         :class="{ active: store.isCameraEnabled }"
         :disabled="!store.canStart"
         @click="emit('toggleCamera')"
-        title="开启摄像头 (Ctrl+Shift+C)"
+        :title="t('record.toggleCameraShort', { k: 'Ctrl+Shift+C' })"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M23 7l-7 5 7 5V7z"/>
@@ -38,7 +39,7 @@ const hasSource = computed(() => !!store.selectedSource)
         :class="{ active: store.isMicrophoneEnabled }"
         :disabled="!store.canStart"
         @click="emit('toggleMic')"
-        title="开启麦克风"
+        :title="t('record.toggleMic')"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
@@ -84,47 +85,47 @@ const hasSource = computed(() => !!store.selectedSource)
         class="btn record-btn"
         :disabled="!hasSource"
         @click="emit('start')"
-        title="开始录制 (Ctrl+Shift+R)"
+        :title="t('record.startShort', { k: 'Ctrl+Shift+R' })"
       >
         <span class="record-icon"></span>
-        <span>录制</span>
+        <span>{{ t('record.recBtn') }}</span>
       </button>
 
       <button
         v-if="store.canPause"
         class="btn pause-btn"
         @click="emit('pause')"
-        title="暂停 (Ctrl+Shift+P)"
+        :title="t('record.pauseShort', { k: 'Ctrl+Shift+P' })"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
           <rect x="6" y="4" width="4" height="16"/>
           <rect x="14" y="4" width="4" height="16"/>
         </svg>
-        <span>暂停</span>
+        <span>{{ t('record.pause') }}</span>
       </button>
 
       <button
         v-if="store.canResume"
         class="btn resume-btn"
         @click="emit('resume')"
-        title="继续 (Ctrl+Shift+P)"
+        :title="t('record.resumeShort', { k: 'Ctrl+Shift+P' })"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
           <polygon points="5,3 19,12 5,21"/>
         </svg>
-        <span>继续</span>
+        <span>{{ t('record.resume') }}</span>
       </button>
 
       <button
         v-if="store.canStop"
         class="btn stop-btn"
         @click="emit('stop')"
-        title="停止录制 (Ctrl+Shift+R)"
+        :title="t('record.stopShort', { k: 'Ctrl+Shift+R' })"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
           <rect x="6" y="6" width="12" height="12" rx="1"/>
         </svg>
-        <span>停止</span>
+        <span>{{ t('record.stop') }}</span>
       </button>
     </div>
   </div>
