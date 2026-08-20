@@ -48,16 +48,18 @@ function multiSelectOf(item) {
   return !!(item && item.multiSelect)
 }
 
-/** 规范化选项列表并在末尾追加「其他」（自由输入）。仅当已有至少一个选项且尚无同名项才追加。 */
-function withOther(options) {
+/** 规范化选项列表并在末尾追加「其他」（自由输入）。仅当已有至少一个选项且尚无同名项才追加。
+ *  otherLabel 可注入本地化标签（默认「其他」），保证展示/答案构建的 key 一致。 */
+function withOther(options, otherLabel) {
+  const other = otherLabel || '其他'
   const opts = (options || []).map((o) => ({
     label: (o && o.label != null) ? o.label : String(o),
     desc: (o && o.desc) ? o.desc : null,
     isOther: false,
   }))
   if (!opts.length) return opts
-  if (opts.some((o) => o.label === '其他')) return opts
-  opts.push({ label: '其他', desc: null, isOther: true })
+  if (opts.some((o) => o.label === other)) return opts
+  opts.push({ label: other, desc: null, isOther: true })
   return opts
 }
 
@@ -65,7 +67,8 @@ function withOther(options) {
  *  单选：点新的清掉旧的，仅保留一个；再点已选的→取消。
  *  多选：再次点已选的→取消，其余可同时勾选。
  *  返回 isOtherPicked 供 UI 决定是否展开「其他」自由输入框。 */
-function toggleOption(selected, label, multiSelect) {
+function toggleOption(selected, label, multiSelect, otherLabel) {
+  const other = otherLabel || '其他'
   const next = new Set(selected || [])
   if (multiSelect) {
     if (next.has(label)) next.delete(label)
@@ -74,29 +77,30 @@ function toggleOption(selected, label, multiSelect) {
     next.clear()
     if (!(selected && selected.has(label))) next.add(label)
   }
-  return { selected: next, isOtherPicked: next.has('其他') }
+  return { selected: next, isOtherPicked: next.has(other) }
 }
 
 /** 把逐题覆盖态（selected labels + otherText）转成 Claude 的 updatedInput.answers。
  *  drafts: 每题的 { selected: Set<string>, otherText: string }。
  *  answers[key]：单选→字符串、多选→字符串数组；选「其他」且有自由文本→优先用文本（多选时数组内文本替换『其他』）；
  *  无选中→空字符串。key 为题目文本（questionKey）。 */
-function buildAnswers(questions, drafts) {
+function buildAnswers(questions, drafts, otherLabel) {
+  const other = otherLabel || '其他'
   const answers = {}
   ;(questions || []).forEach((q, i) => {
     const d = drafts && drafts[i]
     const selected = (d && d.selected) ? Array.from(d.selected) : []
     const otherText = (d && d.otherText) || ''
-    const hasOther = selected.includes('其他')
-    const labels = selected.filter((l) => l !== '其他')
+    const hasOther = selected.includes(other)
+    const labels = selected.filter((l) => l !== other)
     const key = questionKey(q, i)
 
     if (multiSelectOf(q)) {
       const arr = labels.slice()
-      if (hasOther) arr.push(otherText || '其他')
+      if (hasOther) arr.push(otherText || other)
       answers[key] = arr.length ? arr : ''
     } else if (hasOther) {
-      answers[key] = otherText || '其他'
+      answers[key] = otherText || other
     } else if (selected.length) {
       answers[key] = selected[0]
     } else {
