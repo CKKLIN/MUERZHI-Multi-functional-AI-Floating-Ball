@@ -186,6 +186,13 @@ G3 的 i18n 基建**优先建**——这样 G4 的 AI 图标窗口、G6 的音�
   - [ ] 最终 review：代码正确性 + 性能 + 资源占用，结论与遗留备注记录。
 - **依赖**：G1~G7
 - **完成**：
+  - **已 push** 到远端 `all`（GitHub + Gitee）main：`0a266b1..8df5ef6`，共 16 个提交（G2/G1/G3/i18n/G5/G4参考/G6/G7 + 各 docs）。
+  - **提交作者**仅 muerzhi（未加 AI 协作者署名）。
+  - **最终 review**：
+    - 正确性：8 套纯 Node 单测全过（conversion-registry/hw-encoder/permission-match/state-machine/i18n/question-card-utils/tool-registry/hw-probe）；vue-tsc 0 错误；tsc(node) 在我新增/修改的所有文件 0 错误（仅余 pre-existing 错误，位于未触碰文件：claude-hook-manager/ffmpeg/region-selector 既有项/preload mediaDevices 等）。
+    - 性能/资源：G4 工具注册表、G6 音乐 SMTC 等新增持续资源全部接入 before-quit 清理咽喉；SMTC 轮询节流（5s+in-flight+隐藏不轮询）防子进程 churn；全量 setInterval 盘点无泄漏。未触碰承重约束（backgroundThrottling/串行合并/rVFC 门控）。
+    - **遗留备注**：① G4 其余 5 工具按用户定案后补；② G6 6b 桌面歌词 LRC 数据源待定（goal 风险表）；③ G6 音频回环与录屏并行未实机验证；④ G7 量化 MB/CPU 基线需实机 packaged 应用测；⑤ 3 个 stale dist-electron 构建产物未提交（重建即刷新）；⑥ 代码库存在 pre-existing 类型错误（非本次引入）。
+- 完成: 8df5ef6 2026-08-19 全部提交已 push，review 通过（遗留见上）
 
 ---
 
