@@ -39,14 +39,20 @@ function saveBallPosition(pos: { x: number; y: number }) {
 }
 
 /** 带防御的 setBounds：任一坐标/尺寸非有限数（NaN/Infinity）时丢弃本次调整，
- *  避免竞态下偶发的坏数值让 BrowserWindow.setBounds 抛 conversion failure 崩主进程。 */
+ *  避免竞态下偶发的坏数值让 BrowserWindow.setBounds 抛 conversion failure 崩主进程。
+ *  最外层 try/catch 是最后防线：ESRCH/越界等非有限之外的转换错误也被吞掉，
+ *  不让任何一次高频 setBounds 把主进程打死。 */
 function setBallBounds(b: { x: number; y: number; width: number; height: number }) {
   if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
   if (!Number.isFinite(b.x) || !Number.isFinite(b.y) || !Number.isFinite(b.width) || !Number.isFinite(b.height)) {
     log.warn('Floating ball setBounds skipped (non-finite):', b)
     return
   }
-  floatingBallWindow.setBounds(b)
+  try {
+    floatingBallWindow.setBounds(b)
+  } catch (e) {
+    log.warn('Floating ball setBounds failed (swallowed):', (e as Error)?.message ?? e, b)
+  }
 }
 
 // === 悬浮球设置（主进程文件为唯一真相源，渲染层经 IPC get/set） ===
@@ -861,8 +867,14 @@ function elasticOut(t: number): number {
   return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1
 }
 
-/** 从当前 (x,y) 弹性动画贴到目标边；落稳后读回修正 DWM 1px 偏移、记录吸附边并持久化位置。 */
+/** 从当前 (x,y) 弹性动画贴到目标边；落稳后读回修正 DWM 1px 偏移、记录吸附边并持久化位置。
+ *  防御：起点/目标任一处出现非有限数，直接放弃吸附（不启动高频 setBounds 动画），
+ *  避免竞态坏值把主进程打死（参考 a8d8389 的 NaN 防御 + setBallBounds 兜底）。 */
 function animateSnapToEdge(x: number, y: number, to: { x: number; y: number }, side: 'top' | 'bottom' | 'left' | 'right') {
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(to.x) || !Number.isFinite(to.y)) {
+    log.warn('Floating ball snap skipped (non-finite input):', { x, y, to })
+    return
+  }
   if (snapTimer) { clearInterval(snapTimer); snapTimer = null }
   const DUR = 420
   const start = Date.now()
@@ -873,10 +885,12 @@ function animateSnapToEdge(x: number, y: number, to: { x: number; y: number }, s
     }
     const t = Math.min(1, (Date.now() - start) / DUR)
     const e = elasticOut(t)
-    setBallBounds({ x: Math.round(x + (to.x - x) * e), y: Math.round(y + (to.y - y) * e), width: BALL_SIZE, height: BALL_SIZE })
+    const nx = Math.round(x + (to.x - x) * e)
+    const ny = Math.round(y + (to.y - y) * e)
+    setBallBounds({ x: nx, y: ny, width: BALL_SIZE, height: BALL_SIZE })
     if (t >= 1) {
       if (snapTimer) { clearInterval(snapTimer); snapTimer = null }
-      // 落稳后读回修正 DWM 1px 偏移（同 drag-move 手法）
+      // 落稳后读回修正 DWM 1px 偏移（同 drag-move 手法；setBallBounds 内部有防御+吞错）
       const [ax, ay] = floatingBallWindow.getPosition()
       if (ax !== to.x || ay !== to.y) setBallBounds({ x: to.x, y: to.y, width: BALL_SIZE, height: BALL_SIZE })
       snappedSide = side
