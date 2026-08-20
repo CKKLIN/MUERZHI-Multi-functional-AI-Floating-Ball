@@ -569,41 +569,40 @@ body.expanded .arc-label{
    只把 trigger 绝对定位到对应边缘并收小，避免牵动 setBounds/拖动/环形菜单几何。
    每边独立：贴哪边就把 trigger 推到那边，贴边侧无外延半径（flat），外侧两角 15px 圆角。 */
 /* ─ 吸附于垂直边（左/右）：竖向水滴胶囊。
-   外侧两端全圆（外圆角），贴边那侧用 8px 小圆角平滑过渡到屏幕边缘——不是硬直角。─ */
+   贴边那侧用大圆角圆润地"鼓出"到屏幕边缘（绝非直角），外侧两端全圆。─ */
 body.snap-left #trigger{
   position:absolute;
-  width:40px; height:52px;          /* 竖向胶囊，贴屏幕左缘 */
-  left:0; top:7px;
-  /* TL=8(贴边左上小圆角过渡) TR=999(外上一侧圆角) BR=999(外下一侧圆角) BL=8(贴边左下小圆角过渡) */
-  border-radius:8px 999px 999px 8px;
+  width:40px; height:56px;          /* 竖向胶囊，贴屏幕左缘 */
+  left:0; top:5px;
+  border-radius:28px 999px 999px 28px; /* 贴边(左)端 28px 圆润鼓出（≈高一半），外(右)端全圆 */
   background:rgba(236,238,243,0.72);
   opacity:0.88;
   box-shadow:0 3px 9px rgba(0,0,0,0.15);
 }
 body.snap-right #trigger{
   position:absolute;
-  width:40px; height:52px;
-  right:0px; top:7px;
-  border-radius:999px 8px 8px 999px; /* 镜像：外(左)端全圆，贴边(右)端小圆角过渡 */
+  width:40px; height:56px;
+  right:0px; top:8px;
+  border-radius:999px 28px 28px 999px; /* 镜像：外(左)全圆，贴边(右)端 28px 圆角鼓出 */
   background:rgba(236,238,243,0.72);
   opacity:0.88;
   box-shadow:0 3px 9px rgba(0,0,0,0.15);
 }
-/* ─ 吸附水平边：横向水滴胶囊，贴边侧小圆角过渡，外侧两端全圆 ─ */
+/* ─ 吸附水平边：横向水滴胶囊，贴边侧大圆角鼓出，外侧两端全圆 ─ */
 body.snap-top #trigger{
   position:absolute;
-  width:52px; height:40px;
-  left:7px; top:0;
-  border-radius:8px 8px 999px 999px; /* 上(贴边)两角小圆角过渡，下(外)两端全圆 */
+  width:56px; height:40px;
+  left:8px; top:0;
+  border-radius:28px 28px 999px 999px; /* 贴边(上)两端 28px 圆角鼓出，下(外)端全圆 */
   background:rgba(236,238,243,0.72);
   opacity:0.88;
   box-shadow:0 3px 9px rgba(0,0,0,0.15);
 }
 body.snap-bottom #trigger{
   position:absolute;
-  width:52px; height:40px;
-  left:7px; bottom:0;
-  border-radius:999px 999px 8px 8px; /* 下(贴边)两角小圆角过渡，上(外)两端全圆 */
+  width:56px; height:40px;
+  left:8px; bottom:0;
+  border-radius:999px 999px 28px 28px; /* 贴边(下)两端 28px 圆角鼓出，上(外)端全圆 */
   background:rgba(236,238,243,0.72);
   opacity:0.88;
   box-shadow:0 3px 9px rgba(0,0,0,0.15);
