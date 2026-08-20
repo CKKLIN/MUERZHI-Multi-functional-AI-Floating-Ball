@@ -117,6 +117,7 @@ G3 的 i18n 基建**优先建**——这样 G4 的 AI 图标窗口、G6 的音�
 - **待决策**：吸附阈值（px）、贴边留白（建议 ≈0 全贴合）、是否四边吸附。
 - **完成**：在既有 drag-end 磁吸基础上增强为"水滴吸附"。松手近边（40px 阈值）→ easeOutBack 弹性过渡逐帧 setBounds(16ms) 贴到该边（轻微过冲回弹）；渲染层按吸附边收平对应两角（body.snap-* → #trigger 半圆）呈"粘边水滴"；拖动即脱离（drag-start 清吸附）。新增 snapGutter（贴边留白 0-80px，设置面板可调，持久化）；多显示器按所在屏判定，角上只贴最近一边。四边吸附全支持。位置持久化沿用 floating-ball-pos.json。
 - 完成: 68782e0 2026-08-19 弹性水滴吸附 + 贴边留白设置
+- 补记（用户报崩）：吸附时 `setBounds` conversion failure 崩主进程——跑的是旧 dist 产物，且 setBallBounds 首层防御只能拦 NaN/Infinity、拦不住转换失败抛异常。修复：setBallBounds 最外层加 try/catch 兜底 + animateSnapToEdge 入口/过程校验坏坐标即放弃吸附，并重建 dist-electron。已提交 ab5473b 并推送。
 
 ---
 
