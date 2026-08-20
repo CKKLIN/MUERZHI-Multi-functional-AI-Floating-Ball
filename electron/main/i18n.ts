@@ -312,6 +312,25 @@ const zh: Record<string, string> = {
   'tools.idle': '空闲',
   'tools.working': '工作中',
   'tools.title': '工具',
+
+  // === 音乐（G6） ===
+  'music.title': '音乐',
+  'music.noSession': '未检测到系统媒体',
+  'music.unsupported': '系统媒体（SMTC）不可用',
+  'music.playing': '播放中',
+  'music.paused': '已暂停',
+  'music.unknownArtist': '未知歌手',
+  'music.play': '播放',
+  'music.pause': '暂停',
+  'music.next': '下一首',
+  'music.prev': '上一首',
+  'music.indicator': '频谱指示器',
+  'music.indicatorDesc': '开启系统音频回环采集，随音乐实时动态（需播放音源）',
+  'music.enableLoop': '开启',
+  'music.disableLoop': '关闭',
+  'music.loopFail': '系统音频回环不可用',
+  'music.lyrics': '歌词',
+  'music.noLyrics': '暂无歌词（歌词源待配置）',
 }
 
 const en: Record<string, string> = {
@@ -614,6 +633,25 @@ const en: Record<string, string> = {
   'tools.idle': 'Idle',
   'tools.working': 'Working',
   'tools.title': 'Tools',
+
+  // === music (G6) ===
+  'music.title': 'Music',
+  'music.noSession': 'No system media detected',
+  'music.unsupported': 'SMTC unavailable',
+  'music.playing': 'Playing',
+  'music.paused': 'Paused',
+  'music.unknownArtist': 'Unknown artist',
+  'music.play': 'Play',
+  'music.pause': 'Pause',
+  'music.next': 'Next',
+  'music.prev': 'Previous',
+  'music.indicator': 'Spectrum',
+  'music.indicatorDesc': 'Capture system audio loopback for a live spectrum (needs a playing source)',
+  'music.enableLoop': 'On',
+  'music.disableLoop': 'Off',
+  'music.loopFail': 'System audio loopback unavailable',
+  'music.lyrics': 'Lyrics',
+  'music.noLyrics': 'No lyrics (source pending)',
 }
 
 // ==== 运行时 ====

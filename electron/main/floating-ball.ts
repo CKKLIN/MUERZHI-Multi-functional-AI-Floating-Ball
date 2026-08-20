@@ -411,6 +411,8 @@ function forwardAction(action: string) {
     process.emit('clawd-show-ai-window' as any)
   } else if (action === 'todo') {
     process.emit('clawd-show-todo-window' as any)
+  } else if (action === 'music') {
+    process.emit('clawd-show-music-window' as any)
   } else if (action === 'settings') {
     process.emit('clawd-show-settings-window' as any)
   } else {
