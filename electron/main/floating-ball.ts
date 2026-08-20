@@ -563,11 +563,56 @@ body.expanded .arc-label{
   pointer-events:none;
 }
 #trigger:active{transform:scale(0.95)}
-/* 水滴吸附贴边：贴哪条边就把该边两角收平成直角，形成"粘在屏幕边缘"的半圆水滴感（G5） */
-body.snap-left #trigger{border-radius:0 33px 33px 0}
-body.snap-right #trigger{border-radius:33px 0 0 33px}
-body.snap-top #trigger{border-radius:0 0 33px 33px}
-body.snap-bottom #trigger{border-radius:33px 33px 0 0}
+/* 水滴吸附（G5）：吸附后从 66px 圆球收缩成更小的半透明水滴。
+   关键 = 左右/外侧保留外圆角（圆润水滴感），贴边那面贴近屏幕边缘（略留 2px 防 Windows
+   DWM 裁切），整体变小、半透明、不太显眼。窗口仍保持 66px 透明窗（不 shrink），
+   只把 trigger 绝对定位到对应边缘并收小，避免牵动 setBounds/拖动/环形菜单几何。
+   每边独立：贴哪边就把 trigger 推到那边，贴边侧无外延半径（flat），外侧两角 15px 圆角。 */
+/* ─ 吸附于垂直边（左/右）：水滴左右外圆角，贴屏幕的那条长边贴近、另一侧两角圆润 ─ */
+body.snap-left #trigger{
+  position:absolute;
+  width:40px; height:40px;
+  left:2px; top:13px;               /* 贴窗口左缘（屏幕左边缘），垂直居中 */
+  border-radius:0 15px 15px 0;      /* 右(外)两角圆，左(贴边)侧 flat */
+  background:rgba(236,238,243,0.72);
+  opacity:0.88;
+  box-shadow:0 3px 9px rgba(0,0,0,0.15);
+}
+body.snap-right #trigger{
+  position:absolute;
+  width:40px; height:40px;
+  right:2px; top:13px;
+  border-radius:15px 0 0 15px;      /* 左(外)两角圆，右(贴边)侧 flat */
+  background:rgba(236,238,243,0.72);
+  opacity:0.88;
+  box-shadow:0 3px 9px rgba(0,0,0,0.15);
+}
+/* ─ 水平边（顶/底）：贴屏幕边缘，左右外圆角 ─ */
+body.snap-top #trigger{
+  position:absolute;
+  width:40px; height:40px;
+  left:13px; top:2px;
+  border-radius:0 0 15px 15px;      /* 左上右下圆，底侧（贴边）flat */
+  background:rgba(236,238,243,0.72);
+  opacity:0.88;
+  box-shadow:0 3px 9px rgba(0,0,0,0.15);
+}
+body.snap-bottom #trigger{
+  position:absolute;
+  width:40px; height:40px;
+  left:13px; bottom:2px;
+  border-radius:15px 15px 0 0;      /* 左/右两角圆，顶侧（贴边）flat */
+  background:rgba(236,238,243,0.72);
+  opacity:0.88;
+  box-shadow:0 3px 9px rgba(0,0,0,0.15);
+}
+/* 吸附时 logo 随之缩小、降低存在感 */
+body.snap-left .logo-img, body.snap-right .logo-img,
+body.snap-top .logo-img, body.snap-bottom .logo-img{
+  width:26px; height:26px; border-radius:13px; object-fit:cover;
+}
+body.snap-bottom #trigger:hover, body.snap-top #trigger:hover,
+body.snap-left #trigger:hover, body.snap-right #trigger:hover{ transform:none; }
 
 /* 恒 66px 的球心容器：trigger 与气泡都锚在这，展开（#ball 变 240）时仍贴球心不动 */
 .core{
