@@ -94,7 +94,12 @@ G3 的 i18n 基建**优先建**——这样 G4 的 AI 图标窗口、G6 的音�
   - Cline 无 CLI 钩子：列为特例项，单独设计。
   - **安全暴露面扩大**：AI 岛是受信任覆盖层（`nodeIntegration:true`），新增多工具审批入口会放大本地权限面——外部/其他工具可能借此伪造审批。对策：审批做**来源/作用域校验**，新增工具接入前过一遍安全收敛，凭证与 sessionId 关联校验。
 - **待决策**：① 无 hook 工具的"审批"如何处理（降级展示 vs 硬接易碎）→ 建议降级；② 图标资源来源/许可；③ 首个参考工具（建议 OpenCode 或 Codex）。
-- **完成**：
+- **完成（参考模板阶段，待确认铺开）**：按用户定案（参考工具 **Codex**、**状态深度+审批降级**、参考模板后停下确认）落地参考模板。
+  - 统一适配器接口 `agent-tools/registry.ts`（探测进程→拉会话→状态；轮询隔离单工具异常，不拖垮整体；setRegistryLogger 可纯 Node 测）。
+  - `agent-tools/codex.ts`：Codex 参考模板——tasklist 探测 codex.exe + 读 ~/.codex/sessions/*.jsonl mtime 判活跃（尽力而为、版本相关、fail-open）。
+  - getStatus 新增 tools[]（Claude Code 合成条目 + 各适配器）；AI 助手窗口新增「工具」概览（每工具图标+状态+会话数）；approval:'none' 工具降级标注「仅展示状态，不支持审批」。
+  - 仅接入 Codex。其余 5 工具（Hermes/Cline/grok/Gemini-CLI/OpenCode）待确认后逐个接入（各工具机制差异大：Cline 是 VS Code 扩展无 CLI hooks，另行成文特例方案）。
+- 完成: ef8b771 2026-08-19 G4 参考模板（Codex）— 待用户确认铺开
 
 ---
 
