@@ -568,40 +568,42 @@ body.expanded .arc-label{
    DWM 裁切），整体变小、半透明、不太显眼。窗口仍保持 66px 透明窗（不 shrink），
    只把 trigger 绝对定位到对应边缘并收小，避免牵动 setBounds/拖动/环形菜单几何。
    每边独立：贴哪边就把 trigger 推到那边，贴边侧无外延半径（flat），外侧两角 15px 圆角。 */
-/* ─ 吸附于垂直边（左/右）：水滴左右外圆角，贴屏幕的那条长边贴近、另一侧两角圆润 ─ */
+/* ─ 吸附于垂直边（左/右）：竖向水滴胶囊。
+   外侧两端全圆（外圆角），贴边那侧用 8px 小圆角平滑过渡到屏幕边缘——不是硬直角。─ */
 body.snap-left #trigger{
   position:absolute;
-  width:40px; height:40px;
-  left:2px; top:13px;               /* 贴窗口左缘（屏幕左边缘），垂直居中 */
-  border-radius:0 15px 15px 0;      /* 右(外)两角圆，左(贴边)侧 flat */
+  width:40px; height:52px;          /* 竖向胶囊，贴屏幕左缘 */
+  left:0; top:7px;
+  /* TL=8(贴边左上小圆角过渡) TR=999(外上一侧圆角) BR=999(外下一侧圆角) BL=8(贴边左下小圆角过渡) */
+  border-radius:8px 999px 999px 8px;
   background:rgba(236,238,243,0.72);
   opacity:0.88;
   box-shadow:0 3px 9px rgba(0,0,0,0.15);
 }
 body.snap-right #trigger{
   position:absolute;
-  width:40px; height:40px;
-  right:2px; top:13px;
-  border-radius:15px 0 0 15px;      /* 左(外)两角圆，右(贴边)侧 flat */
+  width:40px; height:52px;
+  right:0px; top:7px;
+  border-radius:999px 8px 8px 999px; /* 镜像：外(左)端全圆，贴边(右)端小圆角过渡 */
   background:rgba(236,238,243,0.72);
   opacity:0.88;
   box-shadow:0 3px 9px rgba(0,0,0,0.15);
 }
-/* ─ 水平边（顶/底）：贴屏幕边缘，左右外圆角 ─ */
+/* ─ 吸附水平边：横向水滴胶囊，贴边侧小圆角过渡，外侧两端全圆 ─ */
 body.snap-top #trigger{
   position:absolute;
-  width:40px; height:40px;
-  left:13px; top:2px;
-  border-radius:0 0 15px 15px;      /* 左上右下圆，底侧（贴边）flat */
+  width:52px; height:40px;
+  left:7px; top:0;
+  border-radius:8px 8px 999px 999px; /* 上(贴边)两角小圆角过渡，下(外)两端全圆 */
   background:rgba(236,238,243,0.72);
   opacity:0.88;
   box-shadow:0 3px 9px rgba(0,0,0,0.15);
 }
 body.snap-bottom #trigger{
   position:absolute;
-  width:40px; height:40px;
-  left:13px; bottom:2px;
-  border-radius:15px 15px 0 0;      /* 左/右两角圆，顶侧（贴边）flat */
+  width:52px; height:40px;
+  left:7px; bottom:0;
+  border-radius:999px 999px 8px 8px; /* 下(贴边)两角小圆角过渡，上(外)两端全圆 */
   background:rgba(236,238,243,0.72);
   opacity:0.88;
   box-shadow:0 3px 9px rgba(0,0,0,0.15);
