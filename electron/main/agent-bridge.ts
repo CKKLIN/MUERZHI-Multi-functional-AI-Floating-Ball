@@ -4,11 +4,13 @@
 import { createAgentStateMachine } from "./agent-state-machine"
 import { createAgentServer, type CardItem, type SafeCard } from "./agent-server"
 import { createClaudeHookManager, type HookManagerStatus } from "./claude-hook-manager"
+import { createToolRegistry, type ToolStatus } from "./agent-tools/registry"
+import { createCodexAdapter } from "./agent-tools/codex"
 import nodeFs from "node:fs"
 import { join } from "node:path"
 import log from "./logger"
 
-export type { CardItem, SafeCard, HookManagerStatus }
+export type { CardItem, SafeCard, HookManagerStatus, ToolStatus }
 export type DisplayState = import("./agent-state-machine").DisplayState
 export type AgentSession = import("./agent-state-machine").AgentSession
 
@@ -28,6 +30,8 @@ export interface AgentBridgeStatus {
   currentCard: SafeCard | null
   sessionCount: number
   claudeRunning: boolean
+  /** 多工具状态（Claude Code 之外经适配器被动观测，如 Codex）；G4 */
+  tools: ToolStatus[]
 }
 
 export interface AgentBridge {
@@ -115,6 +119,9 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
   const stateMachine = createAgentStateMachine({ isClaudeRunning: checkClaudeRunning })
   const server = createAgentServer(stateMachine)
   const hookManager = createClaudeHookManager(() => server.getPort())
+  // G4 多工具注册表：被动观测 Claude 之外的工具。Claude Code 本身不在列表（走 hooks/状态机），
+  // 由 getStatus 单独合成 claude 条目。Codex 为参考模板，后续工具逐个加入。
+  const toolRegistry = createToolRegistry([createCodexAdapter()])
 
   let stateListener: ((state: DisplayState, sessions: AgentSession[]) => void) | null = null
   let cardListener: ((card: CardItem | null) => void) | null = null
@@ -138,6 +145,7 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
 
   async function start() {
     stateMachine.start()
+    toolRegistry.start()
     const port = await server.start()
     if (port !== null) {
       if (config.autoInstallHooks !== false) {
@@ -154,6 +162,7 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
 
   function stop() {
     hookManager.stopWatcher()
+    toolRegistry.stop()
     stateMachine.stop()
     server.stop()
   }
@@ -194,6 +203,7 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
     const sessionIds = sessionsRaw.map(s => s.sessionId).join(',')
     log.info(`[AgentBridge] getStatus: real_count=${realCount}, ids=[${sessionIds}], display=${displayState}`)
     const sessionCount = stateMachine.getSessions().length
+    const cRunning = checkClaudeRunning()
     return {
       serverRunning: server.getPort() !== null,
       port: server.getPort(),
@@ -202,7 +212,21 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
       displayState,
       currentCard: server.getSafeCurrentCard(),
       sessionCount,
-      claudeRunning: checkClaudeRunning(),
+      claudeRunning: cRunning,
+      // Claude Code 由 hooks/状态机驱动，合成一个条目与其他适配器并列展示（图标+状态）
+      tools: [
+        {
+          id: 'claude-code',
+          nameKey: 'tools.claudeCode',
+          running: cRunning,
+          approval: 'hook',
+          working: displayState !== 'idle',
+          sessions: sessionsRaw.map(s => ({ sessionId: s.sessionId, label: s.toolName || '' })),
+          error: false,
+          lastProbed: 0,
+        },
+        ...toolRegistry.getStatus(),
+      ],
     }
   }
 

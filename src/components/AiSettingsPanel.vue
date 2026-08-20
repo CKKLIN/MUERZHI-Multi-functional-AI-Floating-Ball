@@ -2,7 +2,7 @@
 // AI assistant settings — for the AI assistant window only
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
-import type { AgentBridgeStatus } from '../env.d.ts'
+import type { AgentBridgeStatus, AgentToolStatus } from '../env.d.ts'
 import { t } from '../stores/i18n'
 
 const claudeIntegrated = ref(false)
@@ -87,6 +87,19 @@ const stateDotClass = computed(() => {
   return ['idle', 'thinking', 'working', 'error', 'notification', 'done'].includes(s) ? s : 'idle'
 })
 
+// === 多工具列表（G4）：图标 + 各自状态；无 hook 审批能力的工具降级展示 ===
+function toolIcon(id: string): string {
+  return { 'claude-code': '✦', codex: '✠' }[id] || '⚙'
+}
+function toolState(tl: AgentToolStatus): 'working' | 'idle' | 'off' {
+  return tl.working ? 'working' : tl.running ? 'idle' : 'off'
+}
+function toolStateLabel(tl: AgentToolStatus): string {
+  if (tl.working) return t('tools.working')
+  if (tl.running) return t('tools.idle')
+  return t('tools.notRunning')
+}
+
 onMounted(async () => {
   await loadAiStatus()
   // 读取自动允许设置
@@ -136,6 +149,22 @@ onUnmounted(() => {
           <div class="status-server" :class="bridgeStatus?.serverRunning ? 'on' : 'off'">
             <span class="server-dot"></span>
             {{ bridgeStatus?.serverRunning ? t('ai.online') : t('ai.offline') }}
+          </div>
+        </div>
+      </div>
+
+      <!-- 多工具概览（G4）：Claude Code + 各适配器，图标 + 各自状态；无审批能力的降级展示 -->
+      <div class="settings-group" v-if="bridgeStatus?.tools?.length">
+        <div class="group-header">{{ t('tools.title') }}</div>
+        <div class="settings-section">
+          <div v-for="tl in bridgeStatus.tools" :key="tl.id" class="tool-row">
+            <span class="tool-icon">{{ toolIcon(tl.id) }}</span>
+            <span class="tool-name">{{ t(tl.nameKey) }}</span>
+            <span class="tool-state dot-group" :class="toolState(tl)">
+              <i class="tool-dot"></i>{{ toolStateLabel(tl) }}
+            </span>
+            <span v-if="tl.sessions?.length" class="tool-sessions">{{ t('tools.toolSessions', { n: tl.sessions.length }) }}</span>
+            <span v-if="tl.approval === 'none'" class="tool-degrade">{{ t('tools.approvalNone') }}</span>
           </div>
         </div>
       </div>
@@ -295,4 +324,24 @@ onUnmounted(() => {
   background: currentColor;
 }
 .status-server.on .server-dot { box-shadow: 0 0 6px #34d399; }
+
+/* 多工具概览行（G4） */
+.tool-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 2px;
+  font-size: 12.5px;
+}
+.tool-icon { width: 18px; text-align: center; color: var(--surface-accent); font-size: 14px; }
+.tool-name { font-weight: 600; color: var(--text-primary); white-space: nowrap; }
+.dot-group { display: inline-flex; align-items: center; gap: 5px; }
+.tool-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.tool-state { font-size: 11.5px; }
+.tool-state.working { color: #34d399; }
+.tool-state.working .tool-dot { box-shadow: 0 0 6px #34d399; }
+.tool-state.idle { color: #9e9e9e; }
+.tool-state.off { color: #b0b0b8; }
+.tool-sessions { margin-left: auto; font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+.tool-degrade { font-size: 10px; color: var(--text-muted); background: var(--bg-hover); padding: 1px 6px; border-radius: 8px; white-space: nowrap; }
 </style>

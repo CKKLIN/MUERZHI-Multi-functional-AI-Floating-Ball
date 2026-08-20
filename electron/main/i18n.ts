@@ -302,6 +302,16 @@ const zh: Record<string, string> = {
   'region.by': '全屏选区由',
   'region.mainWin': '主进程窗口处理',
   'region.none': '此处无',
+
+  // === 多工具（G4 适配器） ===
+  'tools.claudeCode': 'Claude Code',
+  'tools.codex': 'Codex',
+  'tools.approvalNone': '仅展示状态，不支持审批',
+  'tools.notRunning': '未运行',
+  'tools.toolSessions': '{n} 个会话',
+  'tools.idle': '空闲',
+  'tools.working': '工作中',
+  'tools.title': '工具',
 }
 
 const en: Record<string, string> = {
@@ -594,6 +604,16 @@ const en: Record<string, string> = {
   'region.by': 'Full-screen selection is handled',
   'region.mainWin': 'by the main process window',
   'region.none': 'Nothing here',
+
+  // === multi-tool (G4 adapters) ===
+  'tools.claudeCode': 'Claude Code',
+  'tools.codex': 'Codex',
+  'tools.approvalNone': 'Status only, no approval',
+  'tools.notRunning': 'Not running',
+  'tools.toolSessions': '{n} sessions',
+  'tools.idle': 'Idle',
+  'tools.working': 'Working',
+  'tools.title': 'Tools',
 }
 
 // ==== 运行时 ====
