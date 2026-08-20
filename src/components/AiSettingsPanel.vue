@@ -3,6 +3,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import type { AgentBridgeStatus } from '../env.d.ts'
+import { t } from '../stores/i18n'
 
 const claudeIntegrated = ref(false)
 const bridgeStatus = ref<AgentBridgeStatus | null>(null)
@@ -71,12 +72,12 @@ function onAgentStateUpdate(data: { state: string; sessions: any[] }) {
 
 const displayStateLabel = computed(() => {
   const map: Record<string, string> = {
-    idle: '空闲',
-    thinking: '思考中',
-    working: '工作中',
-    error: '错误',
-    notification: '待审批',
-    done: '完成',
+    idle: t('ai.state.idle'),
+    thinking: t('ai.state.thinking'),
+    working: t('ai.state.working'),
+    error: t('ai.state.error'),
+    notification: t('ai.state.notification'),
+    done: t('ai.state.done'),
   }
   return map[bridgeStatus.value?.displayState ?? 'idle'] ?? bridgeStatus.value?.displayState ?? '-'
 })
@@ -126,26 +127,26 @@ onUnmounted(() => {
             <div class="status-title">{{ displayStateLabel }}</div>
             <div class="status-sub">
               <template v-if="bridgeStatus?.sessionCount && bridgeStatus.sessionCount > 0">
-                {{ bridgeStatus.sessionCount }} 个会话
+                {{ t('ai.sessionsCount', { n: bridgeStatus.sessionCount }) }}
               </template>
-              <template v-else-if="bridgeStatus?.claudeRunning">Claude 运行中，等待交互</template>
-              <template v-else>无活跃会话</template>
+              <template v-else-if="bridgeStatus?.claudeRunning">{{ t('ai.waiting') }}</template>
+              <template v-else>{{ t('ai.noActive') }}</template>
             </div>
           </div>
           <div class="status-server" :class="bridgeStatus?.serverRunning ? 'on' : 'off'">
             <span class="server-dot"></span>
-            {{ bridgeStatus?.serverRunning ? '在线' : '离线' }}
+            {{ bridgeStatus?.serverRunning ? t('ai.online') : t('ai.offline') }}
           </div>
         </div>
       </div>
 
       <div class="settings-group">
-        <div class="group-header">集成</div>
+        <div class="group-header">{{ t('ai.groupIntegration') }}</div>
         <div class="settings-section">
           <div class="setting-row">
             <div class="row-text">
               <div class="row-label">Claude Code Hooks</div>
-              <div class="row-desc">钩子脚本状态</div>
+              <div class="row-desc">{{ t('ai.hooksDesc') }}</div>
             </div>
             <button class="toggle-btn" :class="{ on: claudeIntegrated }" @click="toggleClaudeIntegration">
               <span class="toggle-knob"></span>
@@ -155,12 +156,12 @@ onUnmounted(() => {
       </div>
 
       <div class="settings-group">
-        <div class="group-header">权限</div>
+        <div class="group-header">{{ t('ai.groupPermission') }}</div>
         <div class="settings-section">
           <div class="setting-row">
             <div class="row-text">
-              <div class="row-label">自动允许所有权限</div>
-              <div class="row-desc">开启后 Claude Code 的权限请求将自动通过，不再弹出悬浮岛审批</div>
+              <div class="row-label">{{ t('ai.autoAllowTitle') }}</div>
+              <div class="row-desc">{{ t('ai.autoAllowDesc') }}</div>
             </div>
             <button class="toggle-btn" :class="{ on: autoAllow }" @click="toggleAutoAllow">
               <span class="toggle-knob"></span>
@@ -170,12 +171,12 @@ onUnmounted(() => {
       </div>
 
       <div class="settings-group">
-        <div class="group-header">悬浮岛外观</div>
+        <div class="group-header">{{ t('ai.groupIsland') }}</div>
         <div class="settings-section">
           <div class="setting-row">
             <div class="row-text">
-              <div class="row-label">横条态（更扁的细横条）</div>
-              <div class="row-desc">把悬浮岛默认状态条压成更扁的细横条，省屏幕空间</div>
+              <div class="row-label">{{ t('ai.flat') }}</div>
+              <div class="row-desc">{{ t('ai.flatDesc') }}</div>
             </div>
             <button class="toggle-btn" :class="{ on: islandFlat }" @click="toggleIslandFlat">
               <span class="toggle-knob"></span>
@@ -187,7 +188,7 @@ onUnmounted(() => {
       <div class="settings-group" v-if="loading">
         <div class="loading-row">
           <span class="loading-dot"></span>
-          <span>加载中...</span>
+          <span>{{ t('common.loading') }}</span>
         </div>
       </div>
     </div>

@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useRecordingStore } from '../stores/recording'
 import { formatTime } from '../utils/format-time'
+import { t } from '../stores/i18n'
 
 const store = useRecordingStore()
 
@@ -14,7 +15,7 @@ const isActive = computed(() => store.isRecording || store.isPaused)
     <div v-if="store.isRecording" class="recording-dot"></div>
     <div v-if="store.isPaused" class="paused-dot"></div>
     <span class="time">{{ displayTime }}</span>
-    <span v-if="store.isPaused" class="paused-label">已暂停</span>
+    <span v-if="store.isPaused" class="paused-label">{{ t('record.paused') }}</span>
   </div>
 </template>
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useSettingsStore } from '../stores/settings'
+import { t } from '../stores/i18n'
 
 const settingsStore = useSettingsStore()
 
@@ -26,7 +27,7 @@ onMounted(async () => {
 
 async function selectOutputDir() {
   const result = await window.electronAPI.showOpenDialog({
-    title: '选择保存目录',
+    title: t('settings.chooseDir'),
     defaultPath: settingsStore.outputDir,
     properties: ['openDirectory'],
   })
@@ -52,19 +53,19 @@ function showAbout() {
     <div class="settings-body">
       <!-- 录屏设置 -->
       <div class="settings-group">
-        <div class="group-header">录屏设置</div>
+        <div class="group-header">{{ t('settings.recordingTitle') }}</div>
         <!-- 输出设置 -->
         <div class="settings-section">
-          <h4>输出</h4>
+          <h4>{{ t('settings.output') }}</h4>
           <div class="setting-row">
-            <label>保存目录</label>
+            <label>{{ t('settings.saveDir') }}</label>
             <div class="setting-control">
               <input class="input" :value="settingsStore.outputDir" readonly style="flex:1; min-width: 0;" />
-              <button class="btn btn-sm" @click="selectOutputDir">浏览</button>
+              <button class="btn btn-sm" @click="selectOutputDir">{{ t('settings.browse') }}</button>
             </div>
           </div>
           <div class="setting-row">
-            <label>默认格式</label>
+            <label>{{ t('settings.defaultFormat') }}</label>
             <select class="input" v-model="settingsStore.defaultFormat" @change="save">
               <option value="mp4">MP4</option>
               <option value="webm">WebM</option>
@@ -74,17 +75,17 @@ function showAbout() {
 
         <!-- 视频设置 -->
         <div class="settings-section">
-          <h4>视频</h4>
+          <h4>{{ t('settings.video') }}</h4>
           <div class="setting-row">
-            <label>画质</label>
+            <label>{{ t('settings.quality') }}</label>
             <select class="input" v-model="settingsStore.videoQuality" @change="save">
-              <option value="high">高 (5 Mbps)</option>
-              <option value="medium">中 (2.5 Mbps)</option>
-              <option value="low">低 (1 Mbps)</option>
+              <option value="high">{{ t('settings.qualityHigh') }}</option>
+              <option value="medium">{{ t('settings.qualityMedium') }}</option>
+              <option value="low">{{ t('settings.qualityLow') }}</option>
             </select>
           </div>
           <div class="setting-row">
-            <label>最大帧率</label>
+            <label>{{ t('settings.maxFps') }}</label>
             <select class="input" v-model.number="settingsStore.maxFps" @change="save">
               <option :value="15">15 FPS</option>
               <option :value="24">24 FPS</option>
@@ -96,13 +97,13 @@ function showAbout() {
 
         <!-- 音频设置 -->
         <div class="settings-section">
-          <h4>音频</h4>
+          <h4>{{ t('settings.audio') }}</h4>
           <div class="setting-row">
-            <label>麦克风</label>
+            <label>{{ t('settings.mic') }}</label>
             <select class="input" v-model="settingsStore.microphoneDeviceId" @change="save">
-              <option value="">默认</option>
+              <option value="">{{ t('settings.default') }}</option>
               <option v-for="d in audioDevices" :key="d.deviceId" :value="d.deviceId">
-                {{ d.label || `麦克风 ${audioDevices.indexOf(d) + 1}` }}
+                {{ d.label || `${t('settings.mic')} ${audioDevices.indexOf(d) + 1}` }}
               </option>
             </select>
           </div>
@@ -110,13 +111,13 @@ function showAbout() {
 
         <!-- 摄像头设置 -->
         <div class="settings-section">
-          <h4>摄像头</h4>
+          <h4>{{ t('settings.camera') }}</h4>
           <div class="setting-row">
-            <label>设备</label>
+            <label>{{ t('settings.device') }}</label>
             <select class="input" v-model="settingsStore.cameraDeviceId" @change="save">
-              <option value="">默认</option>
+              <option value="">{{ t('settings.default') }}</option>
               <option v-for="d in videoDevices" :key="d.deviceId" :value="d.deviceId">
-                {{ d.label || `摄像头 ${videoDevices.indexOf(d) + 1}` }}
+                {{ d.label || `${t('settings.camera')} ${videoDevices.indexOf(d) + 1}` }}
               </option>
             </select>
           </div>
@@ -124,18 +125,18 @@ function showAbout() {
 
         <!-- 录屏快捷键 -->
         <div class="settings-section">
-          <h4>快捷键</h4>
+          <h4>{{ t('settings.shortcuts') }}</h4>
           <div class="shortcut-list">
             <div class="shortcut-item">
-              <span>开始/停止录制</span>
+              <span>{{ t('settings.shortcutStart') }}</span>
               <kbd>{{ settingsStore.shortcuts.startStop }}</kbd>
             </div>
             <div class="shortcut-item">
-              <span>暂停/继续</span>
+              <span>{{ t('settings.shortcutPause') }}</span>
               <kbd>{{ settingsStore.shortcuts.pauseResume }}</kbd>
             </div>
             <div class="shortcut-item">
-              <span>切换摄像头</span>
+              <span>{{ t('settings.shortcutCamera') }}</span>
               <kbd>{{ settingsStore.shortcuts.toggleCamera }}</kbd>
             </div>
             <!-- <div class="shortcut-item">
@@ -147,7 +148,7 @@ function showAbout() {
       </div>
 
       <div class="about-footer">
-        <button class="about-btn" @click="showAbout()">关于</button>
+        <button class="about-btn" @click="showAbout()">{{ t('settings.about') }}</button>
       </div>
     </div>
   </div>

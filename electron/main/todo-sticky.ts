@@ -7,6 +7,7 @@ import { BrowserWindow, screen } from 'electron'
 import { loadItems, loadTodoSettings, updateTodoSettings } from './todo-store'
 import { getLogoDataUrl } from './logo'
 import { stripHtml } from './todo-text'
+import { t } from './i18n'
 
 const BOARD_W = 208
 const BOARD_H = 120
@@ -41,6 +42,8 @@ function defaultBoardPos(): { x: number; y: number } {
 
 function buildBoardHtml(): string {
   const logo = getLogoDataUrl(28)
+  // 内联 i18n 词条：内联脚本无 Node require（data URL），运行时只读这份 JSON
+  const I18N = JSON.stringify({ noContent: t('todo.noContent'), open: t('todo.open'), unpin: t('todo.unpin') })
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box;user-select:none}
 html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-family:'Segoe UI',system-ui,sans-serif}
@@ -83,14 +86,14 @@ html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-fam
     <img class="logo" src="${logo}">
     <div class="brand">MUERZHI</div>
     <div class="counter" id="counter"></div>
-    <button class="close" title="取消贴屏" onclick="act('unpin')">✕</button>
+    <button class="close" title="${t('todo.unpin')}" onclick="act('unpin')">✕</button>
   </div>
   <div class="note" id="note" onclick="act('open')">
     <div class="accent" id="accent"></div>
     <div class="in">
       <div class="t" id="t"></div>
       <div class="b" id="b"></div>
-      <div class="open-hint">点击打开</div>
+      <div class="open-hint">${t('todo.open')}</div>
     </div>
     <div class="tip none" id="tip"></div>
   </div>
@@ -101,6 +104,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-fam
   </div>
 </div>
 <script>
+const I18N=${I18N};
 const {ipcRenderer} = require('electron')
 window.ipc = ipcRenderer
 var NOTES=[], IDX=0, LAST=null
@@ -121,7 +125,7 @@ function draw(){
   var board=document.getElementById('board'), t=document.getElementById('t'), b=document.getElementById('b'),
       accent=document.getElementById('accent'), dots=document.getElementById('dots'), counter=document.getElementById('counter')
   if(!n){ return }
-  t.textContent = n.title || '（无内容）'
+  t.textContent = n.title || I18N.noContent
   if (n.body) { b.textContent = n.body; b.style.display = '' } else { b.style.display = 'none' }
   board.className = 'board' + (n.done?' done':'') + (n.type==='todo' ? ' todo':'')
   accent.style.background = {urgent:'#f97316',high:'#f59e0b',medium:'#60a5fa',low:'#b0b0b8'}[n.priority] || '#60a5fa'

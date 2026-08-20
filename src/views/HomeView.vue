@@ -15,6 +15,7 @@ import { useRecordingStore, type Recording } from '../stores/recording'
 import { useSettingsStore } from '../stores/settings'
 import { useRecording } from '../composables/useRecording'
 import { useAudioCapture } from '../composables/useAudioCapture'
+import { t } from '../stores/i18n'
 
 const store = useRecordingStore()
 const settingsStore = useSettingsStore()
@@ -487,8 +488,8 @@ watch(() => isConverting.value, (val) => {
     <div class="home">
       <!-- 标签栏 -->
       <div class="tab-bar">
-        <button class="tab-btn" :class="{ active: activeTab === 'record' }" @click="activeTab = 'record'">录屏</button>
-        <button class="tab-btn" :class="{ active: activeTab === 'settings' }" @click="activeTab = 'settings'">设置</button>
+        <button class="tab-btn" :class="{ active: activeTab === 'record' }" @click="activeTab = 'record'">{{ t('record.homeTab') }}</button>
+        <button class="tab-btn" :class="{ active: activeTab === 'settings' }" @click="activeTab = 'settings'">{{ t('record.settingsTab') }}</button>
       </div>
 
       <!-- 录屏标签页 -->
@@ -505,7 +506,7 @@ watch(() => isConverting.value, (val) => {
               </svg>
             </div>
             <div class="bubble-body">
-              <span class="bubble-label">{{ isConverting ? '转换中' : '转换完成' }}</span>
+              <span class="bubble-label">{{ isConverting ? t('record.converting') : t('record.convertDone') }}</span>
               <div class="bubble-bar">
                 <div class="bubble-bar-fill" :class="{ done: !isConverting }" :style="{ width: (isConverting ? store.conversionProgress : 100) + '%' }"/>
               </div>
@@ -523,7 +524,7 @@ watch(() => isConverting.value, (val) => {
         </div>
         <div class="recording-header">
           <RecordingTimer/>
-          <AudioMeter v-if="store.isMicrophoneEnabled" :level="audio.micLevel.value" label="麦克风"/>
+          <AudioMeter v-if="store.isMicrophoneEnabled" :level="audio.micLevel.value" :label="t('record.mic')"/>
         </div>
         <RecordingControls @start="handleStart" @pause="handlePause" @resume="handleResume" @stop="handleStop" @toggle-camera="toggleCamera" @toggle-mic="toggleMic" @toggle-drawing="toggleDrawing"/>
       </div>
@@ -533,21 +534,21 @@ watch(() => isConverting.value, (val) => {
           <div class="fullscreen-wrapper">
             <button class="source-btn" @click="handleFullscreen">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-              <span>全屏录制</span>
+              <span>{{ t('record.fullscreen') }}</span>
             </button>
             <Transition name="dropdown">
               <div v-if="showScreenDropdown" class="screen-dropdown">
                 <button v-for="s in screens" :key="s.id" class="screen-option" @click="selectScreen(s.id)">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
                   <span>{{ s.label }}</span>
-                  <span v-if="s.isPrimary" class="primary-tag">主</span>
+                  <span v-if="s.isPrimary" class="primary-tag">{{ t('record.primary') }}</span>
                 </button>
               </div>
             </Transition>
           </div>
           <button class="source-btn" @click="handleSelectRegion">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="4 2"/><line x1="3" y1="9" x2="3" y2="3" stroke-width="2.5"/><line x1="3" y1="3" x2="9" y2="3" stroke-width="2.5"/><line x1="15" y1="21" x2="21" y2="21" stroke-width="2.5"/><line x1="21" y1="15" x2="21" y2="21" stroke-width="2.5"/></svg>
-            <span>自定义区域</span>
+            <span>{{ t('record.customRegion') }}</span>
           </button>
         </div>
 

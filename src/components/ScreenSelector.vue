@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRecordingStore } from '../stores/recording'
 import type { CaptureSource } from '../env'
 import SourceThumbnail from './SourceThumbnail.vue'
+import { t } from '../stores/i18n'
 
 const emit = defineEmits<{
   select: [source: CaptureSource]
@@ -26,7 +27,7 @@ onMounted(async () => {
 
 <template>
   <div class="screen-selector">
-    <h2 class="section-title">选择录制源</h2>
+    <h2 class="section-title">{{ t('screen.choose') }}</h2>
     <div class="sources-grid">
       <div
         v-for="source in sources"
@@ -50,11 +51,11 @@ onMounted(async () => {
             <line x1="21" y1="15" x2="21" y2="21" stroke-width="3"/>
           </svg>
         </div>
-        <span class="source-name">自定义区域</span>
+        <span class="source-name">{{ t('record.customRegion') }}</span>
       </div>
     </div>
-    <div v-if="loading" class="loading">加载中...</div>
-    <div v-if="!loading && sources.length === 0" class="empty">未找到可用的屏幕源</div>
+    <div v-if="loading" class="loading">{{ t('common.loading') }}</div>
+    <div v-if="!loading && sources.length === 0" class="empty">{{ t('screen.none') }}</div>
   </div>
 </template>
 

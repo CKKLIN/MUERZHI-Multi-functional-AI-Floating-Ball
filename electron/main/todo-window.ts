@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import log from './logger'
 import { loadTodoSettings, updateTodoSettings } from './todo-store'
 import { acknowledgeTodoBadgeFlash } from './todo-badge'
+import { t } from './i18n'
 
 let todoWindow: BrowserWindow | null = null
 
@@ -38,7 +39,7 @@ export function showTodoWindow(): void {
     skipTaskbar: false, // 从菜单打开的待办便签窗口需在任务栏有图标，便于切换
     frame: false,
     titleBarStyle: 'hidden',
-    title: '待办便签',
+    title: t('todo.stickyTitle'),
     backgroundColor: '#eaeaec',
     webPreferences: {
       preload: preloadPath,

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useRecordingStore, type Recording } from '../stores/recording'
 import { formatTime, formatFileSize, formatDate } from '../utils/format-time'
+import { t } from '../stores/i18n'
 
 const store = useRecordingStore()
 
@@ -17,13 +18,13 @@ function handleOpenFolder(filePath: string) {
 
 <template>
   <div class="recordings-list">
-    <div class="section-header">录制历史</div>
+    <div class="section-header">{{ t('record.history') }}</div>
     <div class="recordings-rows">
       <div v-if="store.recordings.length === 0" class="empty-state">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.25">
           <polygon points="5,3 19,12 5,21" fill="currentColor"/>
         </svg>
-        <span>暂无录制记录</span>
+        <span>{{ t('record.listEmpty') }}</span>
       </div>
       <div
         v-for="rec in store.recordings"
@@ -41,13 +42,13 @@ function handleOpenFolder(filePath: string) {
           <span class="row-meta">{{ formatTime(rec.duration) }} · {{ formatFileSize(rec.fileSize) }} · {{ formatDate(rec.createdAt) }}</span>
         </div>
         <div class="row-actions">
-          <button class="row-btn" @click="handleOpenFolder(rec.filePath)" title="打开文件夹">
+          <button class="row-btn" @click="handleOpenFolder(rec.filePath)" :title="t('record.openFolder')">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
             </svg>
           </button>
-          <button v-if="!rec.filePath.endsWith('.gif')" class="row-btn" @click="emit('exportGif', rec)" title="导出 GIF">GIF</button>
-          <button class="row-btn danger" @click="emit('delete', rec.id)" title="删除">
+          <button v-if="!rec.filePath.endsWith('.gif')" class="row-btn" @click="emit('exportGif', rec)" :title="t('record.exportGif')">GIF</button>
+          <button class="row-btn danger" @click="emit('delete', rec.id)" :title="t('record.delete')">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/>
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>

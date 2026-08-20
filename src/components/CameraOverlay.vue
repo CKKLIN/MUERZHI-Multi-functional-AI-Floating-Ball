@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onUnmounted, type ShallowRef } from 'vue'
+import { t } from '../stores/i18n'
 
 const props = defineProps<{
   stream: ShallowRef<MediaStream | null>
@@ -66,7 +67,7 @@ onUnmounted(() => {
         <path d="M5 9l7-7 7 7"/>
         <path d="M12 2v20"/>
       </svg>
-      <span>摄像头</span>
+      <span>{{ t('camera.title') }}</span>
     </div>
     <video ref="videoRef" autoplay muted playsinline class="camera-video" />
   </div>

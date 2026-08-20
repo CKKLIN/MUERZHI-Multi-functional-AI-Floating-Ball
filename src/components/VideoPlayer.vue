@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import type { Recording } from '../stores/recording'
+import { t } from '../stores/i18n'
 
 const props = defineProps<{
   recording: Recording
@@ -59,9 +60,9 @@ onUnmounted(() => {
         />
       </div>
       <div class="modal-footer">
-        <span class="meta">时长: {{ recording.duration }}秒</span>
+        <span class="meta">{{ t('record.duration') }}: {{ recording.duration }}{{ t('video.seconds') }}</span>
         <button class="btn btn-sm" @click="window.electronAPI.openFileLocation(recording.filePath)">
-          打开文件夹
+          {{ t('record.openFolder') }}
         </button>
       </div>
     </div>

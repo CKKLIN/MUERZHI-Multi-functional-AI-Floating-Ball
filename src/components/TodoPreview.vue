@@ -3,13 +3,18 @@
 // 只有右上角「编辑」按钮才切换到可编辑的 TodoEditor。
 import { computed } from 'vue'
 import { useTodoStore } from '../stores/todo'
+import { t } from '../stores/i18n'
 
 const store = useTodoStore()
 const it = computed(() => store.previewItem)
 
-const PRIO_NM = { urgent: '紧急', high: '高', medium: '中', low: '低' } as const
 const PRIO_COLOR = { urgent: '#f97316', high: '#f59e0b', medium: '#60a5fa', low: '#b0b0b8' } as const
-const TYPE_NM = { todo: '待办', memo: '备忘' } as const
+function prioLabel(p: string): string {
+  return t(p === 'urgent' ? 'todo.priorityUrgent' : p === 'high' ? 'todo.priorityHigh' : p === 'medium' ? 'todo.priorityMedium' : 'todo.priorityLow')
+}
+function typeLabel(ty: string): string {
+  return t(ty === 'todo' ? 'todo.typeTodo' : 'todo.typeMemo')
+}
 
 function fmtTime(iso: string | null): string {
   if (!iso) return ''
@@ -35,8 +40,8 @@ function plainText(html: string): string {
 const headingText = computed(() => {
   const cur = it.value
   if (!cur) return ''
-  if (cur.type === 'memo') return cur.title || '(无标题)'
-  return plainText(cur.content).slice(0, 60) || '(无内容)'
+  if (cur.type === 'memo') return cur.title || t('todo.noTitle')
+  return plainText(cur.content).slice(0, 60) || t('todo.noContent')
 })
 
 </script>
@@ -49,19 +54,19 @@ const headingText = computed(() => {
           <button v-if="it.type === 'todo'" class="check" :class="{ on: it.done }"
             @click="store.toggleDone(it.id)"><span v-if="it.done">✓</span></button>
           <h2 class="pv-heading" :class="{ struck: it.type === 'todo' && it.done }">
-            {{ headingText || '(无内容)' }}
+            {{ headingText || t('todo.noContent') }}
           </h2>
         </div>
 
         <div class="pv-meta">
-          <span class="type" :class="it.type">{{ TYPE_NM[it.type] }}</span>
-          <span class="prio"><i class="dot" :style="{ background: PRIO_COLOR[it.priority] }"></i>{{ PRIO_NM[it.priority] }}</span>
+          <span class="type" :class="it.type">{{ typeLabel(it.type) }}</span>
+          <span class="prio"><i class="dot" :style="{ background: PRIO_COLOR[it.priority] }"></i>{{ prioLabel(it.priority) }}</span>
           <span>{{ fmtCreated(it.createdAt) }}</span>
-          <span v-if="it.reminder">提醒 {{ fmtTime(it.reminder) }}</span>
+          <span v-if="it.reminder">{{ t('todo.reminder') }} {{ fmtTime(it.reminder) }}</span>
         </div>
 
         <div class="pv-body" v-if="it.content" v-html="it.content"></div>
-        <p class="pv-empty" v-else>（无正文内容）</p>
+        <p class="pv-empty" v-else>{{ t('todo.noBody') }}</p>
       </div>
     </div>
   </div>
