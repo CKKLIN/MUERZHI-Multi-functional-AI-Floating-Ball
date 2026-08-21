@@ -14,7 +14,6 @@ console.log('i18n 单测:')
 // 翻译正确性
 eq(translate('zh', 'ball.menu.record'), '录屏', 'zh 录屏')
 eq(translate('en', 'ball.menu.record'), 'Record', 'en Record')
-eq(translate('en', 'ball.menu.music'), 'Music', 'en Music')
 eq(translate('zh', 'common.allow'), '允许', 'zh 允许')
 eq(translate('en', 'common.allow'), 'Allow', 'en Allow')
 

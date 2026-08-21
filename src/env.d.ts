@@ -6,7 +6,7 @@ export interface CaptureSource {
   thumbnail: string
 }
 
-export type BallMenuKey = 'record' | 'music' | 'ai' | 'todo' | 'settings'
+export type BallMenuKey = 'record' | 'ai' | 'todo' | 'settings'
 export type AppLocale = 'zh' | 'en'
 
 export interface FloatingBallSettings {
@@ -175,10 +175,6 @@ export interface ElectronAPI {
   showAiWindow: () => Promise<void>
   showSettingsWindow: () => Promise<void>
   showMainWindow: () => Promise<void>
-  showMusicWindow: () => Promise<void>
-  closeMusicWindow: () => Promise<void>
-  musicGetStatus: () => Promise<{ available: boolean; playing: boolean; title: string; artist: string; album: string; hasSession: boolean | null }>
-  musicControl: (cmd: string) => Promise<boolean>
   getFloatingBallSettings: () => Promise<FloatingBallSettings>
   setFloatingBallSettings: (patch: Partial<FloatingBallSettings>) => Promise<FloatingBallSettings>
   resetFloatingBallPosition: () => Promise<void>

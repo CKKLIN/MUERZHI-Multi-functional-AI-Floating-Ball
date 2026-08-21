@@ -1,13 +1,3240 @@
-var e=Object.create,t=Object.defineProperty,n=Object.getOwnPropertyDescriptor,r=Object.getOwnPropertyNames,i=Object.getPrototypeOf,a=Object.prototype.hasOwnProperty,o=(e,t)=>()=>(e&&(t=e(e=0)),t),s=(e,t)=>()=>(t||(e((t={exports:{}}).exports,t),e=null),t.exports),c=(e,i,o,s)=>{if(i&&typeof i==`object`||typeof i==`function`)for(var c=r(i),l=0,u=c.length,d;l<u;l++)d=c[l],!a.call(e,d)&&d!==o&&t(e,d,{get:(e=>i[e]).bind(null,d),enumerable:!(s=n(i,d))||s.enumerable});return e},l=(n,r,a)=>(a=n==null?{}:e(i(n)),c(r||!n||!n.__esModule?t(a,`default`,{value:n,enumerable:!0}):a,n));let u=require(`node:path`);u=l(u);let d=require(`electron`),f=require(`path`);f=l(f);let p=require(`child_process`),m=require(`os`);m=l(m);let h=require(`fs`);h=l(h);let g=require(`http`);g=l(g);let _=require(`node:fs`);_=l(_);let v=require(`fluent-ffmpeg`);v=l(v);let y=require(`@ffmpeg-installer/ffmpeg`);y=l(y);let b=require(`node:os`);b=l(b);let x=require(`node:crypto`),ee=require(`node:child_process`),S=require(`node:util`),te=require(`node:stream`);var ne=s(((e,t)=>{var n=require(`fs`),r=require(`path`);t.exports={findAndReadPackageJson:i,tryReadJsonAt:a};function i(){return a(c())||a(s())||a(process.resourcesPath,`app.asar`)||a(process.resourcesPath,`app`)||a(process.cwd())||{name:void 0,version:void 0}}function a(...e){if(e[0])try{let t=o(`package.json`,r.join(...e));if(!t)return;let i=JSON.parse(n.readFileSync(t,`utf8`)),a=i?.productName||i?.name;return!a||a.toLowerCase()===`electron`?void 0:a?{name:a,version:i?.version}:void 0}catch{return}}function o(e,t){let i=t;for(;;){let t=r.parse(i),a=t.root,o=t.dir;if(n.existsSync(r.join(i,e)))return r.resolve(r.join(i,e));if(i===a)return null;i=o}}function s(){let e=process.argv.filter(e=>e.indexOf(`--user-data-dir=`)===0);return e.length===0||typeof e[0]!=`string`?null:e[0].replace(`--user-data-dir=`,``)}function c(){try{return require.main?.filename}catch{return}}})),re=s(((e,t)=>{var n=require(`child_process`),r=require(`os`),i=require(`path`),a=ne();t.exports=class{appName=void 0;appPackageJson=void 0;platform=process.platform;getAppLogPath(e=this.getAppName()){return this.platform===`darwin`?i.join(this.getSystemPathHome(),`Library/Logs`,e):i.join(this.getAppUserDataPath(e),`logs`)}getAppName(){let e=this.appName||this.getAppPackageJson()?.name;if(!e)throw Error(`electron-log can't determine the app name. It tried these methods:
-1. Use \`electron.app.name\`
-2. Use productName or name from the nearest package.json\`
-You can also set it through log.transports.file.setAppName()`);return e}getAppPackageJson(){return typeof this.appPackageJson!=`object`&&(this.appPackageJson=a.findAndReadPackageJson()),this.appPackageJson}getAppUserDataPath(e=this.getAppName()){return e?i.join(this.getSystemPathAppData(),e):void 0}getAppVersion(){return this.getAppPackageJson()?.version}getElectronLogPath(){return this.getAppLogPath()}getMacOsVersion(){let e=Number(r.release().split(`.`)[0]);return e<=19?`10.${e-4}`:e-9}getOsVersion(){let e=r.type().replace(`_`,` `),t=r.release();return e===`Darwin`&&(e=`macOS`,t=this.getMacOsVersion()),`${e} ${t}`}getPathVariables(){let e=this.getAppName(),t=this.getAppVersion(),n=this;return{appData:this.getSystemPathAppData(),appName:e,appVersion:t,get electronDefaultDir(){return n.getElectronLogPath()},home:this.getSystemPathHome(),libraryDefaultDir:this.getAppLogPath(e),libraryTemplate:this.getAppLogPath(`{appName}`),temp:this.getSystemPathTemp(),userData:this.getAppUserDataPath(e)}}getSystemPathAppData(){let e=this.getSystemPathHome();switch(this.platform){case`darwin`:return i.join(e,`Library/Application Support`);case`win32`:return process.env.APPDATA||i.join(e,`AppData/Roaming`);default:return process.env.XDG_CONFIG_HOME||i.join(e,`.config`)}}getSystemPathHome(){return r.homedir?.()||process.env.HOME}getSystemPathTemp(){return r.tmpdir()}getVersions(){return{app:`${this.getAppName()} ${this.getAppVersion()}`,electron:void 0,os:this.getOsVersion()}}isDev(){return process.env.NODE_ENV===`development`||process.env.ELECTRON_IS_DEV===`1`}isElectron(){return!!process.versions.electron}onAppEvent(e,t){}onAppReady(e){e()}onEveryWebContentsEvent(e,t){}onIpc(e,t){}onIpcInvoke(e,t){}openUrl(e,t=console.error){let r={darwin:`open`,win32:`start`,linux:`xdg-open`}[process.platform]||`xdg-open`;n.exec(`${r} ${e}`,{},e=>{e&&t(e)})}setAppName(e){this.appName=e}setPlatform(e){this.platform=e}setPreloadFileForSessions({filePath:e,includeFutureSession:t=!0,getSessions:n=()=>[]}){}sendIpc(e,t){}showErrorBox(e,t){}}})),C=s(((e,t)=>{var n=require(`path`),r=re();t.exports=class extends r{electron=void 0;constructor({electron:e}={}){super(),this.electron=e}getAppName(){let e;try{e=this.appName||this.electron.app?.name||this.electron.app?.getName()}catch{}return e||super.getAppName()}getAppUserDataPath(e){return this.getPath(`userData`)||super.getAppUserDataPath(e)}getAppVersion(){let e;try{e=this.electron.app?.getVersion()}catch{}return e||super.getAppVersion()}getElectronLogPath(){return this.getPath(`logs`)||super.getElectronLogPath()}getPath(e){try{return this.electron.app?.getPath(e)}catch{return}}getVersions(){return{app:`${this.getAppName()} ${this.getAppVersion()}`,electron:`Electron ${process.versions.electron}`,os:this.getOsVersion()}}getSystemPathAppData(){return this.getPath(`appData`)||super.getSystemPathAppData()}isDev(){return this.electron.app?.isPackaged===void 0?typeof process.execPath==`string`?n.basename(process.execPath).toLowerCase().startsWith(`electron`):super.isDev():!this.electron.app.isPackaged}onAppEvent(e,t){return this.electron.app?.on(e,t),()=>{this.electron.app?.off(e,t)}}onAppReady(e){this.electron.app?.isReady()?e():this.electron.app?.once?this.electron.app?.once(`ready`,e):e()}onEveryWebContentsEvent(e,t){return this.electron.webContents?.getAllWebContents()?.forEach(n=>{n.on(e,t)}),this.electron.app?.on(`web-contents-created`,n),()=>{this.electron.webContents?.getAllWebContents().forEach(n=>{n.off(e,t)}),this.electron.app?.off(`web-contents-created`,n)};function n(n,r){r.on(e,t)}}onIpc(e,t){this.electron.ipcMain?.on(e,t)}onIpcInvoke(e,t){this.electron.ipcMain?.handle?.(e,t)}openUrl(e,t=console.error){this.electron.shell?.openExternal(e).catch(t)}setPreloadFileForSessions({filePath:e,includeFutureSession:t=!0,getSessions:n=()=>[this.electron.session?.defaultSession]}){for(let e of n().filter(Boolean))r(e);t&&this.onAppEvent(`session-created`,e=>{r(e)});function r(t){typeof t.registerPreloadScript==`function`?t.registerPreloadScript({filePath:e,id:`electron-log-preload`,type:`frame`}):t.setPreloads([...t.getPreloads(),e])}}sendIpc(e,t){this.electron.BrowserWindow?.getAllWindows()?.forEach(n=>{n.webContents?.isDestroyed()===!1&&n.webContents?.isCrashed()===!1&&n.webContents.send(e,t)})}showErrorBox(e,t){this.electron.dialog?.showErrorBox(e,t)}}})),ie=s(((e,t)=>{var n={};try{n=require(`electron`)}catch{}n.ipcRenderer&&r(n),typeof t==`object`&&(t.exports=r);function r({contextBridge:e,ipcRenderer:t}){if(!t)return;t.on(`__ELECTRON_LOG_IPC__`,(e,t)=>{window.postMessage({cmd:`message`,...t})}),t.invoke(`__ELECTRON_LOG__`,{cmd:`getOptions`}).catch(e=>console.error(Error(`electron-log isn't initialized in the main process. Please call log.initialize() before. ${e.message}`)));let n={sendToMain(e){try{t.send(`__ELECTRON_LOG__`,e)}catch(n){console.error(`electronLog.sendToMain `,n,`data:`,e),t.send(`__ELECTRON_LOG__`,{cmd:`errorHandler`,error:{message:n?.message,stack:n?.stack},errorName:`sendToMain`})}},log(...e){n.sendToMain({data:e,level:`info`})}};for(let e of[`error`,`warn`,`info`,`verbose`,`debug`,`silly`])n[e]=(...t)=>n.sendToMain({data:t,level:e});if(e&&process.contextIsolated)try{e.exposeInMainWorld(`__electronLog`,n)}catch{}typeof window==`object`?window.__electronLog=n:__electronLog=n}})),w=s(((e,t)=>{var n=require(`fs`),r=require(`os`),i=require(`path`),a=ie(),o=!1,s=!1;t.exports={initialize({externalApi:e,getSessions:t,includeFutureSession:n,logger:r,preload:i=!0,spyRendererConsole:a=!1}){e.onAppReady(()=>{try{i&&c({externalApi:e,getSessions:t,includeFutureSession:n,logger:r,preloadOption:i}),a&&l({externalApi:e,logger:r})}catch(e){r.warn(e)}})}};function c({externalApi:e,getSessions:t,includeFutureSession:s,logger:c,preloadOption:l}){let u=typeof l==`string`?l:void 0;if(o){c.warn(Error(`log.initialize({ preload }) already called`).stack);return}o=!0;try{u=i.resolve(__dirname,`../renderer/electron-log-preload.js`)}catch{}if(!u||!n.existsSync(u)){u=i.join(e.getAppUserDataPath()||r.tmpdir(),`electron-log-preload.js`);let t=`
+//#region \0rolldown/runtime.js
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __esmMin = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
+var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
+var __copyProps = (to, from, except, desc) => {
+	if (from && typeof from === "object" || typeof from === "function") for (var keys = __getOwnPropNames(from), i = 0, n = keys.length, key; i < n; i++) {
+		key = keys[i];
+		if (!__hasOwnProp.call(to, key) && key !== except) __defProp(to, key, {
+			get: ((k) => from[k]).bind(null, key),
+			enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable
+		});
+	}
+	return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", {
+	value: mod,
+	enumerable: true
+}) : target, mod));
+//#endregion
+let node_path = require("node:path");
+node_path = __toESM(node_path);
+let electron = require("electron");
+let path = require("path");
+path = __toESM(path);
+let child_process = require("child_process");
+let os = require("os");
+os = __toESM(os);
+let fs = require("fs");
+fs = __toESM(fs);
+let http = require("http");
+http = __toESM(http);
+let node_fs = require("node:fs");
+node_fs = __toESM(node_fs);
+let fluent_ffmpeg = require("fluent-ffmpeg");
+fluent_ffmpeg = __toESM(fluent_ffmpeg);
+let _ffmpeg_installer_ffmpeg = require("@ffmpeg-installer/ffmpeg");
+_ffmpeg_installer_ffmpeg = __toESM(_ffmpeg_installer_ffmpeg);
+let node_os = require("node:os");
+node_os = __toESM(node_os);
+let node_crypto = require("node:crypto");
+let node_child_process = require("node:child_process");
+let node_util = require("node:util");
+let node_stream = require("node:stream");
+//#region node_modules/electron-log/src/node/packageJson.js
+var require_packageJson = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	var fs$6 = require("fs");
+	var path$7 = require("path");
+	module.exports = {
+		findAndReadPackageJson,
+		tryReadJsonAt
+	};
+	/**
+	* @return {{ name?: string, version?: string}}
+	*/
+	function findAndReadPackageJson() {
+		return tryReadJsonAt(getMainModulePath()) || tryReadJsonAt(extractPathFromArgs()) || tryReadJsonAt(process.resourcesPath, "app.asar") || tryReadJsonAt(process.resourcesPath, "app") || tryReadJsonAt(process.cwd()) || {
+			name: void 0,
+			version: void 0
+		};
+	}
+	/**
+	* @param {...string} searchPaths
+	* @return {{ name?: string, version?: string } | undefined}
+	*/
+	function tryReadJsonAt(...searchPaths) {
+		if (!searchPaths[0]) return;
+		try {
+			const fileName = findUp("package.json", path$7.join(...searchPaths));
+			if (!fileName) return;
+			const json = JSON.parse(fs$6.readFileSync(fileName, "utf8"));
+			const name = json?.productName || json?.name;
+			if (!name || name.toLowerCase() === "electron") return;
+			if (name) return {
+				name,
+				version: json?.version
+			};
+			return;
+		} catch (e) {
+			return;
+		}
+	}
+	/**
+	* @param {string} fileName
+	* @param {string} [cwd]
+	* @return {string | null}
+	*/
+	function findUp(fileName, cwd) {
+		let currentPath = cwd;
+		while (true) {
+			const parsedPath = path$7.parse(currentPath);
+			const root = parsedPath.root;
+			const dir = parsedPath.dir;
+			if (fs$6.existsSync(path$7.join(currentPath, fileName))) return path$7.resolve(path$7.join(currentPath, fileName));
+			if (currentPath === root) return null;
+			currentPath = dir;
+		}
+	}
+	/**
+	* Get app path from --user-data-dir cmd arg, passed to a renderer process
+	* @return {string|null}
+	*/
+	function extractPathFromArgs() {
+		const matchedArgs = process.argv.filter((arg) => {
+			return arg.indexOf("--user-data-dir=") === 0;
+		});
+		if (matchedArgs.length === 0 || typeof matchedArgs[0] !== "string") return null;
+		return matchedArgs[0].replace("--user-data-dir=", "");
+	}
+	function getMainModulePath() {
+		try {
+			return require.main?.filename;
+		} catch {
+			return;
+		}
+	}
+}));
+//#endregion
+//#region node_modules/electron-log/src/node/NodeExternalApi.js
+var require_NodeExternalApi = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	var childProcess = require("child_process");
+	var os$6 = require("os");
+	var path$6 = require("path");
+	var packageJson = require_packageJson();
+	var NodeExternalApi = class {
+		appName = void 0;
+		appPackageJson = void 0;
+		platform = process.platform;
+		getAppLogPath(appName = this.getAppName()) {
+			if (this.platform === "darwin") return path$6.join(this.getSystemPathHome(), "Library/Logs", appName);
+			return path$6.join(this.getAppUserDataPath(appName), "logs");
+		}
+		getAppName() {
+			const appName = this.appName || this.getAppPackageJson()?.name;
+			if (!appName) throw new Error("electron-log can't determine the app name. It tried these methods:\n1. Use `electron.app.name`\n2. Use productName or name from the nearest package.json`\nYou can also set it through log.transports.file.setAppName()");
+			return appName;
+		}
+		/**
+		* @private
+		* @returns {undefined}
+		*/
+		getAppPackageJson() {
+			if (typeof this.appPackageJson !== "object") this.appPackageJson = packageJson.findAndReadPackageJson();
+			return this.appPackageJson;
+		}
+		getAppUserDataPath(appName = this.getAppName()) {
+			return appName ? path$6.join(this.getSystemPathAppData(), appName) : void 0;
+		}
+		getAppVersion() {
+			return this.getAppPackageJson()?.version;
+		}
+		getElectronLogPath() {
+			return this.getAppLogPath();
+		}
+		getMacOsVersion() {
+			const release = Number(os$6.release().split(".")[0]);
+			if (release <= 19) return `10.${release - 4}`;
+			return release - 9;
+		}
+		/**
+		* @protected
+		* @returns {string}
+		*/
+		getOsVersion() {
+			let osName = os$6.type().replace("_", " ");
+			let osVersion = os$6.release();
+			if (osName === "Darwin") {
+				osName = "macOS";
+				osVersion = this.getMacOsVersion();
+			}
+			return `${osName} ${osVersion}`;
+		}
+		/**
+		* @return {PathVariables}
+		*/
+		getPathVariables() {
+			const appName = this.getAppName();
+			const appVersion = this.getAppVersion();
+			const self = this;
+			return {
+				appData: this.getSystemPathAppData(),
+				appName,
+				appVersion,
+				get electronDefaultDir() {
+					return self.getElectronLogPath();
+				},
+				home: this.getSystemPathHome(),
+				libraryDefaultDir: this.getAppLogPath(appName),
+				libraryTemplate: this.getAppLogPath("{appName}"),
+				temp: this.getSystemPathTemp(),
+				userData: this.getAppUserDataPath(appName)
+			};
+		}
+		getSystemPathAppData() {
+			const home = this.getSystemPathHome();
+			switch (this.platform) {
+				case "darwin": return path$6.join(home, "Library/Application Support");
+				case "win32": return process.env.APPDATA || path$6.join(home, "AppData/Roaming");
+				default: return process.env.XDG_CONFIG_HOME || path$6.join(home, ".config");
+			}
+		}
+		getSystemPathHome() {
+			return os$6.homedir?.() || process.env.HOME;
+		}
+		getSystemPathTemp() {
+			return os$6.tmpdir();
+		}
+		getVersions() {
+			return {
+				app: `${this.getAppName()} ${this.getAppVersion()}`,
+				electron: void 0,
+				os: this.getOsVersion()
+			};
+		}
+		isDev() {
+			return process.env.NODE_ENV === "development" || process.env.ELECTRON_IS_DEV === "1";
+		}
+		isElectron() {
+			return Boolean(process.versions.electron);
+		}
+		onAppEvent(_eventName, _handler) {}
+		onAppReady(handler) {
+			handler();
+		}
+		onEveryWebContentsEvent(eventName, handler) {}
+		/**
+		* Listen to async messages sent from opposite process
+		* @param {string} channel
+		* @param {function} listener
+		*/
+		onIpc(channel, listener) {}
+		onIpcInvoke(channel, listener) {}
+		/**
+		* @param {string} url
+		* @param {Function} [logFunction]
+		*/
+		openUrl(url, logFunction = console.error) {
+			const start = {
+				darwin: "open",
+				win32: "start",
+				linux: "xdg-open"
+			}[process.platform] || "xdg-open";
+			childProcess.exec(`${start} ${url}`, {}, (err) => {
+				if (err) logFunction(err);
+			});
+		}
+		setAppName(appName) {
+			this.appName = appName;
+		}
+		setPlatform(platform) {
+			this.platform = platform;
+		}
+		setPreloadFileForSessions({ filePath, includeFutureSession = true, getSessions = () => [] }) {}
+		/**
+		* Sent a message to opposite process
+		* @param {string} channel
+		* @param {any} message
+		*/
+		sendIpc(channel, message) {}
+		showErrorBox(title, message) {}
+	};
+	module.exports = NodeExternalApi;
+}));
+//#endregion
+//#region node_modules/electron-log/src/main/ElectronExternalApi.js
+var require_ElectronExternalApi = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	var path$5 = require("path");
+	var NodeExternalApi = require_NodeExternalApi();
+	var ElectronExternalApi = class extends NodeExternalApi {
+		/**
+		* @type {typeof Electron}
+		*/
+		electron = void 0;
+		/**
+		* @param {object} options
+		* @param {typeof Electron} [options.electron]
+		*/
+		constructor({ electron } = {}) {
+			super();
+			this.electron = electron;
+		}
+		getAppName() {
+			let appName;
+			try {
+				appName = this.appName || this.electron.app?.name || this.electron.app?.getName();
+			} catch {}
+			return appName || super.getAppName();
+		}
+		getAppUserDataPath(appName) {
+			return this.getPath("userData") || super.getAppUserDataPath(appName);
+		}
+		getAppVersion() {
+			let appVersion;
+			try {
+				appVersion = this.electron.app?.getVersion();
+			} catch {}
+			return appVersion || super.getAppVersion();
+		}
+		getElectronLogPath() {
+			return this.getPath("logs") || super.getElectronLogPath();
+		}
+		/**
+		* @private
+		* @param {any} name
+		* @returns {string|undefined}
+		*/
+		getPath(name) {
+			try {
+				return this.electron.app?.getPath(name);
+			} catch {
+				return;
+			}
+		}
+		getVersions() {
+			return {
+				app: `${this.getAppName()} ${this.getAppVersion()}`,
+				electron: `Electron ${process.versions.electron}`,
+				os: this.getOsVersion()
+			};
+		}
+		getSystemPathAppData() {
+			return this.getPath("appData") || super.getSystemPathAppData();
+		}
+		isDev() {
+			if (this.electron.app?.isPackaged !== void 0) return !this.electron.app.isPackaged;
+			if (typeof process.execPath === "string") return path$5.basename(process.execPath).toLowerCase().startsWith("electron");
+			return super.isDev();
+		}
+		onAppEvent(eventName, handler) {
+			this.electron.app?.on(eventName, handler);
+			return () => {
+				this.electron.app?.off(eventName, handler);
+			};
+		}
+		onAppReady(handler) {
+			if (this.electron.app?.isReady()) handler();
+			else if (this.electron.app?.once) this.electron.app?.once("ready", handler);
+			else handler();
+		}
+		onEveryWebContentsEvent(eventName, handler) {
+			this.electron.webContents?.getAllWebContents()?.forEach((webContents) => {
+				webContents.on(eventName, handler);
+			});
+			this.electron.app?.on("web-contents-created", onWebContentsCreated);
+			return () => {
+				this.electron.webContents?.getAllWebContents().forEach((webContents) => {
+					webContents.off(eventName, handler);
+				});
+				this.electron.app?.off("web-contents-created", onWebContentsCreated);
+			};
+			function onWebContentsCreated(_, webContents) {
+				webContents.on(eventName, handler);
+			}
+		}
+		/**
+		* Listen to async messages sent from opposite process
+		* @param {string} channel
+		* @param {function} listener
+		*/
+		onIpc(channel, listener) {
+			this.electron.ipcMain?.on(channel, listener);
+		}
+		onIpcInvoke(channel, listener) {
+			this.electron.ipcMain?.handle?.(channel, listener);
+		}
+		/**
+		* @param {string} url
+		* @param {Function} [logFunction]
+		*/
+		openUrl(url, logFunction = console.error) {
+			this.electron.shell?.openExternal(url).catch(logFunction);
+		}
+		setPreloadFileForSessions({ filePath, includeFutureSession = true, getSessions = () => [this.electron.session?.defaultSession] }) {
+			for (const session of getSessions().filter(Boolean)) setPreload(session);
+			if (includeFutureSession) this.onAppEvent("session-created", (session) => {
+				setPreload(session);
+			});
+			/**
+			* @param {Session} session
+			*/
+			function setPreload(session) {
+				if (typeof session.registerPreloadScript === "function") session.registerPreloadScript({
+					filePath,
+					id: "electron-log-preload",
+					type: "frame"
+				});
+				else session.setPreloads([...session.getPreloads(), filePath]);
+			}
+		}
+		/**
+		* Sent a message to opposite process
+		* @param {string} channel
+		* @param {any} message
+		*/
+		sendIpc(channel, message) {
+			this.electron.BrowserWindow?.getAllWindows()?.forEach((wnd) => {
+				if (wnd.webContents?.isDestroyed() === false && wnd.webContents?.isCrashed() === false) wnd.webContents.send(channel, message);
+			});
+		}
+		showErrorBox(title, message) {
+			this.electron.dialog?.showErrorBox(title, message);
+		}
+	};
+	module.exports = ElectronExternalApi;
+}));
+//#endregion
+//#region node_modules/electron-log/src/renderer/electron-log-preload.js
+var require_electron_log_preload = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	var electron = {};
+	try {
+		electron = require("electron");
+	} catch (e) {}
+	if (electron.ipcRenderer) initialize(electron);
+	if (typeof module === "object") module.exports = initialize;
+	/**
+	* @param {Electron.ContextBridge} contextBridge
+	* @param {Electron.IpcRenderer} ipcRenderer
+	*/
+	function initialize({ contextBridge, ipcRenderer }) {
+		if (!ipcRenderer) return;
+		ipcRenderer.on("__ELECTRON_LOG_IPC__", (_, message) => {
+			window.postMessage({
+				cmd: "message",
+				...message
+			});
+		});
+		ipcRenderer.invoke("__ELECTRON_LOG__", { cmd: "getOptions" }).catch((e) => console.error(/* @__PURE__ */ new Error(`electron-log isn't initialized in the main process. Please call log.initialize() before. ${e.message}`)));
+		const electronLog = {
+			sendToMain(message) {
+				try {
+					ipcRenderer.send("__ELECTRON_LOG__", message);
+				} catch (e) {
+					console.error("electronLog.sendToMain ", e, "data:", message);
+					ipcRenderer.send("__ELECTRON_LOG__", {
+						cmd: "errorHandler",
+						error: {
+							message: e?.message,
+							stack: e?.stack
+						},
+						errorName: "sendToMain"
+					});
+				}
+			},
+			log(...data) {
+				electronLog.sendToMain({
+					data,
+					level: "info"
+				});
+			}
+		};
+		for (const level of [
+			"error",
+			"warn",
+			"info",
+			"verbose",
+			"debug",
+			"silly"
+		]) electronLog[level] = (...data) => electronLog.sendToMain({
+			data,
+			level
+		});
+		if (contextBridge && process.contextIsolated) try {
+			contextBridge.exposeInMainWorld("__electronLog", electronLog);
+		} catch {}
+		if (typeof window === "object") window.__electronLog = electronLog;
+		else __electronLog = electronLog;
+	}
+}));
+//#endregion
+//#region node_modules/electron-log/src/main/initialize.js
+var require_initialize = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	var fs$5 = require("fs");
+	var os$5 = require("os");
+	var path$4 = require("path");
+	var preloadInitializeFn = require_electron_log_preload();
+	var preloadInitialized = false;
+	var spyConsoleInitialized = false;
+	module.exports = { initialize({ externalApi, getSessions, includeFutureSession, logger, preload = true, spyRendererConsole = false }) {
+		externalApi.onAppReady(() => {
+			try {
+				if (preload) initializePreload({
+					externalApi,
+					getSessions,
+					includeFutureSession,
+					logger,
+					preloadOption: preload
+				});
+				if (spyRendererConsole) initializeSpyRendererConsole({
+					externalApi,
+					logger
+				});
+			} catch (err) {
+				logger.warn(err);
+			}
+		});
+	} };
+	function initializePreload({ externalApi, getSessions, includeFutureSession, logger, preloadOption }) {
+		let preloadPath = typeof preloadOption === "string" ? preloadOption : void 0;
+		if (preloadInitialized) {
+			logger.warn((/* @__PURE__ */ new Error("log.initialize({ preload }) already called")).stack);
+			return;
+		}
+		preloadInitialized = true;
+		try {
+			preloadPath = path$4.resolve(__dirname, "../renderer/electron-log-preload.js");
+		} catch {}
+		if (!preloadPath || !fs$5.existsSync(preloadPath)) {
+			preloadPath = path$4.join(externalApi.getAppUserDataPath() || os$5.tmpdir(), "electron-log-preload.js");
+			const preloadCode = `
       try {
-        (${a.toString()})(require('electron'));
+        (${preloadInitializeFn.toString()})(require('electron'));
       } catch(e) {
         console.error(e);
       }
-    `;n.writeFileSync(u,t,`utf8`)}e.setPreloadFileForSessions({filePath:u,includeFutureSession:s,getSessions:t})}function l({externalApi:e,logger:t}){if(s){t.warn(Error(`log.initialize({ spyRendererConsole }) already called`).stack);return}s=!0;let n=[`debug`,`info`,`warn`,`error`];e.onEveryWebContentsEvent(`console-message`,(e,r,i)=>{t.processMessage({data:[i],level:n[r],variables:{processType:`renderer`}})})}})),T=s(((e,t)=>{t.exports=n;function n(e){return Object.defineProperties(t,{defaultLabel:{value:``,writable:!0},labelPadding:{value:!0,writable:!0},maxLabelLength:{value:0,writable:!0},labelLength:{get(){switch(typeof t.labelPadding){case`boolean`:return t.labelPadding?t.maxLabelLength:0;case`number`:return t.labelPadding;default:return 0}}}});function t(n){t.maxLabelLength=Math.max(t.maxLabelLength,n.length);let r={};for(let t of e.levels)r[t]=(...r)=>e.logData(r,{level:t,scope:n});return r.log=r.info,r}}})),E=s(((e,t)=>{t.exports=class{constructor({processMessage:e}){this.processMessage=e,this.buffer=[],this.enabled=!1,this.begin=this.begin.bind(this),this.commit=this.commit.bind(this),this.reject=this.reject.bind(this)}addMessage(e){this.buffer.push(e)}begin(){this.enabled=[]}commit(){this.enabled=!1,this.buffer.forEach(e=>this.processMessage(e)),this.buffer=[]}reject(){this.enabled=!1,this.buffer=[]}}})),ae=s(((e,t)=>{var n=T(),r=E();t.exports=class e{static instances={};dependencies={};errorHandler=null;eventLogger=null;functions={};hooks=[];isDev=!1;levels=null;logId=null;scope=null;transports={};variables={};constructor({allowUnknownLevel:t=!1,dependencies:i={},errorHandler:a,eventLogger:o,initializeFn:s,isDev:c=!1,levels:l=[`error`,`warn`,`info`,`verbose`,`debug`,`silly`],logId:u,transportFactories:d={},variables:f}={}){this.addLevel=this.addLevel.bind(this),this.create=this.create.bind(this),this.initialize=this.initialize.bind(this),this.logData=this.logData.bind(this),this.processMessage=this.processMessage.bind(this),this.allowUnknownLevel=t,this.buffering=new r(this),this.dependencies=i,this.initializeFn=s,this.isDev=c,this.levels=l,this.logId=u,this.scope=n(this),this.transportFactories=d,this.variables=f||{};for(let e of this.levels)this.addLevel(e,!1);this.log=this.info,this.functions.log=this.log,this.errorHandler=a,a?.setOptions({...i,logFn:this.error}),this.eventLogger=o,o?.setOptions({...i,logger:this});for(let[e,t]of Object.entries(d))this.transports[e]=t(this,i);e.instances[u]=this}static getInstance({logId:e}){return this.instances[e]||this.instances.default}addLevel(e,t=this.levels.length){t!==!1&&this.levels.splice(t,0,e),this[e]=(...t)=>this.logData(t,{level:e}),this.functions[e]=this[e]}catchErrors(e){return this.processMessage({data:[`log.catchErrors is deprecated. Use log.errorHandler instead`],level:`warn`},{transports:[`console`]}),this.errorHandler.startCatching(e)}create(t){return typeof t==`string`&&(t={logId:t}),new e({dependencies:this.dependencies,errorHandler:this.errorHandler,initializeFn:this.initializeFn,isDev:this.isDev,transportFactories:this.transportFactories,variables:{...this.variables},...t})}compareLevels(e,t,n=this.levels){let r=n.indexOf(e),i=n.indexOf(t);return i===-1||r===-1?!0:i<=r}initialize(e={}){this.initializeFn({logger:this,...this.dependencies,...e})}logData(e,t={}){this.buffering.enabled?this.buffering.addMessage({data:e,date:new Date,...t}):this.processMessage({data:e,...t})}processMessage(e,{transports:t=this.transports}={}){if(e.cmd===`errorHandler`){this.errorHandler.handle(e.error,{errorName:e.errorName,processType:`renderer`,showDialog:!!e.showDialog});return}let n=e.level;this.allowUnknownLevel||(n=this.levels.includes(e.level)?e.level:`info`);let r={date:new Date,logId:this.logId,...e,level:n,variables:{...this.variables,...e.variables}};for(let[n,i]of this.transportEntries(t))if(!(typeof i!=`function`||i.level===!1)&&this.compareLevels(i.level,e.level))try{let e=this.hooks.reduce((e,t)=>e&&t(e,i,n),r);e&&i({...e,data:[...e.data]})}catch(e){this.processInternalErrorFn(e)}}processInternalErrorFn(e){}transportEntries(e=this.transports){return(Array.isArray(e)?e:Object.entries(e)).map(e=>{switch(typeof e){case`string`:return this.transports[e]?[e,this.transports[e]]:null;case`function`:return[e.name,e];default:return Array.isArray(e)?e:null}}).filter(Boolean)}}})),oe=s(((e,t)=>{var n=class{externalApi=void 0;isActive=!1;logFn=void 0;onError=void 0;showDialog=!0;constructor({externalApi:e,logFn:t=void 0,onError:n=void 0,showDialog:r=void 0}={}){this.createIssue=this.createIssue.bind(this),this.handleError=this.handleError.bind(this),this.handleRejection=this.handleRejection.bind(this),this.setOptions({externalApi:e,logFn:t,onError:n,showDialog:r}),this.startCatching=this.startCatching.bind(this),this.stopCatching=this.stopCatching.bind(this)}handle(e,{logFn:t=this.logFn,onError:n=this.onError,processType:i=`browser`,showDialog:a=this.showDialog,errorName:o=``}={}){e=r(e);try{if(typeof n==`function`){let t=this.externalApi?.getVersions()||{},r=this.createIssue;if(n({createIssue:r,error:e,errorName:o,processType:i,versions:t})===!1)return}o?t(o,e):t(e),a&&!o.includes(`rejection`)&&this.externalApi&&this.externalApi.showErrorBox(`A JavaScript error occurred in the ${i} process`,e.stack)}catch{console.error(e)}}setOptions({externalApi:e,logFn:t,onError:n,showDialog:r}){typeof e==`object`&&(this.externalApi=e),typeof t==`function`&&(this.logFn=t),typeof n==`function`&&(this.onError=n),typeof r==`boolean`&&(this.showDialog=r)}startCatching({onError:e,showDialog:t}={}){this.isActive||(this.isActive=!0,this.setOptions({onError:e,showDialog:t}),process.on(`uncaughtException`,this.handleError),process.on(`unhandledRejection`,this.handleRejection))}stopCatching(){this.isActive=!1,process.removeListener(`uncaughtException`,this.handleError),process.removeListener(`unhandledRejection`,this.handleRejection)}createIssue(e,t){this.externalApi?.openUrl(`${e}?${new URLSearchParams(t).toString()}`)}handleError(e){this.handle(e,{errorName:`Unhandled`})}handleRejection(e){let t=e instanceof Error?e:Error(JSON.stringify(e));this.handle(t,{errorName:`Unhandled rejection`})}};function r(e){if(e instanceof Error)return e;if(e&&typeof e==`object`){if(e.message)return Object.assign(Error(e.message),e);try{return Error(JSON.stringify(e))}catch(t){return Error(`Couldn't normalize error ${String(e)}: ${t}`)}}return Error(`Can't normalize error ${String(e)}`)}t.exports=n})),se=s(((e,t)=>{t.exports=class{disposers=[];format=`{eventSource}#{eventName}:`;formatters={app:{"certificate-error":({args:e})=>this.arrayToObject(e.slice(1,4),[`url`,`error`,`certificate`]),"child-process-gone":({args:e})=>e.length===1?e[0]:e,"render-process-gone":({args:[e,t]})=>t&&typeof t==`object`?{...t,...this.getWebContentsDetails(e)}:[]},webContents:{"console-message":({args:[e,t,n,r]})=>{if(!(e<3))return{message:t,source:`${r}:${n}`}},"did-fail-load":({args:e})=>this.arrayToObject(e,[`errorCode`,`errorDescription`,`validatedURL`,`isMainFrame`,`frameProcessId`,`frameRoutingId`]),"did-fail-provisional-load":({args:e})=>this.arrayToObject(e,[`errorCode`,`errorDescription`,`validatedURL`,`isMainFrame`,`frameProcessId`,`frameRoutingId`]),"plugin-crashed":({args:e})=>this.arrayToObject(e,[`name`,`version`]),"preload-error":({args:e})=>this.arrayToObject(e,[`preloadPath`,`error`])}};events={app:{"certificate-error":!0,"child-process-gone":!0,"render-process-gone":!0},webContents:{"did-fail-load":!0,"did-fail-provisional-load":!0,"plugin-crashed":!0,"preload-error":!0,unresponsive:!0}};externalApi=void 0;level=`error`;scope=``;constructor(e={}){this.setOptions(e)}setOptions({events:e,externalApi:t,level:n,logger:r,format:i,formatters:a,scope:o}){typeof e==`object`&&(this.events=e),typeof t==`object`&&(this.externalApi=t),typeof n==`string`&&(this.level=n),typeof r==`object`&&(this.logger=r),(typeof i==`string`||typeof i==`function`)&&(this.format=i),typeof a==`object`&&(this.formatters=a),typeof o==`string`&&(this.scope=o)}startLogging(e={}){this.setOptions(e),this.disposeListeners();for(let e of this.getEventNames(this.events.app))this.disposers.push(this.externalApi.onAppEvent(e,(...t)=>{this.handleEvent({eventSource:`app`,eventName:e,handlerArgs:t})}));for(let e of this.getEventNames(this.events.webContents))this.disposers.push(this.externalApi.onEveryWebContentsEvent(e,(...t)=>{this.handleEvent({eventSource:`webContents`,eventName:e,handlerArgs:t})}))}stopLogging(){this.disposeListeners()}arrayToObject(e,t){let n={};return t.forEach((t,r)=>{n[t]=e[r]}),e.length>t.length&&(n.unknownArgs=e.slice(t.length)),n}disposeListeners(){this.disposers.forEach(e=>e()),this.disposers=[]}formatEventLog({eventName:e,eventSource:t,handlerArgs:n}){let[r,...i]=n;if(typeof this.format==`function`)return this.format({args:i,event:r,eventName:e,eventSource:t});let a=this.formatters[t]?.[e],o=i;if(typeof a==`function`&&(o=a({args:i,event:r,eventName:e,eventSource:t})),!o)return;let s={};return Array.isArray(o)?s.args=o:typeof o==`object`&&Object.assign(s,o),t===`webContents`&&Object.assign(s,this.getWebContentsDetails(r?.sender)),[this.format.replace(`{eventSource}`,t===`app`?`App`:`WebContents`).replace(`{eventName}`,e),s]}getEventNames(e){return!e||typeof e!=`object`?[]:Object.entries(e).filter(([e,t])=>t).map(([e])=>e)}getWebContentsDetails(e){if(!e?.loadURL)return{};try{return{webContents:{id:e.id,url:e.getURL()}}}catch{return{}}}handleEvent({eventName:e,eventSource:t,handlerArgs:n}){let r=this.formatEventLog({eventName:e,eventSource:t,handlerArgs:n});r&&(this.scope?this.logger.scope(this.scope):this.logger)?.[this.level]?.(...r)}}})),D=s(((e,t)=>{t.exports={transform:n};function n({logger:e,message:t,transport:n,initialData:r=t?.data||[],transforms:i=n?.transforms}){return i.reduce((r,i)=>typeof i==`function`?i({data:r,logger:e,message:t,transport:n}):r,r)}})),ce=s(((e,t)=>{var{transform:n}=D();t.exports={concatFirstStringElements:r,formatScope:a,formatText:s,formatVariables:o,timeZoneFromOffset:i,format({message:e,logger:t,transport:r,data:i=e?.data}){switch(typeof r.format){case`string`:return n({message:e,logger:t,transforms:[o,a,s],transport:r,initialData:[r.format,...i]});case`function`:return r.format({data:i,level:e?.level||`info`,logger:t,message:e,transport:r});default:return i}}};function r({data:e}){return typeof e[0]!=`string`||typeof e[1]!=`string`||e[0].match(/%[1cdfiOos]/)?e:[`${e[0]} ${e[1]}`,...e.slice(2)]}function i(e){let t=Math.abs(e);return`${e>0?`-`:`+`}${Math.floor(t/60).toString().padStart(2,`0`)}:${(t%60).toString().padStart(2,`0`)}`}function a({data:e,logger:t,message:n}){let{defaultLabel:r,labelLength:i}=t?.scope||{},a=e[0],o=n.scope;o||=r;let s;return s=o===``?i>0?``.padEnd(i+3):``:typeof o==`string`?` (${o})`.padEnd(i+3):``,e[0]=a.replace(`{scope}`,s),e}function o({data:e,message:t}){let n=e[0];if(typeof n!=`string`)return e;n=n.replace(`{level}]`,`${t.level}]`.padEnd(6,` `));let r=t.date||new Date;return e[0]=n.replace(/\{(\w+)}/g,(e,n)=>{switch(n){case`level`:return t.level||`info`;case`logId`:return t.logId;case`y`:return r.getFullYear().toString(10);case`m`:return(r.getMonth()+1).toString(10).padStart(2,`0`);case`d`:return r.getDate().toString(10).padStart(2,`0`);case`h`:return r.getHours().toString(10).padStart(2,`0`);case`i`:return r.getMinutes().toString(10).padStart(2,`0`);case`s`:return r.getSeconds().toString(10).padStart(2,`0`);case`ms`:return r.getMilliseconds().toString(10).padStart(3,`0`);case`z`:return i(r.getTimezoneOffset());case`iso`:return r.toISOString();default:return t.variables?.[n]||e}}).trim(),e}function s({data:e}){let t=e[0];if(typeof t!=`string`)return e;if(t.lastIndexOf(`{text}`)===t.length-6)return e[0]=t.replace(/\s?{text}/,``),e[0]===``&&e.shift(),e;let n=t.split(`{text}`),r=[];return n[0]!==``&&r.push(n[0]),r=r.concat(e.slice(1)),n[1]!==``&&r.push(n[1]),r}})),O=s(((e,t)=>{var n=require(`util`);t.exports={serialize:i,maxDepth({data:e,transport:n,depth:r=n?.depth??6}){if(!e)return e;if(r<1)return Array.isArray(e)?`[array]`:typeof e==`object`&&e?`[object]`:e;if(Array.isArray(e))return e.map(e=>t.exports.maxDepth({data:e,depth:r-1}));if(typeof e!=`object`||e&&typeof e.toISOString==`function`)return e;if(e===null)return null;if(e instanceof Error)return e;let i={};for(let n in e)Object.prototype.hasOwnProperty.call(e,n)&&(i[n]=t.exports.maxDepth({data:e[n],depth:r-1}));return i},toJSON({data:e}){return JSON.parse(JSON.stringify(e,r()))},toString({data:e,transport:t}){let i=t?.inspectOptions||{},a=e.map(e=>{if(e!==void 0)try{let t=JSON.stringify(e,r(),`  `);return t===void 0?void 0:JSON.parse(t)}catch{return e}});return n.formatWithOptions(i,...a)}};function r(e={}){let t=new WeakSet;return function(n,r){if(typeof r==`object`&&r){if(t.has(r))return;t.add(r)}return i(n,r,e)}}function i(e,t,n={}){let r=n?.serializeMapAndSet!==!1;return t instanceof Error?t.stack:t&&(typeof t==`function`?`[function] ${t.toString()}`:t instanceof Date?t.toISOString():r&&t instanceof Map&&Object.fromEntries?Object.fromEntries(t):r&&t instanceof Set&&Array.from?Array.from(t):t)}})),le=s(((e,t)=>{t.exports={transformStyles:a,applyAnsiStyles({data:e}){return a(e,r,i)},removeStyles({data:e}){return a(e,()=>``)}};var n={unset:`\x1B[0m`,black:`\x1B[30m`,red:`\x1B[31m`,green:`\x1B[32m`,yellow:`\x1B[33m`,blue:`\x1B[34m`,magenta:`\x1B[35m`,cyan:`\x1B[36m`,white:`\x1B[37m`,gray:`\x1B[90m`};function r(e){return n[e.replace(/color:\s*(\w+).*/,`$1`).toLowerCase()]||``}function i(e){return e+n.unset}function a(e,t,n){let r={};return e.reduce((e,i,a,o)=>{if(r[a])return e;if(typeof i==`string`){let e=a,s=!1;i=i.replace(/%[1cdfiOos]/g,n=>{if(e+=1,n!==`%c`)return n;let a=o[e];return typeof a==`string`?(r[e]=!0,s=!0,t(a,i)):n}),s&&n&&(i=n(i))}return e.push(i),e},[])}})),ue=s(((e,t)=>{var{concatFirstStringElements:n,format:r}=ce(),{maxDepth:i,toJSON:a}=O(),{applyAnsiStyles:o,removeStyles:s}=le(),{transform:c}=D(),l={error:console.error,warn:console.warn,info:console.info,verbose:console.info,debug:console.debug,silly:console.debug,log:console.log};t.exports=d;var u=`%c{h}:{i}:{s}.{ms}{scope}%c ${process.platform===`win32`?`>`:`›`} {text}`;Object.assign(d,{DEFAULT_FORMAT:u});function d(e){return Object.assign(t,{colorMap:{error:`red`,warn:`yellow`,info:`cyan`,verbose:`unset`,debug:`gray`,silly:`gray`,default:`unset`},format:u,level:`silly`,transforms:[f,r,m,n,i,a],useStyles:process.env.FORCE_STYLES,writeFn({message:e}){(l[e.level]||l.info)(...e.data)}});function t(n){let r=c({logger:e,message:n,transport:t});t.writeFn({message:{...n,data:r}})}}function f({data:e,message:t,transport:n}){return typeof n.format!=`string`||!n.format.includes(`%c`)?e:[`color:${h(t.level,n)}`,`color:unset`,...e]}function p(e,t){if(typeof e==`boolean`)return e;let n=t===`error`||t===`warn`?process.stderr:process.stdout;return n&&n.isTTY}function m(e){let{message:t,transport:n}=e;return(p(n.useStyles,t.level)?o:s)(e)}function h(e,t){return t.colorMap[e]||t.colorMap.default}})),de=s(((e,t)=>{var n=require(`events`),r=require(`fs`),i=require(`os`);t.exports=class extends n{asyncWriteQueue=[];bytesWritten=0;hasActiveAsyncWriting=!1;path=null;initialSize=void 0;writeOptions=null;writeAsync=!1;constructor({path:e,writeOptions:t={encoding:`utf8`,flag:`a`,mode:438},writeAsync:n=!1}){super(),this.path=e,this.writeOptions=t,this.writeAsync=n}get size(){return this.getSize()}clear(){try{return r.writeFileSync(this.path,``,{mode:this.writeOptions.mode,flag:`w`}),this.reset(),!0}catch(e){return e.code===`ENOENT`?!0:(this.emit(`error`,e,this),!1)}}crop(e){try{let t=a(this.path,e||4096);this.clear(),this.writeLine(`[log cropped]${i.EOL}${t}`)}catch(e){this.emit(`error`,Error(`Couldn't crop file ${this.path}. ${e.message}`),this)}}getSize(){if(this.initialSize===void 0)try{let e=r.statSync(this.path);this.initialSize=e.size}catch{this.initialSize=0}return this.initialSize+this.bytesWritten}increaseBytesWrittenCounter(e){this.bytesWritten+=Buffer.byteLength(e,this.writeOptions.encoding)}isNull(){return!1}nextAsyncWrite(){let e=this;if(this.hasActiveAsyncWriting||this.asyncWriteQueue.length===0)return;let t=this.asyncWriteQueue.join(``);this.asyncWriteQueue=[],this.hasActiveAsyncWriting=!0,r.writeFile(this.path,t,this.writeOptions,n=>{e.hasActiveAsyncWriting=!1,n?e.emit(`error`,Error(`Couldn't write to ${e.path}. ${n.message}`),this):e.increaseBytesWrittenCounter(t),e.nextAsyncWrite()})}reset(){this.initialSize=void 0,this.bytesWritten=0}toString(){return this.path}writeLine(e){if(e+=i.EOL,this.writeAsync){this.asyncWriteQueue.push(e),this.nextAsyncWrite();return}try{r.writeFileSync(this.path,e,this.writeOptions),this.increaseBytesWrittenCounter(e)}catch(e){this.emit(`error`,Error(`Couldn't write to ${this.path}. ${e.message}`),this)}}};function a(e,t){let n=Buffer.alloc(t),i=r.statSync(e),a=Math.min(i.size,t),o=Math.max(0,i.size-t),s=r.openSync(e,`r`),c=r.readSync(s,n,0,a,o);return r.closeSync(s),n.toString(`utf8`,0,c)}})),fe=s(((e,t)=>{var n=de();t.exports=class extends n{clear(){}crop(){}getSize(){return 0}isNull(){return!0}writeLine(){}}})),pe=s(((e,t)=>{var n=require(`events`),r=require(`fs`),i=require(`path`),a=de(),o=fe();t.exports=class extends n{store={};constructor(){super(),this.emitError=this.emitError.bind(this)}provide({filePath:e,writeOptions:t={},writeAsync:n=!1}){let r;try{if(e=i.resolve(e),this.store[e])return this.store[e];r=this.createFile({filePath:e,writeOptions:t,writeAsync:n})}catch(t){r=new o({path:e}),this.emitError(t,r)}return r.on(`error`,this.emitError),this.store[e]=r,r}createFile({filePath:e,writeOptions:t,writeAsync:n}){return this.testFileWriting({filePath:e,writeOptions:t}),new a({path:e,writeOptions:t,writeAsync:n})}emitError(e,t){this.emit(`error`,e,t)}testFileWriting({filePath:e,writeOptions:t}){r.mkdirSync(i.dirname(e),{recursive:!0}),r.writeFileSync(e,``,{flag:`a`,mode:t.mode})}}})),me=s(((e,t)=>{var n=require(`fs`),r=require(`os`),i=require(`path`),a=pe(),{transform:o}=D(),{removeStyles:s}=le(),{format:c,concatFirstStringElements:l}=ce(),{toString:u}=O();t.exports=f;var d=new a;function f(e,{registry:t=d,externalApi:a}={}){let f;return t.listenerCount(`error`)<1&&t.on(`error`,(e,t)=>{g(`Can't write to ${t}`,e)}),Object.assign(m,{fileName:p(e.variables.processType),format:`[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}]{scope} {text}`,getFile:_,inspectOptions:{depth:5},level:`silly`,maxSize:1024**2,readAllLogs:v,sync:!0,transforms:[s,c,l,u],writeOptions:{flag:`a`,mode:438,encoding:`utf8`},archiveLogFn(e){let t=e.toString(),r=i.parse(t);try{n.renameSync(t,i.join(r.dir,`${r.name}.old${r.ext}`))}catch(t){g(`Could not rotate log`,t);let n=Math.round(m.maxSize/4);e.crop(Math.min(n,256*1024))}},resolvePathFn(e){return i.join(e.libraryDefaultDir,e.fileName)},setAppName(t){e.dependencies.externalApi.setAppName(t)}});function m(t){let n=_(t);m.maxSize>0&&n.size>m.maxSize&&(m.archiveLogFn(n),n.reset());let r=o({logger:e,message:t,transport:m});n.writeLine(r)}function h(){f||(f=Object.create(Object.prototype,{...Object.getOwnPropertyDescriptors(a.getPathVariables()),fileName:{get(){return m.fileName},enumerable:!0}}),typeof m.archiveLog==`function`&&(m.archiveLogFn=m.archiveLog,g(`archiveLog is deprecated. Use archiveLogFn instead`)),typeof m.resolvePath==`function`&&(m.resolvePathFn=m.resolvePath,g(`resolvePath is deprecated. Use resolvePathFn instead`)))}function g(t,n=null,r=`error`){let i=[`electron-log.transports.file: ${t}`];n&&i.push(n),e.transports.console({data:i,date:new Date,level:r})}function _(e){h();let n=m.resolvePathFn(f,e);return t.provide({filePath:n,writeAsync:!m.sync,writeOptions:m.writeOptions})}function v({fileFilter:e=e=>e.endsWith(`.log`)}={}){h();let t=i.dirname(m.resolvePathFn(f));return n.existsSync(t)?n.readdirSync(t).map(e=>i.join(t,e)).filter(e).map(e=>{try{return{path:e,lines:n.readFileSync(e,`utf8`).split(r.EOL)}}catch{return null}}).filter(Boolean):[]}}function p(e=process.type){switch(e){case`renderer`:return`renderer.log`;case`worker`:return`worker.log`;default:return`main.log`}}})),he=s(((e,t)=>{var{maxDepth:n,toJSON:r}=O(),{transform:i}=D();t.exports=a;function a(e,{externalApi:t}){return Object.assign(a,{depth:3,eventId:`__ELECTRON_LOG_IPC__`,level:e.isDev?`silly`:!1,transforms:[r,n]}),t?.isElectron()?a:void 0;function a(n){n?.variables?.processType!==`renderer`&&t?.sendIpc(a.eventId,{...n,data:i({logger:e,message:n,transport:a})})}}})),ge=s(((e,t)=>{var n=require(`http`),r=require(`https`),{transform:i}=D(),{removeStyles:a}=le(),{toJSON:o,maxDepth:s}=O();t.exports=c;function c(e){return Object.assign(t,{client:{name:`electron-application`},depth:6,level:!1,requestOptions:{},transforms:[a,o,s],makeBodyFn({message:e}){return JSON.stringify({client:t.client,data:e.data,date:e.date.getTime(),level:e.level,scope:e.scope,variables:e.variables})},processErrorFn({error:n}){e.processMessage({data:[`electron-log: can't POST ${t.url}`,n],level:`warn`},{transports:[`console`,`file`]})},sendRequestFn({serverUrl:e,requestOptions:t,body:i}){let a=(e.startsWith(`https:`)?r:n).request(e,{method:`POST`,...t,headers:{"Content-Type":`application/json`,"Content-Length":i.length,...t.headers}});return a.write(i),a.end(),a}});function t(n){if(!t.url)return;let r=t.makeBodyFn({logger:e,message:{...n,data:i({logger:e,message:n,transport:t})},transport:t}),a=t.sendRequestFn({serverUrl:t.url,requestOptions:t.requestOptions,body:Buffer.from(r,`utf8`)});a.on(`error`,r=>t.processErrorFn({error:r,logger:e,message:n,request:a,transport:t}))}}})),_e=s(((e,t)=>{var n=ae(),r=oe(),i=se(),a=ue(),o=me(),s=he(),c=ge();t.exports=l;function l({dependencies:e,initializeFn:t}){let l=new n({dependencies:e,errorHandler:new r,eventLogger:new i,initializeFn:t,isDev:e.externalApi?.isDev(),logId:`default`,transportFactories:{console:a,file:o,ipc:s,remote:c},variables:{processType:`main`}});return l.default=l,l.Logger=n,l.processInternalErrorFn=e=>{l.transports.console.writeFn({message:{data:[`Unhandled electron-log error`,e],level:`error`}})},l}})),ve=s(((e,t)=>{var n=require(`electron`),r=C(),{initialize:i}=w(),a=_e(),o=new r({electron:n}),s=a({dependencies:{externalApi:o},initializeFn:i});t.exports=s,o.onIpc(`__ELECTRON_LOG__`,(e,t)=>{t.scope&&s.Logger.getInstance(t).scope(t.scope);let n=new Date(t.date);c({...t,date:n.getTime()?n:new Date})}),o.onIpcInvoke(`__ELECTRON_LOG__`,(e,{cmd:t=``,logId:n})=>{switch(t){case`getOptions`:return{levels:s.Logger.getInstance({logId:n}).levels,logId:n};default:return c({data:[`Unknown cmd '${t}'`],level:`error`}),{}}});function c(e){s.Logger.getInstance(e)?.processMessage(e)}})),ye=s(((e,t)=>{t.exports=ve()}));function be(){if(Ce)return;Ce=!0;let{app:e}=require(`electron`),{join:t,dirname:n}=require(`node:path`),r=e.isPackaged?t(n(e.getPath(`exe`)),`logs`):t(e.getAppPath(),`src`,`log`),i=()=>{let e=new Date;return`${e.getFullYear()}-${String(e.getMonth()+1).padStart(2,`0`)}-${String(e.getDate()).padStart(2,`0`)}`};Se.default.transports.file.resolvePathFn=e=>t(r,i()+`.log`)}function xe(){be()}var Se,Ce,k,A=o((()=>{Se=l(ye()),Se.default.initialize(),Se.default.transports.file.maxSize=5*1024*1024,Se.default.transports.console.level=`error`,Ce=!1,k=Se.default}));A();var we=new Map,Te={info:()=>{},warn:()=>{}};function Ee(e){Te=e}function j(e){let t=(0,x.randomUUID)();return we.set(t,{id:t,kill:e}),t}function M(e){we.delete(e)}function De(){let e=we.size;if(e===0)return 0;Te.info(`Killing ${e} in-flight conversion(s) on quit`);for(let e of we.values())try{e.kill()}catch(t){Te.warn(`Conversion kill failed for ${e.id}:`,t?.message??t)}return we.clear(),e}var Oe=(0,S.promisify)(ee.execFile),ke=[`h264_nvenc`,`h264_qsv`,`h264_amf`],Ae=null,je=null,Me={info:()=>{},warn:()=>{}};function Ne(e){Me=e}function Pe(e){for(let t of ke)if(RegExp(`\\b${t}\\b`).test(e))return t;return`libx264`}function Fe(e){return Ae?Promise.resolve(Ae):je||(je=(async()=>{try{let{stdout:t}=await Oe(e,[`-hide_banner`,`-encoders`],{timeout:5e3,maxBuffer:2*1024*1024}),n=Pe(t);return Me.info(`H.264 encoder selected: ${n}`),Ae=n,n}catch(e){return Me.warn(`HW encoder probe failed, falling back to libx264:`,e?.message??e),Ae=`libx264`,`libx264`}finally{je=null}})(),je)}function Ie(e,t,n){switch(e){case`h264_nvenc`:return[`-c:v`,`h264_nvenc`,`-preset`,`p4`,`-rc`,`vbr`,`-cq`,t,`-b:v`,`0`];case`h264_qsv`:return[`-c:v`,`h264_qsv`,`-preset`,`veryfast`,`-global_quality`,t];case`h264_amf`:return[`-c:v`,`h264_amf`,`-quality`,`balanced`,`-rc`,`cqp`,`-qp_i`,t,`-qp_p`,t];default:return[`-c:v`,`libx264`,`-preset`,`ultrafast`,`-crf`,t,`-threads`,String(n)]}}var Le=d.app.isPackaged?u.default.join(process.resourcesPath,`ffmpeg.exe`):y.default.path;v.default.setFfmpegPath(Le);var Re=Math.min(b.default.cpus().length,8);function ze(e,t,n,r){if(!r)return new Promise(r=>{let i=(0,v.default)(e),a=j(()=>i.kill(`SIGKILL`));i.outputOptions([`-c:v`,`copy`,`-c:a`,`aac`,`-b:a`,`128k`,`-movflags`,`+faststart`]).output(t).on(`progress`,()=>{n?.({percent:80,targetSize:0})}).on(`end`,()=>{M(a),n?.({percent:100,targetSize:0}),r({success:!0,outputPath:t})}).on(`error`,e=>{M(a),k.error(`MP4 remux failed:`,e.message),r({success:!1,outputPath:``,error:e.message})}).run()});let i=t.replace(/\.mp4$/i,`_tmp.mp4`),a=`crop=${Math.round(r.width/2)*2}:${Math.round(r.height/2)*2}:${Math.round(r.x/2)*2}:${Math.round(r.y/2)*2},`;return new Promise(async r=>{let o=await Fe(Le);function s(t){return new Promise(r=>{let o=(0,v.default)(e),s=j(()=>o.kill(`SIGKILL`));o.outputOptions([...Ie(t,`23`,Re),`-vf`,`${a}pad=ceil(iw/2)*2:ceil(ih/2)*2,format=yuv420p`,`-an`,`-movflags +faststart`]).output(i).on(`progress`,e=>{n?.({percent:Math.round((e.percent??0)*100)/200,targetSize:e.targetSize??0})}).on(`end`,()=>{M(s),r({success:!0})}).on(`error`,e=>{M(s),k.error(`MP4 pass1 failed (${t}):`,e.message),r({success:!1,error:e.message})}).run()})}let c=await s(o);if(!c.success&&o!==`libx264`&&(k.warn(`MP4 pass1: ${o} failed, retrying with libx264`),await _.default.promises.unlink(i).catch(()=>{}),c=await s(`libx264`)),!c.success){r({success:!1,outputPath:``,error:c.error});return}let l=(0,v.default)(i),u=j(()=>l.kill(`SIGKILL`));l.addInput(e).outputOptions([`-c:v`,`copy`,`-c:a`,`aac`,`-b:a`,`128k`,`-map`,`0:v`,`-map`,`1:a?`,`-shortest`,`-movflags`,`+faststart`]).output(t).on(`progress`,e=>{n?.({percent:Math.round((e.percent??0)*100)/200+50,targetSize:e.targetSize??0})}).on(`end`,()=>{M(u),_.default.promises.unlink(i).catch(()=>{}),r({success:!0,outputPath:t})}).on(`error`,e=>{M(u),k.error(`MP4 audio mux failed:`,e.message),_.default.promises.rename(i,t).then(()=>r({success:!0,outputPath:t})).catch(()=>{_.default.promises.unlink(i).catch(()=>{}),r({success:!1,outputPath:``,error:e.message})})}).run()})}function Be(e,t,n,r){let i=Math.round(n.width/2)*2,a=Math.round(n.height/2)*2,o=Math.round(n.x/2)*2,s=Math.round(n.y/2)*2;return new Promise(async n=>{let c=`crop=${i}:${a}:${o}:${s},format=yuv420p`,l=await Fe(Le);function u(n,i){return new Promise(a=>{let o=(0,v.default)(e),s=j(()=>o.kill(`SIGKILL`));o.outputOptions([...Ie(n,i,Re),`-vf`,c,`-c:a`,`copy`,`-movflags`,`+faststart`]).output(t).on(`progress`,e=>{r?.({percent:Math.round((e.percent??0)*100),targetSize:e.targetSize??0})}).on(`end`,()=>{M(s),a({success:!0,outputPath:t})}).on(`error`,e=>{M(s),k.error(`Crop failed (${n}):`,e.message),a({success:!1,outputPath:``,error:e.message})}).run()})}let d=await u(l,`18`);!d.success&&l!==`libx264`&&(k.warn(`Crop: ${l} failed, retrying with libx264`),d=await u(`libx264`,`18`)),n(d)})}function Ve(e,t,n){return new Promise(r=>{let i=Math.max(...e.map(e=>e.bounds.x+e.bounds.width))-Math.min(...e.map(e=>e.bounds.x)),a=Math.max(...e.map(e=>e.bounds.y+e.bounds.height))-Math.min(...e.map(e=>e.bounds.y)),o=Math.min(...e.map(e=>e.bounds.x)),s=Math.min(...e.map(e=>e.bounds.y)),c=Math.round(i/2)*2,l=Math.round(a/2)*2;k.info(`Merge canvas size:`,c,`x`,l),k.info(`Merge inputs:`,e.map((e,t)=>`[${t}] ${e.filePath} bounds=${JSON.stringify(e.bounds)}`).join(`, `));let u=[],d=e.length;function f(e,t){let n=e.replace(/\.webm$/i,`_remux.mp4`);return new Promise(r=>{let i=(0,v.default)(e),a=j(()=>i.kill(`SIGKILL`));i.outputOptions([`-c`,`copy`]).output(n).on(`end`,()=>{M(a),k.info(`Merge remux ${t+1}/${d} done`),r({success:!0,remuxedPath:n})}).on(`error`,e=>{M(a),k.error(`Merge remux ${t+1} failed:`,e.message),r({success:!1,remuxedPath:n,error:e.message})}).run()})}async function p(){for(let e of u)await _.default.promises.unlink(e).catch(()=>{});for(let t of e)await _.default.promises.unlink(t.filePath).catch(()=>{})}async function m(){let r=await Fe(Le),i=[`color=c=black:s=${c}x${l}[bg]`],a=`[bg]`;for(let t=0;t<e.length;t++){let n=e[t],r=Math.round((n.bounds.x-o)/2)*2,c=Math.round((n.bounds.y-s)/2)*2,l=Math.round(n.bounds.width/2)*2,u=Math.round(n.bounds.height/2)*2,d=`[s${t}]`,f=t===e.length-1?`[out]`:`[tmp${t}]`;i.push(`[${t}:v]scale=${l}:${u},setsar=1${d}`),i.push(`${a}${d}overlay=${r}:${c}${f}`),a=f}i.push(`[out]format=yuv420p`),k.info(`Merge filter_complex:`,i.join(`;`));function d(r){return new Promise(a=>{let o=(0,v.default)(),s=j(()=>o.kill(`SIGKILL`));for(let e of u)o.addInput(e);o.complexFilter(i).outputOptions([...Ie(r,`23`,Re),`-movflags`,`+faststart`]).output(t).on(`start`,()=>{k.info(`Merge ffmpeg command started (${r})`)}).on(`progress`,e=>{let t=Math.round(e.percent??0);n?.({percent:Math.min(30+t*.7,100),targetSize:e.targetSize??0})}).on(`end`,()=>{M(s),k.info(`Merge completed successfully`);for(let t of e)_.default.promises.unlink(t.filePath).catch(()=>{});for(let e of u)_.default.promises.unlink(e).catch(()=>{});a({success:!0,outputPath:t})}).on(`error`,t=>{M(s),k.error(`Multi-screen merge failed (${r}):`,t.message);for(let t of e)_.default.promises.unlink(t.filePath).catch(()=>{});for(let e of u)_.default.promises.unlink(e).catch(()=>{});a({success:!1,outputPath:``,error:t.message})}).run()})}let f=await d(r);return!f.success&&r!==`libx264`&&(k.warn(`Merge: ${r} failed, retrying with libx264`),await _.default.promises.unlink(t).catch(()=>{}),f=await d(`libx264`)),f}(async()=>{for(let t=0;t<d;t++){let i=await f(e[t].filePath,t);if(!i.success){k.error(`Merge aborted: remux ${t+1}/${d} failed, short-circuiting`),await _.default.promises.unlink(i.remuxedPath).catch(()=>{}),await p(),r({success:!1,outputPath:``,error:i.error});return}u.push(i.remuxedPath),n?.({percent:Math.round((t+1)/d*30),targetSize:0})}r(await m())})()})}function He(e,t,n,r){let{execFile:i}=require(`node:child_process`),a=y.default.path,o=n?.width??480,s=n?.fps??10,c=u.default.join(b.default.tmpdir(),`gif_palette_${Date.now()}.png`);k.info(`GIF conversion - input:`,e,`palette:`,c,`output:`,t);let l=[`-y`,`-i`,e,`-vf`,`fps=${s},scale=${o}:-1:flags=lanczos,palettegen`,c];return new Promise(u=>{let d=``,f=``,p=i(a,l,l=>{if(M(d),l){k.error(`GIF palette gen failed:`,l.message),u({success:!1,outputPath:``,error:l.message});return}k.info(`GIF palette generated successfully`);let p=i(a,[`-y`,`-i`,e,`-i`,c,`-filter_complex`,`[0:v]fps=${s},scale=${o}:-1:flags=lanczos[x];[x][1:v]paletteuse`,t],e=>{M(f),_.default.promises.unlink(c).catch(()=>{}),e?(k.error(`GIF creation failed:`,e.message),u({success:!1,outputPath:``,error:e.message})):u({success:!0,outputPath:t})});f=j(()=>p.kill(`SIGKILL`)),p.stdout&&p.stdout.on(`data`,e=>{let t=e.toString().match(/time=(\d+:\d+:\d+\.\d+)/);if(t&&n?.duration){let e=t[1].split(`:`).map(Number),i=e[0]*3600+e[1]*60+e[2],a=Math.min(Math.round(i/n.duration*100),99);r?.({percent:a+50,targetSize:0})}else r?.({percent:75,targetSize:0})})});d=j(()=>p.kill(`SIGKILL`))})}function Ue(e){return e===`zh`||e===`en`}function We(e){Ye=e}function Ge(e,t,n){let r=(e===`en`?Je:qe)[t]??Je[t]??qe[t]??t;if(n)for(let[e,t]of Object.entries(n))r=r.replace(RegExp(`\\{${e}\\}`,`g`),String(t));return r}function N(e,t){return Ge(Ye,e,t)}function Ke(){return{locale:Ye,messages:Ye===`en`?Je:qe}}var qe,Je,Ye,Xe=o((()=>{qe={"common.confirm":`确认`,"common.cancel":`取消`,"common.ok":`确定`,"common.close":`关闭`,"common.loading":`加载中...`,"common.reset":`重置`,"common.on":`开`,"common.off":`关`,"common.allow":`允许`,"common.deny":`拒绝`,"common.alwaysAllow":`始终允许`,"common.save":`保存`,"win.minimize":`最小化`,"win.maximize":`最大化`,"ball.menu.record":`录屏`,"ball.menu.music":`音乐`,"ball.menu.ai":`AI助手`,"ball.menu.todo":`待办便签`,"ball.menu.settings":`设置`,"settings.group.ball":`悬浮球`,"settings.ball.show":`显示悬浮球`,"settings.ball.showDesc":`关闭后悬浮球隐藏，可从托盘「显示设置窗口」重新打开`,"settings.ball.alwaysOnTop":`始终置顶`,"settings.ball.alwaysOnTopDesc":`关闭后悬浮球可被其他窗口遮挡`,"settings.ball.resetPos":`重置位置`,"settings.ball.resetPosDesc":`把悬浮球移回屏幕中心`,"settings.ball.snapGutter":`贴边留白`,"settings.ball.snapGutterDesc":`贴边吸附时距屏幕边缘的像素留白（0 = 全贴合）`,"settings.group.menu":`悬浮球菜单`,"settings.group.system":`系统`,"settings.group.language":`语言`,"settings.system.openAtLogin":`开机自启`,"settings.system.openAtLoginDesc":`登录系统时自动启动本应用`,"settings.language.label":`界面语言`,"settings.language.desc":`切换后悬浮球、AI 岛等窗口在下次打开时生效`,"settings.lang.zh":`简体中文`,"settings.lang.en":`English`,"aiIsland.idle":`AI 待机`,"aiIsland.thinking":`AI 思考中`,"aiIsland.working":`AI 工作中`,"aiIsland.error":`AI 出错了`,"aiIsland.notification":`等待审批`,"aiIsland.done":`任务完成`,"aiIsland.permTitle":`权限请求`,"aiIsland.permTool":`工具`,"aiIsland.permInput":`参数`,"aiIsland.questionTitle":`AI 正在提问`,"aiIsland.prevQuestion":`上一题`,"aiIsland.nextQuestion":`下一题`,"aiIsland.submitAnswer":`提交答案`,"aiIsland.know":`知道了`,"aiIsland.otherPlaceholder":`输入其他内容…`,"aiIsland.otherHint":`可与其他选项同时选择。`,"aiIsland.answerInClaude":`请到 Claude Code 界面作答，这里仅作提醒。`,"aiIsland.viewDetail":`点击查看详情`,"aiIsland.unknown":`未知操作`,"aiIsland.other":`其他`,"aiIsland.progress":`第 {n}/{t} 题`,"record.title":`高清录屏`,"record.start":`开始录制`,"record.pause":`暂停`,"record.resume":`继续`,"record.stop":`停止`,"record.allScreens":`多屏录制`,"record.selectRegion":`区域录制`,"record.toggleSys":`系统音频`,"record.closeAndStop":`关闭并停止录制`,"record.claudeRequest":`Claude Code 请求权限`,"record.targetInfo":`目标信息`,"record.homeTab":`录屏`,"record.settingsTab":`设置`,"record.fullscreen":`全屏录制`,"record.customRegion":`自定义区域`,"record.primary":`主`,"record.mic":`麦克风`,"record.recBtn":`录制`,"record.toggleCamera":`开启摄像头`,"record.toggleMic":`开启麦克风`,"record.startShort":`开始录制 ({k})`,"record.pauseShort":`暂停 ({k})`,"record.resumeShort":`继续 ({k})`,"record.stopShort":`停止录制 ({k})`,"record.toggleCameraShort":`开启摄像头 ({k})`,"record.toggleMicShort":`开启麦克风 ({k})`,"record.converting":`转换中`,"record.convertDone":`转换完成`,"record.listEmpty":`暂无录制记录`,"record.play":`播放`,"record.exportGif":`导出 GIF`,"record.delete":`删除`,"record.duration":`时长`,"record.size":`大小`,"record.history":`录制历史`,"record.openFolder":`打开文件夹`,"settings.title":`设置`,"settings.video":`视频设置`,"settings.format":`录制格式`,"settings.quality":`画质`,"settings.fps":`帧率`,"settings.outputDir":`输出目录`,"settings.changeDir":`更改`,"settings.videoSource":`视频来源`,"settings.audio":`音频`,"settings.mic":`麦克风`,"settings.systemAudio":`系统音频`,"settings.camera":`摄像头`,"settings.cameraSource":`摄像头来源`,"settings.drawing":`画笔`,"settings.drawingColor":`画笔颜色`,"settings.drawingWidth":`画笔粗细`,"settings.shortcuts":`快捷键`,"settings.shortcutStart":`开始/停止`,"settings.shortcutPause":`暂停/继续`,"settings.shortcutCamera":`切换摄像头`,"settings.shortcutDrawing":`切换画笔`,"settings.recordingTitle":`录屏设置`,"settings.output":`输出`,"settings.saveDir":`保存目录`,"settings.chooseDir":`选择保存目录`,"settings.browse":`浏览`,"settings.defaultFormat":`默认格式`,"settings.maxFps":`最大帧率`,"settings.qualityHigh":`高 (5 Mbps)`,"settings.qualityMedium":`中 (2.5 Mbps)`,"settings.qualityLow":`低 (1 Mbps)`,"settings.default":`默认`,"settings.device":`设备`,"settings.about":`关于`,"ai.title":`AI 助手`,"ai.installHooks":`安装 Claude Code 钩子`,"ai.uninstallHooks":`卸载 Claude Code 钩子`,"ai.hooksStatus":`钩子状态`,"ai.hooksInstalled":`已安装`,"ai.hooksNotInstalled":`未安装`,"ai.autoAllow":`自动允许权限`,"ai.autoAllowDesc":`开启后新权限请求自动放行，不再弹出审批卡片`,"ai.serverPort":`本地服务端口`,"ai.serverRunning":`服务运行中`,"ai.serverStopped":`服务未运行`,"ai.claudeRunning":`Claude Code 正在运行`,"ai.claudeStopped":`Claude Code 未检测到`,"ai.sessionCount":`会话数`,"ai.sessionsCount":`{n} 个会话`,"ai.waiting":`Claude 运行中，等待交互`,"ai.noActive":`无活跃会话`,"ai.online":`在线`,"ai.offline":`离线`,"ai.state.idle":`空闲`,"ai.state.thinking":`思考中`,"ai.state.working":`工作中`,"ai.state.error":`错误`,"ai.state.notification":`待审批`,"ai.state.done":`完成`,"ai.groupIntegration":`集成`,"ai.hooksDesc":`钩子脚本状态`,"ai.groupPermission":`权限`,"ai.autoAllowTitle":`自动允许所有权限`,"ai.groupIsland":`悬浮岛外观`,"ai.flat":`横条态（更扁的细横条）`,"ai.flatDesc":`把悬浮岛默认状态条压成更扁的细横条，省屏幕空间`,"todo.title":`待办便签`,"todo.add":`添加`,"todo.placeholder":`输入待办事项...`,"todo.empty":`暂无待办`,"todo.memo":`便签`,"todo.task":`待办`,"todo.addTodo":`新建待办`,"todo.addMemo":`新建便签`,"todo.done":`完成`,"todo.undone":`恢复`,"todo.delete":`删除`,"todo.pin":`置顶`,"todo.unpin":`取消置顶`,"todo.edit":`编辑`,"todo.save":`保存`,"todo.cancel":`取消`,"todo.reminder":`提醒`,"todo.reminderNone":`无提醒`,"todo.priority":`优先级`,"todo.priorityLow":`低`,"todo.priorityMedium":`中`,"todo.priorityHigh":`高`,"todo.priorityUrgent":`紧急`,"todo.titlePlaceholder":`输入标题...`,"todo.contentPlaceholder":`输入内容...`,"todo.reminderOverdue":`已到期：{title}`,"todo.count":`{n} 个待办`,"todo.searchPlaceholder":`搜索待办/便签...`,"todo.incomplete":`{n} 项未完成`,"todo.back":`返回`,"todo.more":`更多设置`,"todo.badge":`悬浮球气泡`,"todo.typeTodo":`待办`,"todo.typeMemo":`备忘`,"todo.tabAll":`全部`,"todo.noItems":`还没有{n}`,"todo.noTitle":`无标题`,"todo.noContent":`无内容`,"todo.added":`已新增`,"todo.saved":`已保存`,"todo.saveFailed":`保存失败`,"todo.deleted":`已删除`,"todo.completed":`已完成`,"todo.markDone":`标记完成`,"todo.moreOptions":`更多选项`,"todo.collapseOptions":`收起选项`,"todo.moreTitle":`类型、优先级、提醒`,"todo.typeField":`类型`,"todo.clearReminder":`清除提醒`,"todo.noBody":`（无正文内容）`,"todo.openTodo":`打开待办`,"todo.stickyTitle":`待办便签`,"todo.reminTitle":`待办提醒`,"todo.open":`点击打开`,"todo.reminderRing":`到点了`,"todo.reminderBody":`到时间了，记得处理一下。`,"sched.title":`定时录制`,"sched.aboutToStart":`录制即将开始`,"sched.mode":`模式切换`,"sched.countdown":`倒计时`,"sched.scheduled":`指定时间`,"sched.countdownMode":`倒计时模式`,"sched.scheduledMode":`指定时间模式`,"sched.delay":`延迟`,"sched.minutes":`分钟`,"sched.startCountdown":`开始倒计时`,"sched.date":`日期`,"sched.time":`时间`,"sched.set":`设置定时`,"sched.future":`请选择一个未来的时间`,"convert.preparing":`准备中`,"convert.start":`开始转换`,"convert.done":`转换完成`,"convert.failed":`转换失败`,"convert.export":`导出`,"convert.progress":`转换中... {n}%`,"convert.preparingDots":`准备中...`,"convert.startDots":`开始转换...`,"convert.doneEx":`转换完成!`,"convert.failedColon":`转换失败: {e}`,"video.seconds":`秒`,"record.paused":`已暂停`,"draw.pen":`画笔`,"draw.eraser":`橡皮`,"draw.arrow":`箭头`,"draw.rect":`矩形`,"draw.tools":`工具选择`,"draw.color":`颜色选择`,"draw.width":`粗细`,"draw.lineWidth":`线条粗细`,"draw.actions":`操作`,"draw.undo":`撤销`,"draw.clear":`清除全部`,"screen.error":`获取屏幕源失败`,"screen.choose":`选择录制源`,"screen.none":`未找到可用的屏幕源`,"camera.title":`摄像头`,"region.by":`全屏选区由`,"region.mainWin":`主进程窗口处理`,"region.none":`此处无`,"tools.claudeCode":`Claude Code`,"tools.codex":`Codex`,"tools.approvalNone":`仅展示状态，不支持审批`,"tools.notRunning":`未运行`,"tools.toolSessions":`{n} 个会话`,"tools.idle":`空闲`,"tools.working":`工作中`,"tools.title":`工具`,"music.title":`音乐`,"music.noSession":`未检测到系统媒体`,"music.unsupported":`系统媒体（SMTC）不可用`,"music.playing":`播放中`,"music.paused":`已暂停`,"music.unknownArtist":`未知歌手`,"music.play":`播放`,"music.pause":`暂停`,"music.next":`下一首`,"music.prev":`上一首`,"music.indicator":`频谱指示器`,"music.indicatorDesc":`开启系统音频回环采集，随音乐实时动态（需播放音源）`,"music.enableLoop":`开启`,"music.disableLoop":`关闭`,"music.loopFail":`系统音频回环不可用`,"music.lyrics":`歌词`,"music.noLyrics":`暂无歌词（歌词源待配置）`},Je={"common.confirm":`Confirm`,"common.cancel":`Cancel`,"common.ok":`OK`,"common.close":`Close`,"common.loading":`Loading...`,"common.reset":`Reset`,"common.on":`On`,"common.off":`Off`,"common.allow":`Allow`,"common.deny":`Deny`,"common.alwaysAllow":`Always Allow`,"common.save":`Save`,"win.minimize":`Minimize`,"win.maximize":`Maximize`,"ball.menu.record":`Record`,"ball.menu.music":`Music`,"ball.menu.ai":`AI`,"ball.menu.todo":`Notes`,"ball.menu.settings":`Settings`,"settings.group.ball":`Floating Ball`,"settings.ball.show":`Show Floating Ball`,"settings.ball.showDesc":`Hidden ball can be reopened from the tray menu “Show Settings Window”`,"settings.ball.alwaysOnTop":`Always on Top`,"settings.ball.alwaysOnTopDesc":`When off, other windows may cover the ball`,"settings.ball.resetPos":`Reset Position`,"settings.ball.resetPosDesc":`Move the ball back to the center of the screen`,"settings.ball.snapGutter":`Edge gutter`,"settings.ball.snapGutterDesc":`Pixel gutter from the screen edge when snapped (0 = flush)`,"settings.group.menu":`Ball Menu`,"settings.group.system":`System`,"settings.group.language":`Language`,"settings.system.openAtLogin":`Open at Login`,"settings.system.openAtLoginDesc":`Auto start this app when you sign in`,"settings.language.label":`Interface Language`,"settings.language.desc":`Ball, AI assistant and other windows apply on next open`,"settings.lang.zh":`简体中文`,"settings.lang.en":`English`,"ai.title":`AI Assistant`,"ai.installHooks":`Install Claude Code hooks`,"ai.uninstallHooks":`Uninstall Claude Code hooks`,"ai.hooksStatus":`Hook status`,"ai.hooksInstalled":`Installed`,"ai.hooksNotInstalled":`Not installed`,"ai.autoAllow":`Auto-allow permissions`,"ai.autoAllowDesc":`When on, new permission requests are allowed automatically without approval cards`,"ai.serverPort":`Local server port`,"ai.serverRunning":`Server running`,"ai.serverStopped":`Server not running`,"ai.claudeRunning":`Claude Code is running`,"ai.claudeStopped":`Claude Code not detected`,"ai.sessionCount":`Sessions`,"ai.sessionsCount":`{n} sessions`,"ai.waiting":`Claude is running, waiting for interaction`,"ai.noActive":`No active sessions`,"ai.online":`Online`,"ai.offline":`Offline`,"ai.state.idle":`Idle`,"ai.state.thinking":`Thinking`,"ai.state.working":`Working`,"ai.state.error":`Error`,"ai.state.notification":`Pending`,"ai.state.done":`Done`,"ai.groupIntegration":`Integration`,"ai.hooksDesc":`Hook script status`,"ai.groupPermission":`Permissions`,"ai.autoAllowTitle":`Auto-allow all permissions`,"ai.groupIsland":`AI Island Look`,"ai.flat":`Flat bar (slimmer)`,"ai.flatDesc":`Compress the island status bar into a slimmer flat bar to save screen space`,"aiIsland.idle":`AI idle`,"aiIsland.thinking":`AI thinking`,"aiIsland.working":`AI working`,"aiIsland.error":`AI error`,"aiIsland.notification":`Approval needed`,"aiIsland.done":`Task done`,"aiIsland.permTitle":`Permission Request`,"aiIsland.permTool":`Tool`,"aiIsland.permInput":`Arguments`,"aiIsland.questionTitle":`AI is asking`,"aiIsland.prevQuestion":`Previous`,"aiIsland.nextQuestion":`Next`,"aiIsland.submitAnswer":`Submit`,"aiIsland.know":`Got it`,"aiIsland.otherPlaceholder":`Type other...`,"aiIsland.otherHint":`Can be selected together with other options.`,"aiIsland.answerInClaude":`Answer in the Claude Code interface; this is just a reminder.`,"aiIsland.viewDetail":`Click to view details`,"aiIsland.unknown":`Unknown action`,"aiIsland.other":`Other`,"aiIsland.progress":`Q {n}/{t}`,"record.title":`HD Screen Recorder`,"record.start":`Start Recording`,"record.pause":`Pause`,"record.resume":`Resume`,"record.stop":`Stop`,"record.allScreens":`All screens`,"record.selectRegion":`Select region`,"record.toggleSys":`System audio`,"record.closeAndStop":`Close & stop`,"record.claudeRequest":`Claude Code requests permission`,"record.targetInfo":`Target info`,"record.homeTab":`Record`,"record.settingsTab":`Settings`,"record.fullscreen":`Full Screen`,"record.customRegion":`Custom Region`,"record.primary":`Pri`,"record.mic":`Mic`,"record.recBtn":`Record`,"record.toggleCamera":`Enable Camera`,"record.toggleMic":`Enable Microphone`,"record.startShort":`Start Recording ({k})`,"record.pauseShort":`Pause ({k})`,"record.resumeShort":`Resume ({k})`,"record.stopShort":`Stop Recording ({k})`,"record.toggleCameraShort":`Enable Camera ({k})`,"record.toggleMicShort":`Enable Microphone ({k})`,"record.converting":`Converting`,"record.convertDone":`Done`,"record.listEmpty":`No recordings yet`,"record.play":`Play`,"record.exportGif":`Export GIF`,"record.delete":`Delete`,"record.duration":`Duration`,"record.size":`Size`,"record.history":`History`,"record.openFolder":`Open folder`,"settings.title":`Settings`,"settings.video":`Video`,"settings.format":`Format`,"settings.quality":`Quality`,"settings.fps":`FPS`,"settings.outputDir":`Output directory`,"settings.changeDir":`Change`,"settings.videoSource":`Video source`,"settings.audio":`Audio`,"settings.mic":`Microphone`,"settings.systemAudio":`System audio`,"settings.camera":`Camera`,"settings.cameraSource":`Camera source`,"settings.drawing":`Drawing`,"settings.drawingColor":`Color`,"settings.drawingWidth":`Width`,"settings.shortcuts":`Shortcuts`,"settings.shortcutStart":`Start / Stop`,"settings.shortcutPause":`Pause / Resume`,"settings.shortcutCamera":`Toggle Camera`,"settings.shortcutDrawing":`Toggle Drawing`,"settings.recordingTitle":`Recording Settings`,"settings.output":`Output`,"settings.saveDir":`Save directory`,"settings.chooseDir":`Choose save directory`,"settings.browse":`Browse`,"settings.defaultFormat":`Format`,"settings.maxFps":`Max FPS`,"settings.qualityHigh":`High (5 Mbps)`,"settings.qualityMedium":`Medium (2.5 Mbps)`,"settings.qualityLow":`Low (1 Mbps)`,"settings.default":`Default`,"settings.device":`Device`,"settings.about":`About`,"todo.title":`Todo Notes`,"todo.add":`Add`,"todo.placeholder":`Type a todo...`,"todo.empty":`No todos yet`,"todo.memo":`Memo`,"todo.task":`Task`,"todo.addTodo":`New Todo`,"todo.addMemo":`New Memo`,"todo.done":`Done`,"todo.undone":`Restore`,"todo.delete":`Delete`,"todo.pin":`Pin`,"todo.unpin":`Unpin`,"todo.edit":`Edit`,"todo.save":`Save`,"todo.cancel":`Cancel`,"todo.reminder":`Reminder`,"todo.reminderNone":`No reminder`,"todo.priority":`Priority`,"todo.priorityLow":`Low`,"todo.priorityMedium":`Medium`,"todo.priorityHigh":`High`,"todo.priorityUrgent":`Urgent`,"todo.titlePlaceholder":`Type a title...`,"todo.contentPlaceholder":`Type content...`,"todo.reminderOverdue":`Due: {title}`,"todo.count":`{n} items`,"todo.searchPlaceholder":`Search todos/memos...`,"todo.incomplete":`{n} incomplete`,"todo.back":`Back`,"todo.more":`More settings`,"todo.badge":`Ball badge`,"todo.typeTodo":`Todo`,"todo.typeMemo":`Memo`,"todo.tabAll":`All`,"todo.noItems":`No {n} yet`,"todo.noTitle":`No title`,"todo.noContent":`No content`,"todo.added":`Added`,"todo.saved":`Saved`,"todo.saveFailed":`Save failed`,"todo.deleted":`Deleted`,"todo.completed":`Completed`,"todo.markDone":`Mark done`,"todo.moreOptions":`More options`,"todo.collapseOptions":`Collapse`,"todo.moreTitle":`Type, priority, reminder`,"todo.typeField":`Type`,"todo.clearReminder":`Clear reminder`,"todo.noBody":`(No content)`,"todo.openTodo":`Open todos`,"todo.stickyTitle":`Todo Notes`,"todo.reminTitle":`Todo reminder`,"todo.open":`Click to open`,"todo.reminderRing":`Time's up`,"todo.reminderBody":`It's time — take care of it.`,"sched.title":`Scheduled Recording`,"sched.aboutToStart":`Recording starts soon`,"sched.mode":`Mode`,"sched.countdown":`Countdown`,"sched.scheduled":`Scheduled`,"sched.countdownMode":`Countdown mode`,"sched.scheduledMode":`Scheduled mode`,"sched.delay":`Delay`,"sched.minutes":`min`,"sched.startCountdown":`Start countdown`,"sched.date":`Date`,"sched.time":`Time`,"sched.set":`Schedule`,"sched.future":`Pick a time in the future`,"convert.preparing":`Preparing`,"convert.start":`Start converting`,"convert.done":`Conversion done`,"convert.failed":`Conversion failed`,"convert.export":`Export`,"convert.progress":`Converting... {n}%`,"convert.preparingDots":`Preparing...`,"convert.startDots":`Starting...`,"convert.doneEx":`Conversion complete!`,"convert.failedColon":`Conversion failed: {e}`,"video.seconds":`s`,"record.paused":`Paused`,"draw.pen":`Pen`,"draw.eraser":`Eraser`,"draw.arrow":`Arrow`,"draw.rect":`Rectangle`,"draw.tools":`Tools`,"draw.color":`Color`,"draw.width":`Width`,"draw.lineWidth":`Line width`,"draw.actions":`Actions`,"draw.undo":`Undo`,"draw.clear":`Clear all`,"screen.error":`Failed to get screen sources`,"screen.choose":`Select recording source`,"screen.none":`No screen source found`,"camera.title":`Camera`,"region.by":`Full-screen selection is handled`,"region.mainWin":`by the main process window`,"region.none":`Nothing here`,"tools.claudeCode":`Claude Code`,"tools.codex":`Codex`,"tools.approvalNone":`Status only, no approval`,"tools.notRunning":`Not running`,"tools.toolSessions":`{n} sessions`,"tools.idle":`Idle`,"tools.working":`Working`,"tools.title":`Tools`,"music.title":`Music`,"music.noSession":`No system media detected`,"music.unsupported":`SMTC unavailable`,"music.playing":`Playing`,"music.paused":`Paused`,"music.unknownArtist":`Unknown artist`,"music.play":`Play`,"music.pause":`Pause`,"music.next":`Next`,"music.prev":`Previous`,"music.indicator":`Spectrum`,"music.indicatorDesc":`Capture system audio loopback for a live spectrum (needs a playing source)`,"music.enableLoop":`On`,"music.disableLoop":`Off`,"music.loopFail":`System audio loopback unavailable`,"music.lyrics":`Lyrics`,"music.noLyrics":`No lyrics (source pending)`},Ye=`zh`})),Ze=s(((e,t)=>{A(),Xe();var n=null;function r(){return{mic:N(`record.toggleMic`),sys:N(`record.toggleSys`),cam:N(`record.toggleCamera`),rec:N(`record.recBtn`),start:N(`record.start`),stop:N(`record.stop`),pause:N(`record.pause`),resume:N(`record.resume`),cancel:N(`common.cancel`),closeStop:N(`record.closeAndStop`),viewDetail:N(`aiIsland.viewDetail`),idle:N(`aiIsland.idle`),thinking:N(`aiIsland.thinking`),working:N(`aiIsland.working`),error:N(`aiIsland.error`),notification:N(`aiIsland.notification`),done:N(`aiIsland.done`),unknown:N(`aiIsland.unknown`),allow:N(`common.allow`),deny:N(`common.deny`),alwaysAllow:N(`common.alwaysAllow`),requestTitle:N(`record.claudeRequest`),toolName:N(`aiIsland.permTool`),targetInfo:N(`record.targetInfo`)}}function i(e){n=e}function a(e,t){p&&!p.isDestroyed()&&p.webContents.send(`audio-levels`,{micLevel:e,sysLevel:t}),w&&!w.isDestroyed()&&w.webContents.send(`audio-levels`,{micLevel:e,sysLevel:t})}var o=null,s=null;function c(){return new Promise(e=>{s=e,n&&!n.isDestroyed()&&n.minimize();let{x:t,y:r,width:i,height:a}=d.screen.getPrimaryDisplay().bounds;o=new d.BrowserWindow({x:t,y:r,width:i,height:a,frame:!1,transparent:!0,resizable:!1,movable:!1,alwaysOnTop:!0,skipTaskbar:!0,hasShadow:!1,webPreferences:{nodeIntegration:!0,contextIsolation:!1}});let c=(0,u.join)(__dirname,`region-selector.html`);o.loadFile(c).catch(e=>{k.error(`Failed to load region selector:`,e.message),l(null)}),o.setFullScreen(!0),o.setVisibleOnAllWorkspaces(!0),o.setIgnoreMouseEvents(!1),o.on(`closed`,()=>{s&&=(s(null),null)})})}function l(e){o&&!o.isDestroyed()&&o.close(),o=null,s&&=(s(e),null)}var f=null,p=null,m=null,h=null,g=null,_=200,v=150,y=12,b=null,x=0,ee=0,S=null;function te(){if(!g||g.isDestroyed())return;let e=d.screen.getCursorScreenPoint(),[t,n]=g.getPosition();x=e.x-t,ee=e.y-n;let[r,i]=g.getSize();S=setInterval(()=>{if(!g||g.isDestroyed()){ne();return}let e=d.screen.getCursorScreenPoint(),t=e.x-x,n=e.y-ee;b&&(t=Math.max(b.x,Math.min(t,b.x+b.width-r)),n=Math.max(b.y,Math.min(n,b.y+b.height-i))),g.setBounds({x:t,y:n,width:r,height:i})},16)}function ne(){S&&=(clearInterval(S),null)}function re(e,t){C(),b=e;let n=e.x+e.width-_-y,r=e.y+y;g=new d.BrowserWindow({x:n,y:r,width:_,height:v,frame:!1,transparent:!0,resizable:!1,movable:!1,alwaysOnTop:!0,skipTaskbar:!0,hasShadow:!1,webPreferences:{nodeIntegration:!0,contextIsolation:!1}}),g.setVisibleOnAllWorkspaces(!0),g.setAlwaysOnTop(!0,`screen-saver`);let i=(0,u.join)(__dirname,`camera-preview.html`),a=t?`?deviceId=${encodeURIComponent(t)}`:``;g.loadFile(i+a).catch(e=>{k.error(`Failed to load camera preview:`,e.message)}),k.info(`Camera preview shown at`,n,r)}function C(){g&&!g.isDestroyed()&&(ie(),g.close(),g=null)}function ie(){g&&!g.isDestroyed()&&g.webContents.send(`camera-control`,`stop`)}var w=null,T=null,E=null,ae=`idle`,oe=null;function se(e,t){D(),ae=`idle`;let n=d.screen.getPrimaryDisplay();if(t!=null){let e=d.screen.getAllDisplays().find(e=>e.id===t);e&&(n=e)}let i=n.bounds;oe=i,w=new d.BrowserWindow({x:Math.round(i.x+(i.width-340)/2),y:i.y+4,width:340,height:44,frame:!1,transparent:!0,resizable:!0,movable:!1,alwaysOnTop:!0,skipTaskbar:!0,hasShadow:!1,webPreferences:{nodeIntegration:!0,contextIsolation:!1}}),w.setVisibleOnAllWorkspaces(!0),w.setMinimumSize(100,44),w.setAlwaysOnTop(!0,`screen-saver`);let a=`<!DOCTYPE html>
+    `;
+			fs$5.writeFileSync(preloadPath, preloadCode, "utf8");
+		}
+		externalApi.setPreloadFileForSessions({
+			filePath: preloadPath,
+			includeFutureSession,
+			getSessions
+		});
+	}
+	function initializeSpyRendererConsole({ externalApi, logger }) {
+		if (spyConsoleInitialized) {
+			logger.warn((/* @__PURE__ */ new Error("log.initialize({ spyRendererConsole }) already called")).stack);
+			return;
+		}
+		spyConsoleInitialized = true;
+		const levels = [
+			"debug",
+			"info",
+			"warn",
+			"error"
+		];
+		externalApi.onEveryWebContentsEvent("console-message", (event, level, message) => {
+			logger.processMessage({
+				data: [message],
+				level: levels[level],
+				variables: { processType: "renderer" }
+			});
+		});
+	}
+}));
+//#endregion
+//#region node_modules/electron-log/src/core/scope.js
+var require_scope = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	module.exports = scopeFactory;
+	function scopeFactory(logger) {
+		return Object.defineProperties(scope, {
+			defaultLabel: {
+				value: "",
+				writable: true
+			},
+			labelPadding: {
+				value: true,
+				writable: true
+			},
+			maxLabelLength: {
+				value: 0,
+				writable: true
+			},
+			labelLength: { get() {
+				switch (typeof scope.labelPadding) {
+					case "boolean": return scope.labelPadding ? scope.maxLabelLength : 0;
+					case "number": return scope.labelPadding;
+					default: return 0;
+				}
+			} }
+		});
+		function scope(label) {
+			scope.maxLabelLength = Math.max(scope.maxLabelLength, label.length);
+			const newScope = {};
+			for (const level of logger.levels) newScope[level] = (...d) => logger.logData(d, {
+				level,
+				scope: label
+			});
+			newScope.log = newScope.info;
+			return newScope;
+		}
+	}
+}));
+//#endregion
+//#region node_modules/electron-log/src/core/Buffering.js
+var require_Buffering = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	var Buffering = class {
+		constructor({ processMessage }) {
+			this.processMessage = processMessage;
+			this.buffer = [];
+			this.enabled = false;
+			this.begin = this.begin.bind(this);
+			this.commit = this.commit.bind(this);
+			this.reject = this.reject.bind(this);
+		}
+		addMessage(message) {
+			this.buffer.push(message);
+		}
+		begin() {
+			this.enabled = [];
+		}
+		commit() {
+			this.enabled = false;
+			this.buffer.forEach((item) => this.processMessage(item));
+			this.buffer = [];
+		}
+		reject() {
+			this.enabled = false;
+			this.buffer = [];
+		}
+	};
+	module.exports = Buffering;
+}));
+//#endregion
+//#region node_modules/electron-log/src/core/Logger.js
+var require_Logger = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	var scopeFactory = require_scope();
+	var Buffering = require_Buffering();
+	module.exports = class Logger {
+		static instances = {};
+		dependencies = {};
+		errorHandler = null;
+		eventLogger = null;
+		functions = {};
+		hooks = [];
+		isDev = false;
+		levels = null;
+		logId = null;
+		scope = null;
+		transports = {};
+		variables = {};
+		constructor({ allowUnknownLevel = false, dependencies = {}, errorHandler, eventLogger, initializeFn, isDev = false, levels = [
+			"error",
+			"warn",
+			"info",
+			"verbose",
+			"debug",
+			"silly"
+		], logId, transportFactories = {}, variables } = {}) {
+			this.addLevel = this.addLevel.bind(this);
+			this.create = this.create.bind(this);
+			this.initialize = this.initialize.bind(this);
+			this.logData = this.logData.bind(this);
+			this.processMessage = this.processMessage.bind(this);
+			this.allowUnknownLevel = allowUnknownLevel;
+			this.buffering = new Buffering(this);
+			this.dependencies = dependencies;
+			this.initializeFn = initializeFn;
+			this.isDev = isDev;
+			this.levels = levels;
+			this.logId = logId;
+			this.scope = scopeFactory(this);
+			this.transportFactories = transportFactories;
+			this.variables = variables || {};
+			for (const name of this.levels) this.addLevel(name, false);
+			this.log = this.info;
+			this.functions.log = this.log;
+			this.errorHandler = errorHandler;
+			errorHandler?.setOptions({
+				...dependencies,
+				logFn: this.error
+			});
+			this.eventLogger = eventLogger;
+			eventLogger?.setOptions({
+				...dependencies,
+				logger: this
+			});
+			for (const [name, factory] of Object.entries(transportFactories)) this.transports[name] = factory(this, dependencies);
+			Logger.instances[logId] = this;
+		}
+		static getInstance({ logId }) {
+			return this.instances[logId] || this.instances.default;
+		}
+		addLevel(level, index = this.levels.length) {
+			if (index !== false) this.levels.splice(index, 0, level);
+			this[level] = (...args) => this.logData(args, { level });
+			this.functions[level] = this[level];
+		}
+		catchErrors(options) {
+			this.processMessage({
+				data: ["log.catchErrors is deprecated. Use log.errorHandler instead"],
+				level: "warn"
+			}, { transports: ["console"] });
+			return this.errorHandler.startCatching(options);
+		}
+		create(options) {
+			if (typeof options === "string") options = { logId: options };
+			return new Logger({
+				dependencies: this.dependencies,
+				errorHandler: this.errorHandler,
+				initializeFn: this.initializeFn,
+				isDev: this.isDev,
+				transportFactories: this.transportFactories,
+				variables: { ...this.variables },
+				...options
+			});
+		}
+		compareLevels(passLevel, checkLevel, levels = this.levels) {
+			const pass = levels.indexOf(passLevel);
+			const check = levels.indexOf(checkLevel);
+			if (check === -1 || pass === -1) return true;
+			return check <= pass;
+		}
+		initialize(options = {}) {
+			this.initializeFn({
+				logger: this,
+				...this.dependencies,
+				...options
+			});
+		}
+		logData(data, options = {}) {
+			if (this.buffering.enabled) this.buffering.addMessage({
+				data,
+				date: /* @__PURE__ */ new Date(),
+				...options
+			});
+			else this.processMessage({
+				data,
+				...options
+			});
+		}
+		processMessage(message, { transports = this.transports } = {}) {
+			if (message.cmd === "errorHandler") {
+				this.errorHandler.handle(message.error, {
+					errorName: message.errorName,
+					processType: "renderer",
+					showDialog: Boolean(message.showDialog)
+				});
+				return;
+			}
+			let level = message.level;
+			if (!this.allowUnknownLevel) level = this.levels.includes(message.level) ? message.level : "info";
+			const normalizedMessage = {
+				date: /* @__PURE__ */ new Date(),
+				logId: this.logId,
+				...message,
+				level,
+				variables: {
+					...this.variables,
+					...message.variables
+				}
+			};
+			for (const [transName, transFn] of this.transportEntries(transports)) {
+				if (typeof transFn !== "function" || transFn.level === false) continue;
+				if (!this.compareLevels(transFn.level, message.level)) continue;
+				try {
+					const transformedMsg = this.hooks.reduce((msg, hook) => {
+						return msg ? hook(msg, transFn, transName) : msg;
+					}, normalizedMessage);
+					if (transformedMsg) transFn({
+						...transformedMsg,
+						data: [...transformedMsg.data]
+					});
+				} catch (e) {
+					this.processInternalErrorFn(e);
+				}
+			}
+		}
+		processInternalErrorFn(_e) {}
+		transportEntries(transports = this.transports) {
+			return (Array.isArray(transports) ? transports : Object.entries(transports)).map((item) => {
+				switch (typeof item) {
+					case "string": return this.transports[item] ? [item, this.transports[item]] : null;
+					case "function": return [item.name, item];
+					default: return Array.isArray(item) ? item : null;
+				}
+			}).filter(Boolean);
+		}
+	};
+}));
+//#endregion
+//#region node_modules/electron-log/src/node/ErrorHandler.js
+var require_ErrorHandler = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	var ErrorHandler = class {
+		externalApi = void 0;
+		isActive = false;
+		logFn = void 0;
+		onError = void 0;
+		showDialog = true;
+		constructor({ externalApi, logFn = void 0, onError = void 0, showDialog = void 0 } = {}) {
+			this.createIssue = this.createIssue.bind(this);
+			this.handleError = this.handleError.bind(this);
+			this.handleRejection = this.handleRejection.bind(this);
+			this.setOptions({
+				externalApi,
+				logFn,
+				onError,
+				showDialog
+			});
+			this.startCatching = this.startCatching.bind(this);
+			this.stopCatching = this.stopCatching.bind(this);
+		}
+		handle(error, { logFn = this.logFn, onError = this.onError, processType = "browser", showDialog = this.showDialog, errorName = "" } = {}) {
+			error = normalizeError(error);
+			try {
+				if (typeof onError === "function") {
+					const versions = this.externalApi?.getVersions() || {};
+					const createIssue = this.createIssue;
+					if (onError({
+						createIssue,
+						error,
+						errorName,
+						processType,
+						versions
+					}) === false) return;
+				}
+				errorName ? logFn(errorName, error) : logFn(error);
+				if (showDialog && !errorName.includes("rejection") && this.externalApi) this.externalApi.showErrorBox(`A JavaScript error occurred in the ${processType} process`, error.stack);
+			} catch {
+				console.error(error);
+			}
+		}
+		setOptions({ externalApi, logFn, onError, showDialog }) {
+			if (typeof externalApi === "object") this.externalApi = externalApi;
+			if (typeof logFn === "function") this.logFn = logFn;
+			if (typeof onError === "function") this.onError = onError;
+			if (typeof showDialog === "boolean") this.showDialog = showDialog;
+		}
+		startCatching({ onError, showDialog } = {}) {
+			if (this.isActive) return;
+			this.isActive = true;
+			this.setOptions({
+				onError,
+				showDialog
+			});
+			process.on("uncaughtException", this.handleError);
+			process.on("unhandledRejection", this.handleRejection);
+		}
+		stopCatching() {
+			this.isActive = false;
+			process.removeListener("uncaughtException", this.handleError);
+			process.removeListener("unhandledRejection", this.handleRejection);
+		}
+		createIssue(pageUrl, queryParams) {
+			this.externalApi?.openUrl(`${pageUrl}?${new URLSearchParams(queryParams).toString()}`);
+		}
+		handleError(error) {
+			this.handle(error, { errorName: "Unhandled" });
+		}
+		handleRejection(reason) {
+			const error = reason instanceof Error ? reason : new Error(JSON.stringify(reason));
+			this.handle(error, { errorName: "Unhandled rejection" });
+		}
+	};
+	function normalizeError(e) {
+		if (e instanceof Error) return e;
+		if (e && typeof e === "object") {
+			if (e.message) return Object.assign(new Error(e.message), e);
+			try {
+				return new Error(JSON.stringify(e));
+			} catch (serErr) {
+				return /* @__PURE__ */ new Error(`Couldn't normalize error ${String(e)}: ${serErr}`);
+			}
+		}
+		return /* @__PURE__ */ new Error(`Can't normalize error ${String(e)}`);
+	}
+	module.exports = ErrorHandler;
+}));
+//#endregion
+//#region node_modules/electron-log/src/node/EventLogger.js
+var require_EventLogger = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	var EventLogger = class {
+		disposers = [];
+		format = "{eventSource}#{eventName}:";
+		formatters = {
+			app: {
+				"certificate-error": ({ args }) => {
+					return this.arrayToObject(args.slice(1, 4), [
+						"url",
+						"error",
+						"certificate"
+					]);
+				},
+				"child-process-gone": ({ args }) => {
+					return args.length === 1 ? args[0] : args;
+				},
+				"render-process-gone": ({ args: [webContents, details] }) => {
+					return details && typeof details === "object" ? {
+						...details,
+						...this.getWebContentsDetails(webContents)
+					} : [];
+				}
+			},
+			webContents: {
+				"console-message": ({ args: [level, message, line, sourceId] }) => {
+					if (level < 3) return;
+					return {
+						message,
+						source: `${sourceId}:${line}`
+					};
+				},
+				"did-fail-load": ({ args }) => {
+					return this.arrayToObject(args, [
+						"errorCode",
+						"errorDescription",
+						"validatedURL",
+						"isMainFrame",
+						"frameProcessId",
+						"frameRoutingId"
+					]);
+				},
+				"did-fail-provisional-load": ({ args }) => {
+					return this.arrayToObject(args, [
+						"errorCode",
+						"errorDescription",
+						"validatedURL",
+						"isMainFrame",
+						"frameProcessId",
+						"frameRoutingId"
+					]);
+				},
+				"plugin-crashed": ({ args }) => {
+					return this.arrayToObject(args, ["name", "version"]);
+				},
+				"preload-error": ({ args }) => {
+					return this.arrayToObject(args, ["preloadPath", "error"]);
+				}
+			}
+		};
+		events = {
+			app: {
+				"certificate-error": true,
+				"child-process-gone": true,
+				"render-process-gone": true
+			},
+			webContents: {
+				"did-fail-load": true,
+				"did-fail-provisional-load": true,
+				"plugin-crashed": true,
+				"preload-error": true,
+				"unresponsive": true
+			}
+		};
+		externalApi = void 0;
+		level = "error";
+		scope = "";
+		constructor(options = {}) {
+			this.setOptions(options);
+		}
+		setOptions({ events, externalApi, level, logger, format, formatters, scope }) {
+			if (typeof events === "object") this.events = events;
+			if (typeof externalApi === "object") this.externalApi = externalApi;
+			if (typeof level === "string") this.level = level;
+			if (typeof logger === "object") this.logger = logger;
+			if (typeof format === "string" || typeof format === "function") this.format = format;
+			if (typeof formatters === "object") this.formatters = formatters;
+			if (typeof scope === "string") this.scope = scope;
+		}
+		startLogging(options = {}) {
+			this.setOptions(options);
+			this.disposeListeners();
+			for (const eventName of this.getEventNames(this.events.app)) this.disposers.push(this.externalApi.onAppEvent(eventName, (...handlerArgs) => {
+				this.handleEvent({
+					eventSource: "app",
+					eventName,
+					handlerArgs
+				});
+			}));
+			for (const eventName of this.getEventNames(this.events.webContents)) this.disposers.push(this.externalApi.onEveryWebContentsEvent(eventName, (...handlerArgs) => {
+				this.handleEvent({
+					eventSource: "webContents",
+					eventName,
+					handlerArgs
+				});
+			}));
+		}
+		stopLogging() {
+			this.disposeListeners();
+		}
+		arrayToObject(array, fieldNames) {
+			const obj = {};
+			fieldNames.forEach((fieldName, index) => {
+				obj[fieldName] = array[index];
+			});
+			if (array.length > fieldNames.length) obj.unknownArgs = array.slice(fieldNames.length);
+			return obj;
+		}
+		disposeListeners() {
+			this.disposers.forEach((disposer) => disposer());
+			this.disposers = [];
+		}
+		formatEventLog({ eventName, eventSource, handlerArgs }) {
+			const [event, ...args] = handlerArgs;
+			if (typeof this.format === "function") return this.format({
+				args,
+				event,
+				eventName,
+				eventSource
+			});
+			const formatter = this.formatters[eventSource]?.[eventName];
+			let formattedArgs = args;
+			if (typeof formatter === "function") formattedArgs = formatter({
+				args,
+				event,
+				eventName,
+				eventSource
+			});
+			if (!formattedArgs) return;
+			const eventData = {};
+			if (Array.isArray(formattedArgs)) eventData.args = formattedArgs;
+			else if (typeof formattedArgs === "object") Object.assign(eventData, formattedArgs);
+			if (eventSource === "webContents") Object.assign(eventData, this.getWebContentsDetails(event?.sender));
+			return [this.format.replace("{eventSource}", eventSource === "app" ? "App" : "WebContents").replace("{eventName}", eventName), eventData];
+		}
+		getEventNames(eventMap) {
+			if (!eventMap || typeof eventMap !== "object") return [];
+			return Object.entries(eventMap).filter(([_, listen]) => listen).map(([eventName]) => eventName);
+		}
+		getWebContentsDetails(webContents) {
+			if (!webContents?.loadURL) return {};
+			try {
+				return { webContents: {
+					id: webContents.id,
+					url: webContents.getURL()
+				} };
+			} catch {
+				return {};
+			}
+		}
+		handleEvent({ eventName, eventSource, handlerArgs }) {
+			const log = this.formatEventLog({
+				eventName,
+				eventSource,
+				handlerArgs
+			});
+			if (log) (this.scope ? this.logger.scope(this.scope) : this.logger)?.[this.level]?.(...log);
+		}
+	};
+	module.exports = EventLogger;
+}));
+//#endregion
+//#region node_modules/electron-log/src/core/transforms/transform.js
+var require_transform = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	module.exports = { transform };
+	function transform({ logger, message, transport, initialData = message?.data || [], transforms = transport?.transforms }) {
+		return transforms.reduce((data, trans) => {
+			if (typeof trans === "function") return trans({
+				data,
+				logger,
+				message,
+				transport
+			});
+			return data;
+		}, initialData);
+	}
+}));
+//#endregion
+//#region node_modules/electron-log/src/core/transforms/format.js
+var require_format = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	var { transform } = require_transform();
+	module.exports = {
+		concatFirstStringElements,
+		formatScope,
+		formatText,
+		formatVariables,
+		timeZoneFromOffset,
+		format({ message, logger, transport, data = message?.data }) {
+			switch (typeof transport.format) {
+				case "string": return transform({
+					message,
+					logger,
+					transforms: [
+						formatVariables,
+						formatScope,
+						formatText
+					],
+					transport,
+					initialData: [transport.format, ...data]
+				});
+				case "function": return transport.format({
+					data,
+					level: message?.level || "info",
+					logger,
+					message,
+					transport
+				});
+				default: return data;
+			}
+		}
+	};
+	/**
+	* The first argument of console.log may contain a template. In the library
+	* the first element is a string related to transports.console.format. So
+	* this function concatenates first two elements to make templates like %d
+	* work
+	* @param {*[]} data
+	* @return {*[]}
+	*/
+	function concatFirstStringElements({ data }) {
+		if (typeof data[0] !== "string" || typeof data[1] !== "string") return data;
+		if (data[0].match(/%[1cdfiOos]/)) return data;
+		return [`${data[0]} ${data[1]}`, ...data.slice(2)];
+	}
+	function timeZoneFromOffset(minutesOffset) {
+		const minutesPositive = Math.abs(minutesOffset);
+		return `${minutesOffset > 0 ? "-" : "+"}${Math.floor(minutesPositive / 60).toString().padStart(2, "0")}:${(minutesPositive % 60).toString().padStart(2, "0")}`;
+	}
+	function formatScope({ data, logger, message }) {
+		const { defaultLabel, labelLength } = logger?.scope || {};
+		const template = data[0];
+		let label = message.scope;
+		if (!label) label = defaultLabel;
+		let scopeText;
+		if (label === "") scopeText = labelLength > 0 ? "".padEnd(labelLength + 3) : "";
+		else if (typeof label === "string") scopeText = ` (${label})`.padEnd(labelLength + 3);
+		else scopeText = "";
+		data[0] = template.replace("{scope}", scopeText);
+		return data;
+	}
+	function formatVariables({ data, message }) {
+		let template = data[0];
+		if (typeof template !== "string") return data;
+		template = template.replace("{level}]", `${message.level}]`.padEnd(6, " "));
+		const date = message.date || /* @__PURE__ */ new Date();
+		data[0] = template.replace(/\{(\w+)}/g, (substring, name) => {
+			switch (name) {
+				case "level": return message.level || "info";
+				case "logId": return message.logId;
+				case "y": return date.getFullYear().toString(10);
+				case "m": return (date.getMonth() + 1).toString(10).padStart(2, "0");
+				case "d": return date.getDate().toString(10).padStart(2, "0");
+				case "h": return date.getHours().toString(10).padStart(2, "0");
+				case "i": return date.getMinutes().toString(10).padStart(2, "0");
+				case "s": return date.getSeconds().toString(10).padStart(2, "0");
+				case "ms": return date.getMilliseconds().toString(10).padStart(3, "0");
+				case "z": return timeZoneFromOffset(date.getTimezoneOffset());
+				case "iso": return date.toISOString();
+				default: return message.variables?.[name] || substring;
+			}
+		}).trim();
+		return data;
+	}
+	function formatText({ data }) {
+		const template = data[0];
+		if (typeof template !== "string") return data;
+		if (template.lastIndexOf("{text}") === template.length - 6) {
+			data[0] = template.replace(/\s?{text}/, "");
+			if (data[0] === "") data.shift();
+			return data;
+		}
+		const templatePieces = template.split("{text}");
+		let result = [];
+		if (templatePieces[0] !== "") result.push(templatePieces[0]);
+		result = result.concat(data.slice(1));
+		if (templatePieces[1] !== "") result.push(templatePieces[1]);
+		return result;
+	}
+}));
+//#endregion
+//#region node_modules/electron-log/src/node/transforms/object.js
+var require_object = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	var util = require("util");
+	module.exports = {
+		serialize,
+		maxDepth({ data, transport, depth = transport?.depth ?? 6 }) {
+			if (!data) return data;
+			if (depth < 1) {
+				if (Array.isArray(data)) return "[array]";
+				if (typeof data === "object" && data) return "[object]";
+				return data;
+			}
+			if (Array.isArray(data)) return data.map((child) => module.exports.maxDepth({
+				data: child,
+				depth: depth - 1
+			}));
+			if (typeof data !== "object") return data;
+			if (data && typeof data.toISOString === "function") return data;
+			if (data === null) return null;
+			if (data instanceof Error) return data;
+			const newJson = {};
+			for (const i in data) {
+				if (!Object.prototype.hasOwnProperty.call(data, i)) continue;
+				newJson[i] = module.exports.maxDepth({
+					data: data[i],
+					depth: depth - 1
+				});
+			}
+			return newJson;
+		},
+		toJSON({ data }) {
+			return JSON.parse(JSON.stringify(data, createSerializer()));
+		},
+		toString({ data, transport }) {
+			const inspectOptions = transport?.inspectOptions || {};
+			const simplifiedData = data.map((item) => {
+				if (item === void 0) return;
+				try {
+					const str = JSON.stringify(item, createSerializer(), "  ");
+					return str === void 0 ? void 0 : JSON.parse(str);
+				} catch (e) {
+					return item;
+				}
+			});
+			return util.formatWithOptions(inspectOptions, ...simplifiedData);
+		}
+	};
+	/**
+	* @param {object} options?
+	* @param {boolean} options.serializeMapAndSet?
+	* @return {function}
+	*/
+	function createSerializer(options = {}) {
+		const seen = /* @__PURE__ */ new WeakSet();
+		return function(key, value) {
+			if (typeof value === "object" && value !== null) {
+				if (seen.has(value)) return;
+				seen.add(value);
+			}
+			return serialize(key, value, options);
+		};
+	}
+	/**
+	* @param {string} key
+	* @param {any} value
+	* @param {object} options?
+	* @return {any}
+	*/
+	function serialize(key, value, options = {}) {
+		const serializeMapAndSet = options?.serializeMapAndSet !== false;
+		if (value instanceof Error) return value.stack;
+		if (!value) return value;
+		if (typeof value === "function") return `[function] ${value.toString()}`;
+		if (value instanceof Date) return value.toISOString();
+		if (serializeMapAndSet && value instanceof Map && Object.fromEntries) return Object.fromEntries(value);
+		if (serializeMapAndSet && value instanceof Set && Array.from) return Array.from(value);
+		return value;
+	}
+}));
+//#endregion
+//#region node_modules/electron-log/src/core/transforms/style.js
+var require_style = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	module.exports = {
+		transformStyles,
+		applyAnsiStyles({ data }) {
+			return transformStyles(data, styleToAnsi, resetAnsiStyle);
+		},
+		removeStyles({ data }) {
+			return transformStyles(data, () => "");
+		}
+	};
+	var ANSI_COLORS = {
+		unset: "\x1B[0m",
+		black: "\x1B[30m",
+		red: "\x1B[31m",
+		green: "\x1B[32m",
+		yellow: "\x1B[33m",
+		blue: "\x1B[34m",
+		magenta: "\x1B[35m",
+		cyan: "\x1B[36m",
+		white: "\x1B[37m",
+		gray: "\x1B[90m"
+	};
+	function styleToAnsi(style) {
+		return ANSI_COLORS[style.replace(/color:\s*(\w+).*/, "$1").toLowerCase()] || "";
+	}
+	function resetAnsiStyle(string) {
+		return string + ANSI_COLORS.unset;
+	}
+	function transformStyles(data, onStyleFound, onStyleApplied) {
+		const foundStyles = {};
+		return data.reduce((result, item, index, array) => {
+			if (foundStyles[index]) return result;
+			if (typeof item === "string") {
+				let valueIndex = index;
+				let styleApplied = false;
+				item = item.replace(/%[1cdfiOos]/g, (match) => {
+					valueIndex += 1;
+					if (match !== "%c") return match;
+					const style = array[valueIndex];
+					if (typeof style === "string") {
+						foundStyles[valueIndex] = true;
+						styleApplied = true;
+						return onStyleFound(style, item);
+					}
+					return match;
+				});
+				if (styleApplied && onStyleApplied) item = onStyleApplied(item);
+			}
+			result.push(item);
+			return result;
+		}, []);
+	}
+}));
+//#endregion
+//#region node_modules/electron-log/src/node/transports/console.js
+var require_console = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	var { concatFirstStringElements, format } = require_format();
+	var { maxDepth, toJSON } = require_object();
+	var { applyAnsiStyles, removeStyles } = require_style();
+	var { transform } = require_transform();
+	var consoleMethods = {
+		error: console.error,
+		warn: console.warn,
+		info: console.info,
+		verbose: console.info,
+		debug: console.debug,
+		silly: console.debug,
+		log: console.log
+	};
+	module.exports = consoleTransportFactory;
+	var DEFAULT_FORMAT = `%c{h}:{i}:{s}.{ms}{scope}%c ${process.platform === "win32" ? ">" : "›"} {text}`;
+	Object.assign(consoleTransportFactory, { DEFAULT_FORMAT });
+	function consoleTransportFactory(logger) {
+		return Object.assign(transport, {
+			colorMap: {
+				error: "red",
+				warn: "yellow",
+				info: "cyan",
+				verbose: "unset",
+				debug: "gray",
+				silly: "gray",
+				default: "unset"
+			},
+			format: DEFAULT_FORMAT,
+			level: "silly",
+			transforms: [
+				addTemplateColors,
+				format,
+				formatStyles,
+				concatFirstStringElements,
+				maxDepth,
+				toJSON
+			],
+			useStyles: process.env.FORCE_STYLES,
+			writeFn({ message }) {
+				(consoleMethods[message.level] || consoleMethods.info)(...message.data);
+			}
+		});
+		function transport(message) {
+			const data = transform({
+				logger,
+				message,
+				transport
+			});
+			transport.writeFn({ message: {
+				...message,
+				data
+			} });
+		}
+	}
+	function addTemplateColors({ data, message, transport }) {
+		if (typeof transport.format !== "string" || !transport.format.includes("%c")) return data;
+		return [
+			`color:${levelToStyle(message.level, transport)}`,
+			"color:unset",
+			...data
+		];
+	}
+	function canUseStyles(useStyleValue, level) {
+		if (typeof useStyleValue === "boolean") return useStyleValue;
+		const stream = level === "error" || level === "warn" ? process.stderr : process.stdout;
+		return stream && stream.isTTY;
+	}
+	function formatStyles(args) {
+		const { message, transport } = args;
+		return (canUseStyles(transport.useStyles, message.level) ? applyAnsiStyles : removeStyles)(args);
+	}
+	function levelToStyle(level, transport) {
+		return transport.colorMap[level] || transport.colorMap.default;
+	}
+}));
+//#endregion
+//#region node_modules/electron-log/src/node/transports/file/File.js
+var require_File = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	var EventEmitter$1 = require("events");
+	var fs$4 = require("fs");
+	var os$4 = require("os");
+	var File = class extends EventEmitter$1 {
+		asyncWriteQueue = [];
+		bytesWritten = 0;
+		hasActiveAsyncWriting = false;
+		path = null;
+		initialSize = void 0;
+		writeOptions = null;
+		writeAsync = false;
+		constructor({ path, writeOptions = {
+			encoding: "utf8",
+			flag: "a",
+			mode: 438
+		}, writeAsync = false }) {
+			super();
+			this.path = path;
+			this.writeOptions = writeOptions;
+			this.writeAsync = writeAsync;
+		}
+		get size() {
+			return this.getSize();
+		}
+		clear() {
+			try {
+				fs$4.writeFileSync(this.path, "", {
+					mode: this.writeOptions.mode,
+					flag: "w"
+				});
+				this.reset();
+				return true;
+			} catch (e) {
+				if (e.code === "ENOENT") return true;
+				this.emit("error", e, this);
+				return false;
+			}
+		}
+		crop(bytesAfter) {
+			try {
+				const content = readFileSyncFromEnd(this.path, bytesAfter || 4096);
+				this.clear();
+				this.writeLine(`[log cropped]${os$4.EOL}${content}`);
+			} catch (e) {
+				this.emit("error", /* @__PURE__ */ new Error(`Couldn't crop file ${this.path}. ${e.message}`), this);
+			}
+		}
+		getSize() {
+			if (this.initialSize === void 0) try {
+				const stats = fs$4.statSync(this.path);
+				this.initialSize = stats.size;
+			} catch (e) {
+				this.initialSize = 0;
+			}
+			return this.initialSize + this.bytesWritten;
+		}
+		increaseBytesWrittenCounter(text) {
+			this.bytesWritten += Buffer.byteLength(text, this.writeOptions.encoding);
+		}
+		isNull() {
+			return false;
+		}
+		nextAsyncWrite() {
+			const file = this;
+			if (this.hasActiveAsyncWriting || this.asyncWriteQueue.length === 0) return;
+			const text = this.asyncWriteQueue.join("");
+			this.asyncWriteQueue = [];
+			this.hasActiveAsyncWriting = true;
+			fs$4.writeFile(this.path, text, this.writeOptions, (e) => {
+				file.hasActiveAsyncWriting = false;
+				if (e) file.emit("error", /* @__PURE__ */ new Error(`Couldn't write to ${file.path}. ${e.message}`), this);
+				else file.increaseBytesWrittenCounter(text);
+				file.nextAsyncWrite();
+			});
+		}
+		reset() {
+			this.initialSize = void 0;
+			this.bytesWritten = 0;
+		}
+		toString() {
+			return this.path;
+		}
+		writeLine(text) {
+			text += os$4.EOL;
+			if (this.writeAsync) {
+				this.asyncWriteQueue.push(text);
+				this.nextAsyncWrite();
+				return;
+			}
+			try {
+				fs$4.writeFileSync(this.path, text, this.writeOptions);
+				this.increaseBytesWrittenCounter(text);
+			} catch (e) {
+				this.emit("error", /* @__PURE__ */ new Error(`Couldn't write to ${this.path}. ${e.message}`), this);
+			}
+		}
+	};
+	module.exports = File;
+	function readFileSyncFromEnd(filePath, bytesCount) {
+		const buffer = Buffer.alloc(bytesCount);
+		const stats = fs$4.statSync(filePath);
+		const readLength = Math.min(stats.size, bytesCount);
+		const offset = Math.max(0, stats.size - bytesCount);
+		const fd = fs$4.openSync(filePath, "r");
+		const totalBytes = fs$4.readSync(fd, buffer, 0, readLength, offset);
+		fs$4.closeSync(fd);
+		return buffer.toString("utf8", 0, totalBytes);
+	}
+}));
+//#endregion
+//#region node_modules/electron-log/src/node/transports/file/NullFile.js
+var require_NullFile = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	var File = require_File();
+	var NullFile = class extends File {
+		clear() {}
+		crop() {}
+		getSize() {
+			return 0;
+		}
+		isNull() {
+			return true;
+		}
+		writeLine() {}
+	};
+	module.exports = NullFile;
+}));
+//#endregion
+//#region node_modules/electron-log/src/node/transports/file/FileRegistry.js
+var require_FileRegistry = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	var EventEmitter = require("events");
+	var fs$3 = require("fs");
+	var path$3 = require("path");
+	var File = require_File();
+	var NullFile = require_NullFile();
+	var FileRegistry = class extends EventEmitter {
+		store = {};
+		constructor() {
+			super();
+			this.emitError = this.emitError.bind(this);
+		}
+		/**
+		* Provide a File object corresponding to the filePath
+		* @param {string} filePath
+		* @param {WriteOptions} [writeOptions]
+		* @param {boolean} [writeAsync]
+		* @return {File}
+		*/
+		provide({ filePath, writeOptions = {}, writeAsync = false }) {
+			let file;
+			try {
+				filePath = path$3.resolve(filePath);
+				if (this.store[filePath]) return this.store[filePath];
+				file = this.createFile({
+					filePath,
+					writeOptions,
+					writeAsync
+				});
+			} catch (e) {
+				file = new NullFile({ path: filePath });
+				this.emitError(e, file);
+			}
+			file.on("error", this.emitError);
+			this.store[filePath] = file;
+			return file;
+		}
+		/**
+		* @param {string} filePath
+		* @param {WriteOptions} writeOptions
+		* @param {boolean} async
+		* @return {File}
+		* @private
+		*/
+		createFile({ filePath, writeOptions, writeAsync }) {
+			this.testFileWriting({
+				filePath,
+				writeOptions
+			});
+			return new File({
+				path: filePath,
+				writeOptions,
+				writeAsync
+			});
+		}
+		/**
+		* @param {Error} error
+		* @param {File} file
+		* @private
+		*/
+		emitError(error, file) {
+			this.emit("error", error, file);
+		}
+		/**
+		* @param {string} filePath
+		* @param {WriteOptions} writeOptions
+		* @private
+		*/
+		testFileWriting({ filePath, writeOptions }) {
+			fs$3.mkdirSync(path$3.dirname(filePath), { recursive: true });
+			fs$3.writeFileSync(filePath, "", {
+				flag: "a",
+				mode: writeOptions.mode
+			});
+		}
+	};
+	module.exports = FileRegistry;
+}));
+//#endregion
+//#region node_modules/electron-log/src/node/transports/file/index.js
+var require_file = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	var fs$2 = require("fs");
+	var os$3 = require("os");
+	var path$2 = require("path");
+	var FileRegistry = require_FileRegistry();
+	var { transform } = require_transform();
+	var { removeStyles } = require_style();
+	var { format, concatFirstStringElements } = require_format();
+	var { toString } = require_object();
+	module.exports = fileTransportFactory;
+	var globalRegistry = new FileRegistry();
+	function fileTransportFactory(logger, { registry = globalRegistry, externalApi } = {}) {
+		/** @type {PathVariables} */
+		let pathVariables;
+		if (registry.listenerCount("error") < 1) registry.on("error", (e, file) => {
+			logConsole(`Can't write to ${file}`, e);
+		});
+		return Object.assign(transport, {
+			fileName: getDefaultFileName(logger.variables.processType),
+			format: "[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}]{scope} {text}",
+			getFile,
+			inspectOptions: { depth: 5 },
+			level: "silly",
+			maxSize: 1024 ** 2,
+			readAllLogs,
+			sync: true,
+			transforms: [
+				removeStyles,
+				format,
+				concatFirstStringElements,
+				toString
+			],
+			writeOptions: {
+				flag: "a",
+				mode: 438,
+				encoding: "utf8"
+			},
+			archiveLogFn(file) {
+				const oldPath = file.toString();
+				const inf = path$2.parse(oldPath);
+				try {
+					fs$2.renameSync(oldPath, path$2.join(inf.dir, `${inf.name}.old${inf.ext}`));
+				} catch (e) {
+					logConsole("Could not rotate log", e);
+					const quarterOfMaxSize = Math.round(transport.maxSize / 4);
+					file.crop(Math.min(quarterOfMaxSize, 256 * 1024));
+				}
+			},
+			resolvePathFn(vars) {
+				return path$2.join(vars.libraryDefaultDir, vars.fileName);
+			},
+			setAppName(name) {
+				logger.dependencies.externalApi.setAppName(name);
+			}
+		});
+		function transport(message) {
+			const file = getFile(message);
+			if (transport.maxSize > 0 && file.size > transport.maxSize) {
+				transport.archiveLogFn(file);
+				file.reset();
+			}
+			const content = transform({
+				logger,
+				message,
+				transport
+			});
+			file.writeLine(content);
+		}
+		function initializeOnFirstAccess() {
+			if (pathVariables) return;
+			pathVariables = Object.create(Object.prototype, {
+				...Object.getOwnPropertyDescriptors(externalApi.getPathVariables()),
+				fileName: {
+					get() {
+						return transport.fileName;
+					},
+					enumerable: true
+				}
+			});
+			if (typeof transport.archiveLog === "function") {
+				transport.archiveLogFn = transport.archiveLog;
+				logConsole("archiveLog is deprecated. Use archiveLogFn instead");
+			}
+			if (typeof transport.resolvePath === "function") {
+				transport.resolvePathFn = transport.resolvePath;
+				logConsole("resolvePath is deprecated. Use resolvePathFn instead");
+			}
+		}
+		function logConsole(message, error = null, level = "error") {
+			const data = [`electron-log.transports.file: ${message}`];
+			if (error) data.push(error);
+			logger.transports.console({
+				data,
+				date: /* @__PURE__ */ new Date(),
+				level
+			});
+		}
+		function getFile(msg) {
+			initializeOnFirstAccess();
+			const filePath = transport.resolvePathFn(pathVariables, msg);
+			return registry.provide({
+				filePath,
+				writeAsync: !transport.sync,
+				writeOptions: transport.writeOptions
+			});
+		}
+		function readAllLogs({ fileFilter = (f) => f.endsWith(".log") } = {}) {
+			initializeOnFirstAccess();
+			const logsPath = path$2.dirname(transport.resolvePathFn(pathVariables));
+			if (!fs$2.existsSync(logsPath)) return [];
+			return fs$2.readdirSync(logsPath).map((fileName) => path$2.join(logsPath, fileName)).filter(fileFilter).map((logPath) => {
+				try {
+					return {
+						path: logPath,
+						lines: fs$2.readFileSync(logPath, "utf8").split(os$3.EOL)
+					};
+				} catch {
+					return null;
+				}
+			}).filter(Boolean);
+		}
+	}
+	function getDefaultFileName(processType = process.type) {
+		switch (processType) {
+			case "renderer": return "renderer.log";
+			case "worker": return "worker.log";
+			default: return "main.log";
+		}
+	}
+}));
+//#endregion
+//#region node_modules/electron-log/src/node/transports/ipc.js
+var require_ipc = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	var { maxDepth, toJSON } = require_object();
+	var { transform } = require_transform();
+	module.exports = ipcTransportFactory;
+	/**
+	* @param logger
+	* @param {ElectronExternalApi} externalApi
+	* @returns {transport|null}
+	*/
+	function ipcTransportFactory(logger, { externalApi }) {
+		Object.assign(transport, {
+			depth: 3,
+			eventId: "__ELECTRON_LOG_IPC__",
+			level: logger.isDev ? "silly" : false,
+			transforms: [toJSON, maxDepth]
+		});
+		return externalApi?.isElectron() ? transport : void 0;
+		function transport(message) {
+			if (message?.variables?.processType === "renderer") return;
+			externalApi?.sendIpc(transport.eventId, {
+				...message,
+				data: transform({
+					logger,
+					message,
+					transport
+				})
+			});
+		}
+	}
+}));
+//#endregion
+//#region node_modules/electron-log/src/node/transports/remote.js
+var require_remote = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	var http$1 = require("http");
+	var https = require("https");
+	var { transform } = require_transform();
+	var { removeStyles } = require_style();
+	var { toJSON, maxDepth } = require_object();
+	module.exports = remoteTransportFactory;
+	function remoteTransportFactory(logger) {
+		return Object.assign(transport, {
+			client: { name: "electron-application" },
+			depth: 6,
+			level: false,
+			requestOptions: {},
+			transforms: [
+				removeStyles,
+				toJSON,
+				maxDepth
+			],
+			makeBodyFn({ message }) {
+				return JSON.stringify({
+					client: transport.client,
+					data: message.data,
+					date: message.date.getTime(),
+					level: message.level,
+					scope: message.scope,
+					variables: message.variables
+				});
+			},
+			processErrorFn({ error }) {
+				logger.processMessage({
+					data: [`electron-log: can't POST ${transport.url}`, error],
+					level: "warn"
+				}, { transports: ["console", "file"] });
+			},
+			sendRequestFn({ serverUrl, requestOptions, body }) {
+				const request = (serverUrl.startsWith("https:") ? https : http$1).request(serverUrl, {
+					method: "POST",
+					...requestOptions,
+					headers: {
+						"Content-Type": "application/json",
+						"Content-Length": body.length,
+						...requestOptions.headers
+					}
+				});
+				request.write(body);
+				request.end();
+				return request;
+			}
+		});
+		function transport(message) {
+			if (!transport.url) return;
+			const body = transport.makeBodyFn({
+				logger,
+				message: {
+					...message,
+					data: transform({
+						logger,
+						message,
+						transport
+					})
+				},
+				transport
+			});
+			const request = transport.sendRequestFn({
+				serverUrl: transport.url,
+				requestOptions: transport.requestOptions,
+				body: Buffer.from(body, "utf8")
+			});
+			request.on("error", (error) => transport.processErrorFn({
+				error,
+				logger,
+				message,
+				request,
+				transport
+			}));
+		}
+	}
+}));
+//#endregion
+//#region node_modules/electron-log/src/node/createDefaultLogger.js
+var require_createDefaultLogger = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	var Logger = require_Logger();
+	var ErrorHandler = require_ErrorHandler();
+	var EventLogger = require_EventLogger();
+	var transportConsole = require_console();
+	var transportFile = require_file();
+	var transportIpc = require_ipc();
+	var transportRemote = require_remote();
+	module.exports = createDefaultLogger;
+	function createDefaultLogger({ dependencies, initializeFn }) {
+		const defaultLogger = new Logger({
+			dependencies,
+			errorHandler: new ErrorHandler(),
+			eventLogger: new EventLogger(),
+			initializeFn,
+			isDev: dependencies.externalApi?.isDev(),
+			logId: "default",
+			transportFactories: {
+				console: transportConsole,
+				file: transportFile,
+				ipc: transportIpc,
+				remote: transportRemote
+			},
+			variables: { processType: "main" }
+		});
+		defaultLogger.default = defaultLogger;
+		defaultLogger.Logger = Logger;
+		defaultLogger.processInternalErrorFn = (e) => {
+			defaultLogger.transports.console.writeFn({ message: {
+				data: ["Unhandled electron-log error", e],
+				level: "error"
+			} });
+		};
+		return defaultLogger;
+	}
+}));
+//#endregion
+//#region node_modules/electron-log/src/main/index.js
+var require_main$1 = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	var electron$1 = require("electron");
+	var ElectronExternalApi = require_ElectronExternalApi();
+	var { initialize } = require_initialize();
+	var createDefaultLogger = require_createDefaultLogger();
+	var externalApi = new ElectronExternalApi({ electron: electron$1 });
+	var defaultLogger = createDefaultLogger({
+		dependencies: { externalApi },
+		initializeFn: initialize
+	});
+	module.exports = defaultLogger;
+	externalApi.onIpc("__ELECTRON_LOG__", (_, message) => {
+		if (message.scope) defaultLogger.Logger.getInstance(message).scope(message.scope);
+		const date = new Date(message.date);
+		processMessage({
+			...message,
+			date: date.getTime() ? date : /* @__PURE__ */ new Date()
+		});
+	});
+	externalApi.onIpcInvoke("__ELECTRON_LOG__", (_, { cmd = "", logId }) => {
+		switch (cmd) {
+			case "getOptions": return {
+				levels: defaultLogger.Logger.getInstance({ logId }).levels,
+				logId
+			};
+			default:
+				processMessage({
+					data: [`Unknown cmd '${cmd}'`],
+					level: "error"
+				});
+				return {};
+		}
+	});
+	function processMessage(message) {
+		defaultLogger.Logger.getInstance(message)?.processMessage(message);
+	}
+}));
+//#endregion
+//#region node_modules/electron-log/main.js
+var require_main = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	module.exports = require_main$1();
+}));
+//#endregion
+//#region electron/main/logger.ts
+function initLogPath() {
+	if (initialized) return;
+	initialized = true;
+	const { app } = require("electron");
+	const { join, dirname } = require("node:path");
+	const logDir = app.isPackaged ? join(dirname(app.getPath("exe")), "logs") : join(app.getAppPath(), "src", "log");
+	const getDate = () => {
+		const d = /* @__PURE__ */ new Date();
+		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+	};
+	import_main.default.transports.file.resolvePathFn = (variables) => {
+		return join(logDir, getDate() + ".log");
+	};
+}
+function ensureLogPath() {
+	initLogPath();
+}
+var import_main, initialized, logger_default;
+var init_logger = __esmMin((() => {
+	import_main = /* @__PURE__ */ __toESM(require_main());
+	import_main.default.initialize();
+	import_main.default.transports.file.maxSize = 5 * 1024 * 1024;
+	import_main.default.transports.console.level = "error";
+	initialized = false;
+	logger_default = import_main.default;
+}));
+//#endregion
+//#region electron/main/conversion-registry.ts
+init_logger();
+var tasks = /* @__PURE__ */ new Map();
+var logger$4 = {
+	info: () => {},
+	warn: () => {}
+};
+/** 注入日志实现（生产环境在 main 进程入口调用，传入 electron-log 实例）。 */
+function setRegistryLogger(log) {
+	logger$4 = log;
+}
+/** 注册一个在途转换任务，返回 id。任务结束后应调用 unregister(id)。 */
+function registerConversion(kill) {
+	const id = (0, node_crypto.randomUUID)();
+	tasks.set(id, {
+		id,
+		kill
+	});
+	return id;
+}
+/** 注销一个任务（任务正常结束或失败后调用）。id 不存在时静默忽略。 */
+function unregisterConversion(id) {
+	tasks.delete(id);
+}
+/** kill 所有在途转换任务。退出 / 关闭应用时调用。
+*  返回被 kill 的任务数。对每个任务吞掉 kill 抛出的异常（进程可能已退出）。 */
+function killAllConversions() {
+	const count = tasks.size;
+	if (count === 0) return 0;
+	logger$4.info(`Killing ${count} in-flight conversion(s) on quit`);
+	for (const task of tasks.values()) try {
+		task.kill();
+	} catch (err) {
+		logger$4.warn(`Conversion kill failed for ${task.id}:`, err?.message ?? err);
+	}
+	tasks.clear();
+	return count;
+}
+//#endregion
+//#region electron/main/hw-encoder.ts
+var execFileAsync = (0, node_util.promisify)(node_child_process.execFile);
+var PRIORITY = [
+	"h264_nvenc",
+	"h264_qsv",
+	"h264_amf"
+];
+var cached = null;
+var probing = null;
+var logger$3 = {
+	info: () => {},
+	warn: () => {}
+};
+/** 注入日志实现（生产环境在 main 进程入口调用，传入 electron-log 实例）。 */
+function setHwEncoderLogger(log) {
+	logger$3 = log;
+}
+/** 从 ffmpeg -encoders 输出里解析出可用的 h264 硬编器，按优先级返回第一个。
+*  纯函数，便于单测（注入 encoders 文本）。无可用硬编器时返回 'libx264'。 */
+function pickHwEncoder(encodersText) {
+	for (const enc of PRIORITY) if (new RegExp(`\\b${enc}\\b`).test(encodersText)) return enc;
+	return "libx264";
+}
+/** 探测可用硬件编码器，结果进程内缓存。多次调用返回同一 Promise。
+*  失败（ffmpeg 不可用 / 超时）时回退 'libx264'。 */
+function getH264Encoder(ffmpegBin) {
+	if (cached) return Promise.resolve(cached);
+	if (probing) return probing;
+	probing = (async () => {
+		try {
+			const { stdout } = await execFileAsync(ffmpegBin, ["-hide_banner", "-encoders"], {
+				timeout: 5e3,
+				maxBuffer: 2 * 1024 * 1024
+			});
+			const enc = pickHwEncoder(stdout);
+			logger$3.info(`H.264 encoder selected: ${enc}`);
+			cached = enc;
+			return enc;
+		} catch (err) {
+			logger$3.warn("HW encoder probe failed, falling back to libx264:", err?.message ?? err);
+			cached = "libx264";
+			return "libx264";
+		} finally {
+			probing = null;
+		}
+	})();
+	return probing;
+}
+/** 为给定编码器和 crf 构造 ffmpeg outputOptions（re-encode 路径用）。
+*  libx264 用 -crf；硬编器用各自的质量参数（nvenc -cq、qsv -global_quality、amf -qp_i/-qp_p）。
+*  纯函数，便于单测。 */
+function buildEncodeOptions(encoder, crf, numThreads) {
+	switch (encoder) {
+		case "h264_nvenc": return [
+			"-c:v",
+			"h264_nvenc",
+			"-preset",
+			"p4",
+			"-rc",
+			"vbr",
+			"-cq",
+			crf,
+			"-b:v",
+			"0"
+		];
+		case "h264_qsv": return [
+			"-c:v",
+			"h264_qsv",
+			"-preset",
+			"veryfast",
+			"-global_quality",
+			crf
+		];
+		case "h264_amf": return [
+			"-c:v",
+			"h264_amf",
+			"-quality",
+			"balanced",
+			"-rc",
+			"cqp",
+			"-qp_i",
+			crf,
+			"-qp_p",
+			crf
+		];
+		default: return [
+			"-c:v",
+			"libx264",
+			"-preset",
+			"ultrafast",
+			"-crf",
+			crf,
+			"-threads",
+			String(numThreads)
+		];
+	}
+}
+//#endregion
+//#region electron/main/ffmpeg.ts
+var ffmpegBinPath = electron.app.isPackaged ? node_path.default.join(process.resourcesPath, "ffmpeg.exe") : _ffmpeg_installer_ffmpeg.default.path;
+fluent_ffmpeg.default.setFfmpegPath(ffmpegBinPath);
+var NUM_THREADS = Math.min(node_os.default.cpus().length, 8);
+function convertWebmToMp4(inputPath, outputPath, onProgress, crop) {
+	if (!crop) return new Promise((resolve) => {
+		const cmd = (0, fluent_ffmpeg.default)(inputPath);
+		const taskId = registerConversion(() => cmd.kill("SIGKILL"));
+		cmd.outputOptions([
+			"-c:v",
+			"copy",
+			"-c:a",
+			"aac",
+			"-b:a",
+			"128k",
+			"-movflags",
+			"+faststart"
+		]).output(outputPath).on("progress", () => {
+			onProgress?.({
+				percent: 80,
+				targetSize: 0
+			});
+		}).on("end", () => {
+			unregisterConversion(taskId);
+			onProgress?.({
+				percent: 100,
+				targetSize: 0
+			});
+			resolve({
+				success: true,
+				outputPath
+			});
+		}).on("error", (err) => {
+			unregisterConversion(taskId);
+			logger_default.error("MP4 remux failed:", err.message);
+			resolve({
+				success: false,
+				outputPath: "",
+				error: err.message
+			});
+		}).run();
+	});
+	const tmpPath = outputPath.replace(/\.mp4$/i, "_tmp.mp4");
+	const cropFilter = `crop=${Math.round(crop.width / 2) * 2}:${Math.round(crop.height / 2) * 2}:${Math.round(crop.x / 2) * 2}:${Math.round(crop.y / 2) * 2},`;
+	return new Promise(async (resolve) => {
+		const hwEncoder = await getH264Encoder(ffmpegBinPath);
+		function runPass1(encoder) {
+			return new Promise((res) => {
+				const pass1 = (0, fluent_ffmpeg.default)(inputPath);
+				const taskId = registerConversion(() => pass1.kill("SIGKILL"));
+				pass1.outputOptions([
+					...buildEncodeOptions(encoder, "23", NUM_THREADS),
+					"-vf",
+					`${cropFilter}pad=ceil(iw/2)*2:ceil(ih/2)*2,format=yuv420p`,
+					"-an",
+					"-movflags +faststart"
+				]).output(tmpPath).on("progress", (progress) => {
+					onProgress?.({
+						percent: Math.round((progress.percent ?? 0) * 100) / 200,
+						targetSize: progress.targetSize ?? 0
+					});
+				}).on("end", () => {
+					unregisterConversion(taskId);
+					res({ success: true });
+				}).on("error", (err) => {
+					unregisterConversion(taskId);
+					logger_default.error(`MP4 pass1 failed (${encoder}):`, err.message);
+					res({
+						success: false,
+						error: err.message
+					});
+				}).run();
+			});
+		}
+		let p1 = await runPass1(hwEncoder);
+		if (!p1.success && hwEncoder !== "libx264") {
+			logger_default.warn(`MP4 pass1: ${hwEncoder} failed, retrying with libx264`);
+			await node_fs.default.promises.unlink(tmpPath).catch(() => {});
+			p1 = await runPass1("libx264");
+		}
+		if (!p1.success) {
+			resolve({
+				success: false,
+				outputPath: "",
+				error: p1.error
+			});
+			return;
+		}
+		const pass2 = (0, fluent_ffmpeg.default)(tmpPath);
+		const pass2Task = registerConversion(() => pass2.kill("SIGKILL"));
+		pass2.addInput(inputPath).outputOptions([
+			"-c:v",
+			"copy",
+			"-c:a",
+			"aac",
+			"-b:a",
+			"128k",
+			"-map",
+			"0:v",
+			"-map",
+			"1:a?",
+			"-shortest",
+			"-movflags",
+			"+faststart"
+		]).output(outputPath).on("progress", (progress) => {
+			onProgress?.({
+				percent: Math.round((progress.percent ?? 0) * 100) / 200 + 50,
+				targetSize: progress.targetSize ?? 0
+			});
+		}).on("end", () => {
+			unregisterConversion(pass2Task);
+			node_fs.default.promises.unlink(tmpPath).catch(() => {});
+			resolve({
+				success: true,
+				outputPath
+			});
+		}).on("error", (err) => {
+			unregisterConversion(pass2Task);
+			logger_default.error("MP4 audio mux failed:", err.message);
+			node_fs.default.promises.rename(tmpPath, outputPath).then(() => resolve({
+				success: true,
+				outputPath
+			})).catch(() => {
+				node_fs.default.promises.unlink(tmpPath).catch(() => {});
+				resolve({
+					success: false,
+					outputPath: "",
+					error: err.message
+				});
+			});
+		}).run();
+	});
+}
+function cropVideo(inputPath, outputPath, crop, onProgress) {
+	const w = Math.round(crop.width / 2) * 2;
+	const h = Math.round(crop.height / 2) * 2;
+	const cx = Math.round(crop.x / 2) * 2;
+	const cy = Math.round(crop.y / 2) * 2;
+	return new Promise(async (resolve) => {
+		const vf = `crop=${w}:${h}:${cx}:${cy},format=yuv420p`;
+		const hwEncoder = await getH264Encoder(ffmpegBinPath);
+		function runOnce(encoder, crf) {
+			return new Promise((res) => {
+				const cmd = (0, fluent_ffmpeg.default)(inputPath);
+				const taskId = registerConversion(() => cmd.kill("SIGKILL"));
+				cmd.outputOptions([
+					...buildEncodeOptions(encoder, crf, NUM_THREADS),
+					"-vf",
+					vf,
+					"-c:a",
+					"copy",
+					"-movflags",
+					"+faststart"
+				]).output(outputPath).on("progress", (progress) => {
+					onProgress?.({
+						percent: Math.round((progress.percent ?? 0) * 100),
+						targetSize: progress.targetSize ?? 0
+					});
+				}).on("end", () => {
+					unregisterConversion(taskId);
+					res({
+						success: true,
+						outputPath
+					});
+				}).on("error", (err) => {
+					unregisterConversion(taskId);
+					logger_default.error(`Crop failed (${encoder}):`, err.message);
+					res({
+						success: false,
+						outputPath: "",
+						error: err.message
+					});
+				}).run();
+			});
+		}
+		let result = await runOnce(hwEncoder, "18");
+		if (!result.success && hwEncoder !== "libx264") {
+			logger_default.warn(`Crop: ${hwEncoder} failed, retrying with libx264`);
+			result = await runOnce("libx264", "18");
+		}
+		resolve(result);
+	});
+}
+function mergeMultiScreen(inputs, outputPath, onProgress) {
+	return new Promise((resolve) => {
+		const totalW = Math.max(...inputs.map((i) => i.bounds.x + i.bounds.width)) - Math.min(...inputs.map((i) => i.bounds.x));
+		const totalH = Math.max(...inputs.map((i) => i.bounds.y + i.bounds.height)) - Math.min(...inputs.map((i) => i.bounds.y));
+		const originX = Math.min(...inputs.map((i) => i.bounds.x));
+		const originY = Math.min(...inputs.map((i) => i.bounds.y));
+		const cw = Math.round(totalW / 2) * 2;
+		const ch = Math.round(totalH / 2) * 2;
+		logger_default.info("Merge canvas size:", cw, "x", ch);
+		logger_default.info("Merge inputs:", inputs.map((inp, i) => `[${i}] ${inp.filePath} bounds=${JSON.stringify(inp.bounds)}`).join(", "));
+		const remuxedPaths = [];
+		const totalInputs = inputs.length;
+		function remuxOne(filePath, index) {
+			const remuxedPath = filePath.replace(/\.webm$/i, "_remux.mp4");
+			return new Promise((resolve) => {
+				const remux = (0, fluent_ffmpeg.default)(filePath);
+				const taskId = registerConversion(() => remux.kill("SIGKILL"));
+				remux.outputOptions(["-c", "copy"]).output(remuxedPath).on("end", () => {
+					unregisterConversion(taskId);
+					logger_default.info(`Merge remux ${index + 1}/${totalInputs} done`);
+					resolve({
+						success: true,
+						remuxedPath
+					});
+				}).on("error", (err) => {
+					unregisterConversion(taskId);
+					logger_default.error(`Merge remux ${index + 1} failed:`, err.message);
+					resolve({
+						success: false,
+						remuxedPath,
+						error: err.message
+					});
+				}).run();
+			});
+		}
+		async function cleanupTempFiles() {
+			for (const p of remuxedPaths) await node_fs.default.promises.unlink(p).catch(() => {});
+			for (const inp of inputs) await node_fs.default.promises.unlink(inp.filePath).catch(() => {});
+		}
+		async function doMerge() {
+			const hwEncoder = await getH264Encoder(ffmpegBinPath);
+			const filters = [`color=c=black:s=${cw}x${ch}[bg]`];
+			let prevLabel = "[bg]";
+			for (let i = 0; i < inputs.length; i++) {
+				const inp = inputs[i];
+				const dx = Math.round((inp.bounds.x - originX) / 2) * 2;
+				const dy = Math.round((inp.bounds.y - originY) / 2) * 2;
+				const sw = Math.round(inp.bounds.width / 2) * 2;
+				const sh = Math.round(inp.bounds.height / 2) * 2;
+				const scaledLabel = `[s${i}]`;
+				const outLabel = i === inputs.length - 1 ? "[out]" : `[tmp${i}]`;
+				filters.push(`[${i}:v]scale=${sw}:${sh},setsar=1${scaledLabel}`);
+				filters.push(`${prevLabel}${scaledLabel}overlay=${dx}:${dy}${outLabel}`);
+				prevLabel = outLabel;
+			}
+			filters.push("[out]format=yuv420p");
+			logger_default.info("Merge filter_complex:", filters.join(";"));
+			function runMergeOnce(encoder) {
+				return new Promise((resolve) => {
+					const cmd = (0, fluent_ffmpeg.default)();
+					const taskId = registerConversion(() => cmd.kill("SIGKILL"));
+					for (const p of remuxedPaths) cmd.addInput(p);
+					cmd.complexFilter(filters).outputOptions([
+						...buildEncodeOptions(encoder, "23", NUM_THREADS),
+						"-movflags",
+						"+faststart"
+					]).output(outputPath).on("start", () => {
+						logger_default.info(`Merge ffmpeg command started (${encoder})`);
+					}).on("progress", (progress) => {
+						const pct = Math.round(progress.percent ?? 0);
+						onProgress?.({
+							percent: Math.min(30 + pct * .7, 100),
+							targetSize: progress.targetSize ?? 0
+						});
+					}).on("end", () => {
+						unregisterConversion(taskId);
+						logger_default.info("Merge completed successfully");
+						for (const inp of inputs) node_fs.default.promises.unlink(inp.filePath).catch(() => {});
+						for (const p of remuxedPaths) node_fs.default.promises.unlink(p).catch(() => {});
+						resolve({
+							success: true,
+							outputPath
+						});
+					}).on("error", (err) => {
+						unregisterConversion(taskId);
+						logger_default.error(`Multi-screen merge failed (${encoder}):`, err.message);
+						for (const inp of inputs) node_fs.default.promises.unlink(inp.filePath).catch(() => {});
+						for (const p of remuxedPaths) node_fs.default.promises.unlink(p).catch(() => {});
+						resolve({
+							success: false,
+							outputPath: "",
+							error: err.message
+						});
+					}).run();
+				});
+			}
+			let result = await runMergeOnce(hwEncoder);
+			if (!result.success && hwEncoder !== "libx264") {
+				logger_default.warn(`Merge: ${hwEncoder} failed, retrying with libx264`);
+				await node_fs.default.promises.unlink(outputPath).catch(() => {});
+				result = await runMergeOnce("libx264");
+			}
+			return result;
+		}
+		(async () => {
+			for (let i = 0; i < totalInputs; i++) {
+				const r = await remuxOne(inputs[i].filePath, i);
+				if (!r.success) {
+					logger_default.error(`Merge aborted: remux ${i + 1}/${totalInputs} failed, short-circuiting`);
+					await node_fs.default.promises.unlink(r.remuxedPath).catch(() => {});
+					await cleanupTempFiles();
+					resolve({
+						success: false,
+						outputPath: "",
+						error: r.error
+					});
+					return;
+				}
+				remuxedPaths.push(r.remuxedPath);
+				onProgress?.({
+					percent: Math.round((i + 1) / totalInputs * 30),
+					targetSize: 0
+				});
+			}
+			resolve(await doMerge());
+		})();
+	});
+}
+function convertToGif(inputPath, outputPath, options, onProgress) {
+	const { execFile } = require("node:child_process");
+	const ffmpegBin = _ffmpeg_installer_ffmpeg.default.path;
+	const width = options?.width ?? 480;
+	const fps = options?.fps ?? 10;
+	const palettePath = node_path.default.join(node_os.default.tmpdir(), `gif_palette_${Date.now()}.png`);
+	logger_default.info("GIF conversion - input:", inputPath, "palette:", palettePath, "output:", outputPath);
+	const args1 = [
+		"-y",
+		"-i",
+		inputPath,
+		"-vf",
+		`fps=${fps},scale=${width}:-1:flags=lanczos,palettegen`,
+		palettePath
+	];
+	return new Promise((resolve) => {
+		let task1Id = "";
+		let task2Id = "";
+		const proc1 = execFile(ffmpegBin, args1, (err1) => {
+			unregisterConversion(task1Id);
+			if (err1) {
+				logger_default.error("GIF palette gen failed:", err1.message);
+				resolve({
+					success: false,
+					outputPath: "",
+					error: err1.message
+				});
+				return;
+			}
+			logger_default.info("GIF palette generated successfully");
+			const proc = execFile(ffmpegBin, [
+				"-y",
+				"-i",
+				inputPath,
+				"-i",
+				palettePath,
+				"-filter_complex",
+				`[0:v]fps=${fps},scale=${width}:-1:flags=lanczos[x];[x][1:v]paletteuse`,
+				outputPath
+			], (err2) => {
+				unregisterConversion(task2Id);
+				node_fs.default.promises.unlink(palettePath).catch(() => {});
+				if (err2) {
+					logger_default.error("GIF creation failed:", err2.message);
+					resolve({
+						success: false,
+						outputPath: "",
+						error: err2.message
+					});
+				} else resolve({
+					success: true,
+					outputPath
+				});
+			});
+			task2Id = registerConversion(() => proc.kill("SIGKILL"));
+			if (proc.stdout) proc.stdout.on("data", (data) => {
+				const match = data.toString().match(/time=(\d+:\d+:\d+\.\d+)/);
+				if (match && options?.duration) {
+					const parts = match[1].split(":").map(Number);
+					const current = parts[0] * 3600 + parts[1] * 60 + parts[2];
+					const percent = Math.min(Math.round(current / options.duration * 100), 99);
+					onProgress?.({
+						percent: percent + 50,
+						targetSize: 0
+					});
+				} else onProgress?.({
+					percent: 75,
+					targetSize: 0
+				});
+			});
+		});
+		task1Id = registerConversion(() => proc1.kill("SIGKILL"));
+	});
+}
+//#endregion
+//#region electron/main/i18n.ts
+function isLocale(v) {
+	return v === "zh" || v === "en";
+}
+/** 主进程内联 HTML 构建 / 启动时调用。渲染进程不直接调（走 getAppI18nBundle）。 */
+function setI18nLocale(l) {
+	currentLocale = l;
+}
+/** 把 key 翻译为指定语言；缺失 key 时回退 en → zh → key 本身（防 UI 空白）。 */
+function translate(locale, key, params) {
+	let s = (locale === "en" ? en : zh)[key] ?? en[key] ?? zh[key] ?? key;
+	if (params) for (const [k, v] of Object.entries(params)) s = s.replace(new RegExp(`\\{${k}\\}`, "g"), String(v));
+	return s;
+}
+/** 当前语言的 t()（主进程内联 HTML、渲染层 bundle 的下游都走它）。 */
+function t(key, params) {
+	return translate(currentLocale, key, params);
+}
+/** 给渲染进程的完整 bundle（locale + 当前语言词条表），一次拉齐免循环 IPC。 */
+function getAppI18nBundle() {
+	return {
+		locale: currentLocale,
+		messages: currentLocale === "en" ? en : zh
+	};
+}
+var zh, en, currentLocale;
+var init_i18n = __esmMin((() => {
+	zh = {
+		"common.confirm": "确认",
+		"common.cancel": "取消",
+		"common.ok": "确定",
+		"common.close": "关闭",
+		"common.loading": "加载中...",
+		"common.reset": "重置",
+		"common.on": "开",
+		"common.off": "关",
+		"common.allow": "允许",
+		"common.deny": "拒绝",
+		"common.alwaysAllow": "始终允许",
+		"common.save": "保存",
+		"win.minimize": "最小化",
+		"win.maximize": "最大化",
+		"ball.menu.record": "录屏",
+		"ball.menu.ai": "AI助手",
+		"ball.menu.todo": "待办便签",
+		"ball.menu.settings": "设置",
+		"settings.group.ball": "悬浮球",
+		"settings.ball.show": "显示悬浮球",
+		"settings.ball.showDesc": "关闭后悬浮球隐藏，可从托盘「显示设置窗口」重新打开",
+		"settings.ball.alwaysOnTop": "始终置顶",
+		"settings.ball.alwaysOnTopDesc": "关闭后悬浮球可被其他窗口遮挡",
+		"settings.ball.resetPos": "重置位置",
+		"settings.ball.resetPosDesc": "把悬浮球移回屏幕中心",
+		"settings.ball.snapGutter": "贴边留白",
+		"settings.ball.snapGutterDesc": "贴边吸附时距屏幕边缘的像素留白（0 = 全贴合）",
+		"settings.group.menu": "悬浮球菜单",
+		"settings.group.system": "系统",
+		"settings.group.language": "语言",
+		"settings.system.openAtLogin": "开机自启",
+		"settings.system.openAtLoginDesc": "登录系统时自动启动本应用",
+		"settings.language.label": "界面语言",
+		"settings.language.desc": "切换后悬浮球、AI 岛等窗口在下次打开时生效",
+		"settings.lang.zh": "简体中文",
+		"settings.lang.en": "English",
+		"aiIsland.idle": "AI 待机",
+		"aiIsland.thinking": "AI 思考中",
+		"aiIsland.working": "AI 工作中",
+		"aiIsland.error": "AI 出错了",
+		"aiIsland.notification": "等待审批",
+		"aiIsland.done": "任务完成",
+		"aiIsland.permTitle": "权限请求",
+		"aiIsland.permTool": "工具",
+		"aiIsland.permInput": "参数",
+		"aiIsland.questionTitle": "AI 正在提问",
+		"aiIsland.prevQuestion": "上一题",
+		"aiIsland.nextQuestion": "下一题",
+		"aiIsland.submitAnswer": "提交答案",
+		"aiIsland.know": "知道了",
+		"aiIsland.otherPlaceholder": "输入其他内容…",
+		"aiIsland.otherHint": "可与其他选项同时选择。",
+		"aiIsland.answerInClaude": "请到 Claude Code 界面作答，这里仅作提醒。",
+		"aiIsland.viewDetail": "点击查看详情",
+		"aiIsland.unknown": "未知操作",
+		"aiIsland.other": "其他",
+		"aiIsland.progress": "第 {n}/{t} 题",
+		"record.title": "高清录屏",
+		"record.start": "开始录制",
+		"record.pause": "暂停",
+		"record.resume": "继续",
+		"record.stop": "停止",
+		"record.allScreens": "多屏录制",
+		"record.selectRegion": "区域录制",
+		"record.toggleSys": "系统音频",
+		"record.closeAndStop": "关闭并停止录制",
+		"record.claudeRequest": "Claude Code 请求权限",
+		"record.targetInfo": "目标信息",
+		"record.homeTab": "录屏",
+		"record.settingsTab": "设置",
+		"record.fullscreen": "全屏录制",
+		"record.customRegion": "自定义区域",
+		"record.primary": "主",
+		"record.mic": "麦克风",
+		"record.recBtn": "录制",
+		"record.toggleCamera": "开启摄像头",
+		"record.toggleMic": "开启麦克风",
+		"record.startShort": "开始录制 ({k})",
+		"record.pauseShort": "暂停 ({k})",
+		"record.resumeShort": "继续 ({k})",
+		"record.stopShort": "停止录制 ({k})",
+		"record.toggleCameraShort": "开启摄像头 ({k})",
+		"record.toggleMicShort": "开启麦克风 ({k})",
+		"record.converting": "转换中",
+		"record.convertDone": "转换完成",
+		"record.listEmpty": "暂无录制记录",
+		"record.play": "播放",
+		"record.exportGif": "导出 GIF",
+		"record.delete": "删除",
+		"record.duration": "时长",
+		"record.size": "大小",
+		"record.history": "录制历史",
+		"record.openFolder": "打开文件夹",
+		"settings.title": "设置",
+		"settings.video": "视频设置",
+		"settings.format": "录制格式",
+		"settings.quality": "画质",
+		"settings.fps": "帧率",
+		"settings.outputDir": "输出目录",
+		"settings.changeDir": "更改",
+		"settings.videoSource": "视频来源",
+		"settings.audio": "音频",
+		"settings.mic": "麦克风",
+		"settings.systemAudio": "系统音频",
+		"settings.camera": "摄像头",
+		"settings.cameraSource": "摄像头来源",
+		"settings.drawing": "画笔",
+		"settings.drawingColor": "画笔颜色",
+		"settings.drawingWidth": "画笔粗细",
+		"settings.shortcuts": "快捷键",
+		"settings.shortcutStart": "开始/停止",
+		"settings.shortcutPause": "暂停/继续",
+		"settings.shortcutCamera": "切换摄像头",
+		"settings.shortcutDrawing": "切换画笔",
+		"settings.recordingTitle": "录屏设置",
+		"settings.output": "输出",
+		"settings.saveDir": "保存目录",
+		"settings.chooseDir": "选择保存目录",
+		"settings.browse": "浏览",
+		"settings.defaultFormat": "默认格式",
+		"settings.maxFps": "最大帧率",
+		"settings.qualityHigh": "高 (5 Mbps)",
+		"settings.qualityMedium": "中 (2.5 Mbps)",
+		"settings.qualityLow": "低 (1 Mbps)",
+		"settings.default": "默认",
+		"settings.device": "设备",
+		"settings.about": "关于",
+		"ai.title": "AI 助手",
+		"ai.installHooks": "安装 Claude Code 钩子",
+		"ai.uninstallHooks": "卸载 Claude Code 钩子",
+		"ai.hooksStatus": "钩子状态",
+		"ai.hooksInstalled": "已安装",
+		"ai.hooksNotInstalled": "未安装",
+		"ai.autoAllow": "自动允许权限",
+		"ai.autoAllowDesc": "开启后新权限请求自动放行，不再弹出审批卡片",
+		"ai.serverPort": "本地服务端口",
+		"ai.serverRunning": "服务运行中",
+		"ai.serverStopped": "服务未运行",
+		"ai.claudeRunning": "Claude Code 正在运行",
+		"ai.claudeStopped": "Claude Code 未检测到",
+		"ai.sessionCount": "会话数",
+		"ai.sessionsCount": "{n} 个会话",
+		"ai.waiting": "Claude 运行中，等待交互",
+		"ai.noActive": "无活跃会话",
+		"ai.online": "在线",
+		"ai.offline": "离线",
+		"ai.state.idle": "空闲",
+		"ai.state.thinking": "思考中",
+		"ai.state.working": "工作中",
+		"ai.state.error": "错误",
+		"ai.state.notification": "待审批",
+		"ai.state.done": "完成",
+		"ai.groupIntegration": "集成",
+		"ai.hooksDesc": "钩子脚本状态",
+		"ai.groupPermission": "权限",
+		"ai.autoAllowTitle": "自动允许所有权限",
+		"ai.groupIsland": "悬浮岛外观",
+		"ai.flat": "横条态（更扁的细横条）",
+		"ai.flatDesc": "把悬浮岛默认状态条压成更扁的细横条，省屏幕空间",
+		"todo.title": "待办便签",
+		"todo.add": "添加",
+		"todo.placeholder": "输入待办事项...",
+		"todo.empty": "暂无待办",
+		"todo.memo": "便签",
+		"todo.task": "待办",
+		"todo.addTodo": "新建待办",
+		"todo.addMemo": "新建便签",
+		"todo.done": "完成",
+		"todo.undone": "恢复",
+		"todo.delete": "删除",
+		"todo.pin": "置顶",
+		"todo.unpin": "取消置顶",
+		"todo.edit": "编辑",
+		"todo.save": "保存",
+		"todo.cancel": "取消",
+		"todo.reminder": "提醒",
+		"todo.reminderNone": "无提醒",
+		"todo.priority": "优先级",
+		"todo.priorityLow": "低",
+		"todo.priorityMedium": "中",
+		"todo.priorityHigh": "高",
+		"todo.priorityUrgent": "紧急",
+		"todo.titlePlaceholder": "输入标题...",
+		"todo.contentPlaceholder": "输入内容...",
+		"todo.reminderOverdue": "已到期：{title}",
+		"todo.count": "{n} 个待办",
+		"todo.searchPlaceholder": "搜索待办/便签...",
+		"todo.incomplete": "{n} 项未完成",
+		"todo.back": "返回",
+		"todo.more": "更多设置",
+		"todo.badge": "悬浮球气泡",
+		"todo.typeTodo": "待办",
+		"todo.typeMemo": "备忘",
+		"todo.tabAll": "全部",
+		"todo.noItems": "还没有{n}",
+		"todo.noTitle": "无标题",
+		"todo.noContent": "无内容",
+		"todo.added": "已新增",
+		"todo.saved": "已保存",
+		"todo.saveFailed": "保存失败",
+		"todo.deleted": "已删除",
+		"todo.completed": "已完成",
+		"todo.markDone": "标记完成",
+		"todo.moreOptions": "更多选项",
+		"todo.collapseOptions": "收起选项",
+		"todo.moreTitle": "类型、优先级、提醒",
+		"todo.typeField": "类型",
+		"todo.clearReminder": "清除提醒",
+		"todo.noBody": "（无正文内容）",
+		"todo.openTodo": "打开待办",
+		"todo.stickyTitle": "待办便签",
+		"todo.reminTitle": "待办提醒",
+		"todo.open": "点击打开",
+		"todo.reminderRing": "到点了",
+		"todo.reminderBody": "到时间了，记得处理一下。",
+		"sched.title": "定时录制",
+		"sched.aboutToStart": "录制即将开始",
+		"sched.mode": "模式切换",
+		"sched.countdown": "倒计时",
+		"sched.scheduled": "指定时间",
+		"sched.countdownMode": "倒计时模式",
+		"sched.scheduledMode": "指定时间模式",
+		"sched.delay": "延迟",
+		"sched.minutes": "分钟",
+		"sched.startCountdown": "开始倒计时",
+		"sched.date": "日期",
+		"sched.time": "时间",
+		"sched.set": "设置定时",
+		"sched.future": "请选择一个未来的时间",
+		"convert.preparing": "准备中",
+		"convert.start": "开始转换",
+		"convert.done": "转换完成",
+		"convert.failed": "转换失败",
+		"convert.export": "导出",
+		"convert.progress": "转换中... {n}%",
+		"convert.preparingDots": "准备中...",
+		"convert.startDots": "开始转换...",
+		"convert.doneEx": "转换完成!",
+		"convert.failedColon": "转换失败: {e}",
+		"video.seconds": "秒",
+		"record.paused": "已暂停",
+		"draw.pen": "画笔",
+		"draw.eraser": "橡皮",
+		"draw.arrow": "箭头",
+		"draw.rect": "矩形",
+		"draw.tools": "工具选择",
+		"draw.color": "颜色选择",
+		"draw.width": "粗细",
+		"draw.lineWidth": "线条粗细",
+		"draw.actions": "操作",
+		"draw.undo": "撤销",
+		"draw.clear": "清除全部",
+		"screen.error": "获取屏幕源失败",
+		"screen.choose": "选择录制源",
+		"screen.none": "未找到可用的屏幕源",
+		"camera.title": "摄像头",
+		"region.by": "全屏选区由",
+		"region.mainWin": "主进程窗口处理",
+		"region.none": "此处无",
+		"tools.claudeCode": "Claude Code",
+		"tools.codex": "Codex",
+		"tools.approvalNone": "仅展示状态，不支持审批",
+		"tools.notRunning": "未运行",
+		"tools.toolSessions": "{n} 个会话",
+		"tools.idle": "空闲",
+		"tools.working": "工作中",
+		"tools.title": "工具"
+	};
+	en = {
+		"common.confirm": "Confirm",
+		"common.cancel": "Cancel",
+		"common.ok": "OK",
+		"common.close": "Close",
+		"common.loading": "Loading...",
+		"common.reset": "Reset",
+		"common.on": "On",
+		"common.off": "Off",
+		"common.allow": "Allow",
+		"common.deny": "Deny",
+		"common.alwaysAllow": "Always Allow",
+		"common.save": "Save",
+		"win.minimize": "Minimize",
+		"win.maximize": "Maximize",
+		"ball.menu.record": "Record",
+		"ball.menu.ai": "AI",
+		"ball.menu.todo": "Notes",
+		"ball.menu.settings": "Settings",
+		"settings.group.ball": "Floating Ball",
+		"settings.ball.show": "Show Floating Ball",
+		"settings.ball.showDesc": "Hidden ball can be reopened from the tray menu “Show Settings Window”",
+		"settings.ball.alwaysOnTop": "Always on Top",
+		"settings.ball.alwaysOnTopDesc": "When off, other windows may cover the ball",
+		"settings.ball.resetPos": "Reset Position",
+		"settings.ball.resetPosDesc": "Move the ball back to the center of the screen",
+		"settings.ball.snapGutter": "Edge gutter",
+		"settings.ball.snapGutterDesc": "Pixel gutter from the screen edge when snapped (0 = flush)",
+		"settings.group.menu": "Ball Menu",
+		"settings.group.system": "System",
+		"settings.group.language": "Language",
+		"settings.system.openAtLogin": "Open at Login",
+		"settings.system.openAtLoginDesc": "Auto start this app when you sign in",
+		"settings.language.label": "Interface Language",
+		"settings.language.desc": "Ball, AI assistant and other windows apply on next open",
+		"settings.lang.zh": "简体中文",
+		"settings.lang.en": "English",
+		"ai.title": "AI Assistant",
+		"ai.installHooks": "Install Claude Code hooks",
+		"ai.uninstallHooks": "Uninstall Claude Code hooks",
+		"ai.hooksStatus": "Hook status",
+		"ai.hooksInstalled": "Installed",
+		"ai.hooksNotInstalled": "Not installed",
+		"ai.autoAllow": "Auto-allow permissions",
+		"ai.autoAllowDesc": "When on, new permission requests are allowed automatically without approval cards",
+		"ai.serverPort": "Local server port",
+		"ai.serverRunning": "Server running",
+		"ai.serverStopped": "Server not running",
+		"ai.claudeRunning": "Claude Code is running",
+		"ai.claudeStopped": "Claude Code not detected",
+		"ai.sessionCount": "Sessions",
+		"ai.sessionsCount": "{n} sessions",
+		"ai.waiting": "Claude is running, waiting for interaction",
+		"ai.noActive": "No active sessions",
+		"ai.online": "Online",
+		"ai.offline": "Offline",
+		"ai.state.idle": "Idle",
+		"ai.state.thinking": "Thinking",
+		"ai.state.working": "Working",
+		"ai.state.error": "Error",
+		"ai.state.notification": "Pending",
+		"ai.state.done": "Done",
+		"ai.groupIntegration": "Integration",
+		"ai.hooksDesc": "Hook script status",
+		"ai.groupPermission": "Permissions",
+		"ai.autoAllowTitle": "Auto-allow all permissions",
+		"ai.groupIsland": "AI Island Look",
+		"ai.flat": "Flat bar (slimmer)",
+		"ai.flatDesc": "Compress the island status bar into a slimmer flat bar to save screen space",
+		"aiIsland.idle": "AI idle",
+		"aiIsland.thinking": "AI thinking",
+		"aiIsland.working": "AI working",
+		"aiIsland.error": "AI error",
+		"aiIsland.notification": "Approval needed",
+		"aiIsland.done": "Task done",
+		"aiIsland.permTitle": "Permission Request",
+		"aiIsland.permTool": "Tool",
+		"aiIsland.permInput": "Arguments",
+		"aiIsland.questionTitle": "AI is asking",
+		"aiIsland.prevQuestion": "Previous",
+		"aiIsland.nextQuestion": "Next",
+		"aiIsland.submitAnswer": "Submit",
+		"aiIsland.know": "Got it",
+		"aiIsland.otherPlaceholder": "Type other...",
+		"aiIsland.otherHint": "Can be selected together with other options.",
+		"aiIsland.answerInClaude": "Answer in the Claude Code interface; this is just a reminder.",
+		"aiIsland.viewDetail": "Click to view details",
+		"aiIsland.unknown": "Unknown action",
+		"aiIsland.other": "Other",
+		"aiIsland.progress": "Q {n}/{t}",
+		"record.title": "HD Screen Recorder",
+		"record.start": "Start Recording",
+		"record.pause": "Pause",
+		"record.resume": "Resume",
+		"record.stop": "Stop",
+		"record.allScreens": "All screens",
+		"record.selectRegion": "Select region",
+		"record.toggleSys": "System audio",
+		"record.closeAndStop": "Close & stop",
+		"record.claudeRequest": "Claude Code requests permission",
+		"record.targetInfo": "Target info",
+		"record.homeTab": "Record",
+		"record.settingsTab": "Settings",
+		"record.fullscreen": "Full Screen",
+		"record.customRegion": "Custom Region",
+		"record.primary": "Pri",
+		"record.mic": "Mic",
+		"record.recBtn": "Record",
+		"record.toggleCamera": "Enable Camera",
+		"record.toggleMic": "Enable Microphone",
+		"record.startShort": "Start Recording ({k})",
+		"record.pauseShort": "Pause ({k})",
+		"record.resumeShort": "Resume ({k})",
+		"record.stopShort": "Stop Recording ({k})",
+		"record.toggleCameraShort": "Enable Camera ({k})",
+		"record.toggleMicShort": "Enable Microphone ({k})",
+		"record.converting": "Converting",
+		"record.convertDone": "Done",
+		"record.listEmpty": "No recordings yet",
+		"record.play": "Play",
+		"record.exportGif": "Export GIF",
+		"record.delete": "Delete",
+		"record.duration": "Duration",
+		"record.size": "Size",
+		"record.history": "History",
+		"record.openFolder": "Open folder",
+		"settings.title": "Settings",
+		"settings.video": "Video",
+		"settings.format": "Format",
+		"settings.quality": "Quality",
+		"settings.fps": "FPS",
+		"settings.outputDir": "Output directory",
+		"settings.changeDir": "Change",
+		"settings.videoSource": "Video source",
+		"settings.audio": "Audio",
+		"settings.mic": "Microphone",
+		"settings.systemAudio": "System audio",
+		"settings.camera": "Camera",
+		"settings.cameraSource": "Camera source",
+		"settings.drawing": "Drawing",
+		"settings.drawingColor": "Color",
+		"settings.drawingWidth": "Width",
+		"settings.shortcuts": "Shortcuts",
+		"settings.shortcutStart": "Start / Stop",
+		"settings.shortcutPause": "Pause / Resume",
+		"settings.shortcutCamera": "Toggle Camera",
+		"settings.shortcutDrawing": "Toggle Drawing",
+		"settings.recordingTitle": "Recording Settings",
+		"settings.output": "Output",
+		"settings.saveDir": "Save directory",
+		"settings.chooseDir": "Choose save directory",
+		"settings.browse": "Browse",
+		"settings.defaultFormat": "Format",
+		"settings.maxFps": "Max FPS",
+		"settings.qualityHigh": "High (5 Mbps)",
+		"settings.qualityMedium": "Medium (2.5 Mbps)",
+		"settings.qualityLow": "Low (1 Mbps)",
+		"settings.default": "Default",
+		"settings.device": "Device",
+		"settings.about": "About",
+		"todo.title": "Todo Notes",
+		"todo.add": "Add",
+		"todo.placeholder": "Type a todo...",
+		"todo.empty": "No todos yet",
+		"todo.memo": "Memo",
+		"todo.task": "Task",
+		"todo.addTodo": "New Todo",
+		"todo.addMemo": "New Memo",
+		"todo.done": "Done",
+		"todo.undone": "Restore",
+		"todo.delete": "Delete",
+		"todo.pin": "Pin",
+		"todo.unpin": "Unpin",
+		"todo.edit": "Edit",
+		"todo.save": "Save",
+		"todo.cancel": "Cancel",
+		"todo.reminder": "Reminder",
+		"todo.reminderNone": "No reminder",
+		"todo.priority": "Priority",
+		"todo.priorityLow": "Low",
+		"todo.priorityMedium": "Medium",
+		"todo.priorityHigh": "High",
+		"todo.priorityUrgent": "Urgent",
+		"todo.titlePlaceholder": "Type a title...",
+		"todo.contentPlaceholder": "Type content...",
+		"todo.reminderOverdue": "Due: {title}",
+		"todo.count": "{n} items",
+		"todo.searchPlaceholder": "Search todos/memos...",
+		"todo.incomplete": "{n} incomplete",
+		"todo.back": "Back",
+		"todo.more": "More settings",
+		"todo.badge": "Ball badge",
+		"todo.typeTodo": "Todo",
+		"todo.typeMemo": "Memo",
+		"todo.tabAll": "All",
+		"todo.noItems": "No {n} yet",
+		"todo.noTitle": "No title",
+		"todo.noContent": "No content",
+		"todo.added": "Added",
+		"todo.saved": "Saved",
+		"todo.saveFailed": "Save failed",
+		"todo.deleted": "Deleted",
+		"todo.completed": "Completed",
+		"todo.markDone": "Mark done",
+		"todo.moreOptions": "More options",
+		"todo.collapseOptions": "Collapse",
+		"todo.moreTitle": "Type, priority, reminder",
+		"todo.typeField": "Type",
+		"todo.clearReminder": "Clear reminder",
+		"todo.noBody": "(No content)",
+		"todo.openTodo": "Open todos",
+		"todo.stickyTitle": "Todo Notes",
+		"todo.reminTitle": "Todo reminder",
+		"todo.open": "Click to open",
+		"todo.reminderRing": "Time's up",
+		"todo.reminderBody": "It's time — take care of it.",
+		"sched.title": "Scheduled Recording",
+		"sched.aboutToStart": "Recording starts soon",
+		"sched.mode": "Mode",
+		"sched.countdown": "Countdown",
+		"sched.scheduled": "Scheduled",
+		"sched.countdownMode": "Countdown mode",
+		"sched.scheduledMode": "Scheduled mode",
+		"sched.delay": "Delay",
+		"sched.minutes": "min",
+		"sched.startCountdown": "Start countdown",
+		"sched.date": "Date",
+		"sched.time": "Time",
+		"sched.set": "Schedule",
+		"sched.future": "Pick a time in the future",
+		"convert.preparing": "Preparing",
+		"convert.start": "Start converting",
+		"convert.done": "Conversion done",
+		"convert.failed": "Conversion failed",
+		"convert.export": "Export",
+		"convert.progress": "Converting... {n}%",
+		"convert.preparingDots": "Preparing...",
+		"convert.startDots": "Starting...",
+		"convert.doneEx": "Conversion complete!",
+		"convert.failedColon": "Conversion failed: {e}",
+		"video.seconds": "s",
+		"record.paused": "Paused",
+		"draw.pen": "Pen",
+		"draw.eraser": "Eraser",
+		"draw.arrow": "Arrow",
+		"draw.rect": "Rectangle",
+		"draw.tools": "Tools",
+		"draw.color": "Color",
+		"draw.width": "Width",
+		"draw.lineWidth": "Line width",
+		"draw.actions": "Actions",
+		"draw.undo": "Undo",
+		"draw.clear": "Clear all",
+		"screen.error": "Failed to get screen sources",
+		"screen.choose": "Select recording source",
+		"screen.none": "No screen source found",
+		"camera.title": "Camera",
+		"region.by": "Full-screen selection is handled",
+		"region.mainWin": "by the main process window",
+		"region.none": "Nothing here",
+		"tools.claudeCode": "Claude Code",
+		"tools.codex": "Codex",
+		"tools.approvalNone": "Status only, no approval",
+		"tools.notRunning": "Not running",
+		"tools.toolSessions": "{n} sessions",
+		"tools.idle": "Idle",
+		"tools.working": "Working",
+		"tools.title": "Tools"
+	};
+	currentLocale = "zh";
+}));
+//#endregion
+//#region electron/main/region-selector.ts
+var require_region_selector = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	init_logger();
+	init_i18n();
+	var mainWindow = null;
+	/** 录制悬浮岛/工具栏内联 HTML 的 i18n 词条（label/title）。JS 内联部分在脚本头部注入 I18N JSON。 */
+	function recorderI18n() {
+		return {
+			mic: t("record.toggleMic"),
+			sys: t("record.toggleSys"),
+			cam: t("record.toggleCamera"),
+			rec: t("record.recBtn"),
+			start: t("record.start"),
+			stop: t("record.stop"),
+			pause: t("record.pause"),
+			resume: t("record.resume"),
+			cancel: t("common.cancel"),
+			closeStop: t("record.closeAndStop"),
+			viewDetail: t("aiIsland.viewDetail"),
+			idle: t("aiIsland.idle"),
+			thinking: t("aiIsland.thinking"),
+			working: t("aiIsland.working"),
+			error: t("aiIsland.error"),
+			notification: t("aiIsland.notification"),
+			done: t("aiIsland.done"),
+			unknown: t("aiIsland.unknown"),
+			allow: t("common.allow"),
+			deny: t("common.deny"),
+			alwaysAllow: t("common.alwaysAllow"),
+			requestTitle: t("record.claudeRequest"),
+			toolName: t("aiIsland.permTool"),
+			targetInfo: t("record.targetInfo")
+		};
+	}
+	function setMainWindow(win) {
+		mainWindow = win;
+	}
+	function updateAudioLevels(micLevel, sysLevel) {
+		if (toolbarWindow && !toolbarWindow.isDestroyed()) toolbarWindow.webContents.send("audio-levels", {
+			micLevel,
+			sysLevel
+		});
+		if (floatingIsland && !floatingIsland.isDestroyed()) floatingIsland.webContents.send("audio-levels", {
+			micLevel,
+			sysLevel
+		});
+	}
+	var regionWindow = null;
+	var resolveRegion = null;
+	function selectRegion() {
+		return new Promise((resolve) => {
+			resolveRegion = resolve;
+			if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
+			const { x, y, width, height } = electron.screen.getPrimaryDisplay().bounds;
+			regionWindow = new electron.BrowserWindow({
+				x,
+				y,
+				width,
+				height,
+				frame: false,
+				transparent: true,
+				resizable: false,
+				movable: false,
+				alwaysOnTop: true,
+				skipTaskbar: true,
+				hasShadow: false,
+				webPreferences: {
+					nodeIntegration: true,
+					contextIsolation: false
+				}
+			});
+			const htmlPath = (0, node_path.join)(__dirname, "region-selector.html");
+			regionWindow.loadFile(htmlPath).catch((err) => {
+				logger_default.error("Failed to load region selector:", err.message);
+				cleanupRegionSelector(null);
+			});
+			regionWindow.setFullScreen(true);
+			regionWindow.setVisibleOnAllWorkspaces(true);
+			regionWindow.setIgnoreMouseEvents(false);
+			regionWindow.on("closed", () => {
+				if (resolveRegion) {
+					resolveRegion(null);
+					resolveRegion = null;
+				}
+			});
+		});
+	}
+	function cleanupRegionSelector(result) {
+		if (regionWindow && !regionWindow.isDestroyed()) regionWindow.close();
+		regionWindow = null;
+		if (resolveRegion) {
+			resolveRegion(result);
+			resolveRegion = null;
+		}
+	}
+	var borderWindow = null;
+	var toolbarWindow = null;
+	var savedRegion = null;
+	var savedToolbarPos = null;
+	var cameraPreviewWindow = null;
+	var CAMERA_PREVIEW_W = 200;
+	var CAMERA_PREVIEW_H = 150;
+	var CAMERA_PREVIEW_PAD = 12;
+	var currentPreviewArea = null;
+	var previewDragOffsetX = 0;
+	var previewDragOffsetY = 0;
+	var previewDragInterval = null;
+	function startPreviewDrag() {
+		if (!cameraPreviewWindow || cameraPreviewWindow.isDestroyed()) return;
+		const cursor = electron.screen.getCursorScreenPoint();
+		const [wx, wy] = cameraPreviewWindow.getPosition();
+		previewDragOffsetX = cursor.x - wx;
+		previewDragOffsetY = cursor.y - wy;
+		const [w, h] = cameraPreviewWindow.getSize();
+		previewDragInterval = setInterval(() => {
+			if (!cameraPreviewWindow || cameraPreviewWindow.isDestroyed()) {
+				stopPreviewDrag();
+				return;
+			}
+			const pos = electron.screen.getCursorScreenPoint();
+			let nx = pos.x - previewDragOffsetX;
+			let ny = pos.y - previewDragOffsetY;
+			if (currentPreviewArea) {
+				nx = Math.max(currentPreviewArea.x, Math.min(nx, currentPreviewArea.x + currentPreviewArea.width - w));
+				ny = Math.max(currentPreviewArea.y, Math.min(ny, currentPreviewArea.y + currentPreviewArea.height - h));
+			}
+			cameraPreviewWindow.setBounds({
+				x: nx,
+				y: ny,
+				width: w,
+				height: h
+			});
+		}, 16);
+	}
+	function stopPreviewDrag() {
+		if (previewDragInterval) {
+			clearInterval(previewDragInterval);
+			previewDragInterval = null;
+		}
+	}
+	function showCameraPreview(area, cameraDeviceId) {
+		hideCameraPreview();
+		currentPreviewArea = area;
+		const cpX = area.x + area.width - CAMERA_PREVIEW_W - CAMERA_PREVIEW_PAD;
+		const cpY = area.y + CAMERA_PREVIEW_PAD;
+		cameraPreviewWindow = new electron.BrowserWindow({
+			x: cpX,
+			y: cpY,
+			width: CAMERA_PREVIEW_W,
+			height: CAMERA_PREVIEW_H,
+			frame: false,
+			transparent: true,
+			resizable: false,
+			movable: false,
+			alwaysOnTop: true,
+			skipTaskbar: true,
+			hasShadow: false,
+			webPreferences: {
+				nodeIntegration: true,
+				contextIsolation: false
+			}
+		});
+		cameraPreviewWindow.setVisibleOnAllWorkspaces(true);
+		cameraPreviewWindow.setAlwaysOnTop(true, "screen-saver");
+		const htmlPath = (0, node_path.join)(__dirname, "camera-preview.html");
+		const deviceIdParam = cameraDeviceId ? `?deviceId=${encodeURIComponent(cameraDeviceId)}` : "";
+		cameraPreviewWindow.loadFile(htmlPath + deviceIdParam).catch((err) => {
+			logger_default.error("Failed to load camera preview:", err.message);
+		});
+		logger_default.info("Camera preview shown at", cpX, cpY);
+	}
+	function hideCameraPreview() {
+		if (cameraPreviewWindow && !cameraPreviewWindow.isDestroyed()) {
+			stopCameraPreviewStream();
+			cameraPreviewWindow.close();
+			cameraPreviewWindow = null;
+		}
+	}
+	function stopCameraPreviewStream() {
+		if (cameraPreviewWindow && !cameraPreviewWindow.isDestroyed()) cameraPreviewWindow.webContents.send("camera-control", "stop");
+	}
+	var floatingIsland = null;
+	var islandMouseCheckInterval = null;
+	var hideIslandTimer = null;
+	var islandState = "idle";
+	var islandTargetBounds = null;
+	function showFloatingIsland(audioState, targetDisplayId) {
+		hideFloatingIsland();
+		islandState = "idle";
+		let display = electron.screen.getPrimaryDisplay();
+		if (targetDisplayId != null) {
+			const found = electron.screen.getAllDisplays().find((d) => d.id === targetDisplayId);
+			if (found) display = found;
+		}
+		const bounds = display.bounds;
+		islandTargetBounds = bounds;
+		const islandW = 340;
+		floatingIsland = new electron.BrowserWindow({
+			x: Math.round(bounds.x + (bounds.width - islandW) / 2),
+			y: bounds.y + 4,
+			width: islandW,
+			height: 44,
+			frame: false,
+			transparent: true,
+			resizable: true,
+			movable: false,
+			alwaysOnTop: true,
+			skipTaskbar: true,
+			hasShadow: false,
+			webPreferences: {
+				nodeIntegration: true,
+				contextIsolation: false
+			}
+		});
+		floatingIsland.setVisibleOnAllWorkspaces(true);
+		floatingIsland.setMinimumSize(100, 44);
+		floatingIsland.setAlwaysOnTop(true, "screen-saver");
+		const html = `<!DOCTYPE html>
 <html><head><style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif}
@@ -85,64 +3312,64 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
   <span class="recording-dot" id="dot" style="display:none"></span>
   <span class="timer" id="timer">00:00</span>
   <div class="btn-group">
-    <button id="micBtn" title="${N(`record.toggleMic`)}" onclick="doToggleMic()">
+    <button id="micBtn" title="${t("record.toggleMic")}" onclick="doToggleMic()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
     </button>
     <div class="meter-group" id="micMeter"></div>
   </div>
   <!-- <div class="btn-group">
-    <button id="sysBtn" title="${N(`record.toggleSys`)}" onclick="doToggleSys()">
+    <button id="sysBtn" title="${t("record.toggleSys")}" onclick="doToggleSys()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
     </button>
     <div class="meter-group" id="sysMeter"></div>
   </div> -->
   <div class="btn-group">
-    <button id="camBtn" title="${N(`record.toggleCamera`)}" onclick="doToggleCam()">
+    <button id="camBtn" title="${t("record.toggleCamera")}" onclick="doToggleCam()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
     </button>
   </div>
   <div class="sep"></div>
   <button class="action-btn start-btn" id="startBtn" onclick="doStart()">
     <svg width="10" height="10" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="currentColor"/></svg>
-    <span>${N(`record.recBtn`)}</span>
+    <span>${t("record.recBtn")}</span>
   </button>
-  <button class="stop-btn" id="stopBtn" style="display:none" onclick="doStop()" title="${N(`record.stop`)}">
+  <button class="stop-btn" id="stopBtn" style="display:none" onclick="doStop()" title="${t("record.stop")}">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
   </button>
-  <button class="pause-btn" id="pauseBtn" style="display:none" onclick="doPause()" title="${N(`record.pause`)}">
+  <button class="pause-btn" id="pauseBtn" style="display:none" onclick="doPause()" title="${t("record.pause")}">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
   </button>
-  <button id="resumeBtn" style="display:none" onclick="doResume()" title="${N(`record.resume`)}">
+  <button id="resumeBtn" style="display:none" onclick="doResume()" title="${t("record.resume")}">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
   </button>
-  <button class="close-btn" onclick="doClose()" title="${N(`common.cancel`)}">
+  <button class="close-btn" onclick="doClose()" title="${t("common.cancel")}">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
   </button>
 </div>
 <div class="sep" id="aiSep" style="display:none"></div>
-<div class="ai-indicator" id="aiIndicator" style="display:none" onclick="showAiDetail()" title="${N(`aiIsland.viewDetail`)}">
+<div class="ai-indicator" id="aiIndicator" style="display:none" onclick="showAiDetail()" title="${t("aiIsland.viewDetail")}">
   <span class="ai-dot idle" id="aiDot"></span>
-  <span class="ai-label" id="aiLabel">${N(`aiIsland.idle`)}</span>
+  <span class="ai-label" id="aiLabel">${t("aiIsland.idle")}</span>
 </div>
 <div class="perm-card" id="permCard">
   <div class="perm-header">
     <span>🤖</span>
-    <span>${N(`record.claudeRequest`)}</span>
+    <span>${t("record.claudeRequest")}</span>
   </div>
   <div class="perm-detail">
-    <span class="perm-tool" id="permTool">${N(`aiIsland.permTool`)}</span>
-    <span id="permTarget">${N(`record.targetInfo`)}</span>
+    <span class="perm-tool" id="permTool">${t("aiIsland.permTool")}</span>
+    <span id="permTarget">${t("record.targetInfo")}</span>
   </div>
   <div class="perm-actions">
-    <button class="perm-btn allow" onclick="doAllow()">${N(`common.allow`)}</button>
-    <button class="perm-btn deny" onclick="doDeny()">${N(`common.deny`)}</button>
-    <button class="perm-btn always" onclick="doAlwaysAllow()">${N(`common.alwaysAllow`)}</button>
+    <button class="perm-btn allow" onclick="doAllow()">${t("common.allow")}</button>
+    <button class="perm-btn deny" onclick="doDeny()">${t("common.deny")}</button>
+    <button class="perm-btn always" onclick="doAlwaysAllow()">${t("common.alwaysAllow")}</button>
   </div>
 </div>
 <script>
-const I18N=${JSON.stringify(r())};
+const I18N=${JSON.stringify(recorderI18n())};
 const {ipcRenderer}=require('electron')
-let timerInterval=null,seconds=0,micOn=${e?.micEnabled?`true`:`false`},sysOn=${e?.sysEnabled?`true`:`false`},camOn=${e?.cameraEnabled?`true`:`false`},isRecording=false
+let timerInterval=null,seconds=0,micOn=${audioState?.micEnabled ? "true" : "false"},sysOn=${audioState?.sysEnabled ? "true" : "false"},camOn=${audioState?.cameraEnabled ? "true" : "false"},isRecording=false
 function updateTimer(){
   seconds++;const m=String(Math.floor(seconds/60)).padStart(2,'0')
   const s=String(seconds%60).padStart(2,'0')
@@ -243,12 +3470,115 @@ function doAlwaysAllow(){resolvePerm('always')}
 function resolvePerm(b){ipcRenderer.invoke('agent-resolve-permission',b);document.getElementById('permCard').classList.remove('show');setTimeout(resizeIsland,50)}
 function showAiDetail(){}
 <\/script>
-</body></html>`;w.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(a)}`),k.info(`Floating island shown`),b=i,e?.cameraEnabled&&re(i,e.cameraDeviceId)}function D(){T&&=(clearInterval(T),null),E&&=(clearTimeout(E),null),w&&!w.isDestroyed()&&(w.close(),w=null),C(),b=null,oe=null}function ce(e,t){if(ae=e===`idle`?`idle`:e===`recording`?`recording`:e===`paused`?`paused`:ae,e===`show`||e===`hide`){w&&!w.isDestroyed()&&w.webContents.send(`island-state`,e);return}w&&!w.isDestroyed()&&w.webContents.send(`island-state`,e,t),T&&=(clearInterval(T),null),E&&=(clearTimeout(E),null),e===`recording`&&(T=setInterval(()=>{if(!w||w.isDestroyed())return;let e=d.screen.getCursorScreenPoint(),[t,n]=w.getPosition(),[r,i]=w.getSize();e.x>=t&&e.x<=t+r&&e.y>=n-4&&e.y<=n+i?(E&&=(clearTimeout(E),null),w.webContents.send(`island-state`,`show`)):E||=setTimeout(()=>{w&&!w.isDestroyed()&&w.webContents.send(`island-state`,`hide`),E=null},500)},500))}var O=44,le=3;function ue(e,t){pe();let n=le,i=n+2,a=d.screen.getPrimaryDisplay().bounds,o=e.y-a.y,s=a.y+a.height-(e.y+e.height),c=O+4,l,u,_,v;o>=c?(v=`top`,l=e.x-i,u=e.y-O-i,_=e.width+i*2):s>=c?(v=`bottom`,l=e.x-i,u=e.y+e.height+i,_=e.width+i*2):(v=`inside`,l=e.x,u=e.y,_=Math.min(e.width,500)),m={...e},h=v,p=new d.BrowserWindow({x:l,y:u,width:_,height:O,frame:!1,transparent:!0,resizable:!1,movable:!1,alwaysOnTop:!0,skipTaskbar:!0,hasShadow:!1,webPreferences:{nodeIntegration:!0,contextIsolation:!1}}),p.setVisibleOnAllWorkspaces(!0),p.setAlwaysOnTop(!0,`screen-saver`);let y=`<!DOCTYPE html>
+</body></html>`;
+		floatingIsland.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+		logger_default.info("Floating island shown");
+		currentPreviewArea = bounds;
+		if (audioState?.cameraEnabled) showCameraPreview(bounds, audioState.cameraDeviceId);
+	}
+	function hideFloatingIsland() {
+		if (islandMouseCheckInterval) {
+			clearInterval(islandMouseCheckInterval);
+			islandMouseCheckInterval = null;
+		}
+		if (hideIslandTimer) {
+			clearTimeout(hideIslandTimer);
+			hideIslandTimer = null;
+		}
+		if (floatingIsland && !floatingIsland.isDestroyed()) {
+			floatingIsland.close();
+			floatingIsland = null;
+		}
+		hideCameraPreview();
+		currentPreviewArea = null;
+		islandTargetBounds = null;
+	}
+	function setFloatingIslandState(state, elapsedSeconds) {
+		islandState = state === "idle" ? "idle" : state === "recording" ? "recording" : state === "paused" ? "paused" : islandState;
+		if (state === "show" || state === "hide") {
+			if (floatingIsland && !floatingIsland.isDestroyed()) floatingIsland.webContents.send("island-state", state);
+			return;
+		}
+		if (floatingIsland && !floatingIsland.isDestroyed()) floatingIsland.webContents.send("island-state", state, elapsedSeconds);
+		if (islandMouseCheckInterval) {
+			clearInterval(islandMouseCheckInterval);
+			islandMouseCheckInterval = null;
+		}
+		if (hideIslandTimer) {
+			clearTimeout(hideIslandTimer);
+			hideIslandTimer = null;
+		}
+		if (state === "recording") islandMouseCheckInterval = setInterval(() => {
+			if (!floatingIsland || floatingIsland.isDestroyed()) return;
+			const pos = electron.screen.getCursorScreenPoint();
+			const [ix, iy] = floatingIsland.getPosition();
+			const [iw, ih] = floatingIsland.getSize();
+			if (pos.x >= ix && pos.x <= ix + iw && pos.y >= iy - 4 && pos.y <= iy + ih) {
+				if (hideIslandTimer) {
+					clearTimeout(hideIslandTimer);
+					hideIslandTimer = null;
+				}
+				floatingIsland.webContents.send("island-state", "show");
+			} else if (!hideIslandTimer) hideIslandTimer = setTimeout(() => {
+				if (floatingIsland && !floatingIsland.isDestroyed()) floatingIsland.webContents.send("island-state", "hide");
+				hideIslandTimer = null;
+			}, 500);
+		}, 500);
+	}
+	var TOOLBAR_HEIGHT = 44;
+	var BORDER_WIDTH = 3;
+	function showRegionBorder(region, audioState) {
+		hideRegionBorder();
+		const bw = BORDER_WIDTH;
+		const pad = bw + 2;
+		const displayBounds = electron.screen.getPrimaryDisplay().bounds;
+		const topSpace = region.y - displayBounds.y;
+		const bottomSpace = displayBounds.y + displayBounds.height - (region.y + region.height);
+		const minSpace = TOOLBAR_HEIGHT + 4;
+		let tbX, tbY, tbW, tbPos;
+		if (topSpace >= minSpace) {
+			tbPos = "top";
+			tbX = region.x - pad;
+			tbY = region.y - TOOLBAR_HEIGHT - pad;
+			tbW = region.width + pad * 2;
+		} else if (bottomSpace >= minSpace) {
+			tbPos = "bottom";
+			tbX = region.x - pad;
+			tbY = region.y + region.height + pad;
+			tbW = region.width + pad * 2;
+		} else {
+			tbPos = "inside";
+			tbX = region.x;
+			tbY = region.y;
+			tbW = Math.min(region.width, 500);
+		}
+		savedRegion = { ...region };
+		savedToolbarPos = tbPos;
+		toolbarWindow = new electron.BrowserWindow({
+			x: tbX,
+			y: tbY,
+			width: tbW,
+			height: TOOLBAR_HEIGHT,
+			frame: false,
+			transparent: true,
+			resizable: false,
+			movable: false,
+			alwaysOnTop: true,
+			skipTaskbar: true,
+			hasShadow: false,
+			webPreferences: {
+				nodeIntegration: true,
+				contextIsolation: false
+			}
+		});
+		toolbarWindow.setVisibleOnAllWorkspaces(true);
+		toolbarWindow.setAlwaysOnTop(true, "screen-saver");
+		const toolbarHtml = `<!DOCTYPE html>
 <html><head><style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:100%;height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif}
 .toolbar{
-  width:100%;height:${O}px;
+  width:100%;height:${TOOLBAR_HEIGHT}px;
   background:rgba(20,20,40,0.97);
   border-radius:8px 8px 0 0;
   display:flex;align-items:center;justify-content:center;gap:6px;
@@ -291,43 +3621,43 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Segoe UI',system-u
 .toolbar.minimal{width:fit-content;height:40px!important;border-radius:22px;background:rgba(20,20,40,0.96);border:1px solid rgba(255,255,255,0.08);padding:0 10px}
 .toolbar.minimal .audio-toggle,.toolbar.minimal .meter-group,.toolbar.minimal .sep,.toolbar.minimal .size-label,.toolbar.minimal .close-btn{display:none!important}
 </style></head><body>
-<div class="toolbar" id="toolbar" data-pos="${v}">
+<div class="toolbar" id="toolbar" data-pos="${tbPos}">
   <span class="recording-dot" id="dot"></span>
   <span class="timer" id="timer">00:00</span>
-  <button class="audio-toggle" id="micBtn" title="${N(`record.toggleMic`)}" onclick="doToggleMic()">
+  <button class="audio-toggle" id="micBtn" title="${t("record.toggleMic")}" onclick="doToggleMic()">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
   </button>
   <div class="meter-group" id="micMeter"></div>
-  <!-- <button class="audio-toggle" id="sysBtn" title="${N(`record.toggleSys`)}" onclick="doToggleSys()">
+  <!-- <button class="audio-toggle" id="sysBtn" title="${t("record.toggleSys")}" onclick="doToggleSys()">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
   </button>
   <div class="meter-group" id="sysMeter"></div> -->
-  <button class="audio-toggle" id="camBtn" title="${N(`record.toggleCamera`)}" onclick="doToggleCam()">
+  <button class="audio-toggle" id="camBtn" title="${t("record.toggleCamera")}" onclick="doToggleCam()">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
   </button>
   <div class="sep"></div>
-  <button class="rec" id="startBtn" onclick="doStart()" title="${N(`record.start`)}">
+  <button class="rec" id="startBtn" onclick="doStart()" title="${t("record.start")}">
     <svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="currentColor"/></svg>
-    <span>${N(`record.recBtn`)}</span>
+    <span>${t("record.recBtn")}</span>
   </button>
-  <button class="stop-btn" id="stopBtn" style="display:none" onclick="doStop()" title="${N(`record.stop`)}">
+  <button class="stop-btn" id="stopBtn" style="display:none" onclick="doStop()" title="${t("record.stop")}">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
   </button>
-  <button class="pause-btn" id="pauseBtn" style="display:none" onclick="doPause()" title="${N(`record.pause`)}">
+  <button class="pause-btn" id="pauseBtn" style="display:none" onclick="doPause()" title="${t("record.pause")}">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
   </button>
-  <button id="resumeBtn" style="display:none" onclick="doResume()" title="${N(`record.resume`)}">
+  <button id="resumeBtn" style="display:none" onclick="doResume()" title="${t("record.resume")}">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
   </button>
-  <span class="size-label" id="sizeLabel">${e.width}×${e.height}</span>
-  <button class="close-btn" onclick="doClose()" title="${N(`record.closeAndStop`)}">
+  <span class="size-label" id="sizeLabel">${region.width}×${region.height}</span>
+  <button class="close-btn" onclick="doClose()" title="${t("record.closeAndStop")}">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
   </button>
 </div>
 <script>
-const I18N=${JSON.stringify(r())};
+const I18N=${JSON.stringify(recorderI18n())};
 const {ipcRenderer}=require('electron')
-let timerInterval=null,seconds=0,micOn=${t?.micEnabled?`true`:`false`},sysOn=${t?.sysEnabled?`true`:`false`},camOn=${t?.cameraEnabled?`true`:`false`},isRecording=false
+let timerInterval=null,seconds=0,micOn=${audioState?.micEnabled ? "true" : "false"},sysOn=${audioState?.sysEnabled ? "true" : "false"},camOn=${audioState?.cameraEnabled ? "true" : "false"},isRecording=false
 function updateTimer(){
   seconds++;const m=String(Math.floor(seconds/60)).padStart(2,'0')
   const s=String(seconds%60).padStart(2,'0')
@@ -408,18 +3738,287 @@ ipcRenderer.on('audio-levels',(e,{micLevel,sysLevel})=>{
   if(sysOn)updateMeter(sysEl,sysLevel)
 })
 <\/script>
-</body></html>`;p.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(y)}`);let x=e.x-i,ee=e.y-i,S=e.width+i*2,te=e.height+i*2;f=new d.BrowserWindow({x,y:ee,width:S,height:te,show:!1,frame:!1,transparent:!0,resizable:!1,movable:!1,alwaysOnTop:!0,skipTaskbar:!0,hasShadow:!1,webPreferences:{nodeIntegration:!0,contextIsolation:!1}}),f.setVisibleOnAllWorkspaces(!0),f.setAlwaysOnTop(!0,`screen-saver`),f.setIgnoreMouseEvents(!0),f.setBounds({x,y:ee,width:S,height:te}),f.show();let ne=`<!DOCTYPE html>
+</body></html>`;
+		toolbarWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(toolbarHtml)}`);
+		const bX = region.x - pad;
+		const bY = region.y - pad;
+		const bW = region.width + pad * 2;
+		const bH = region.height + pad * 2;
+		borderWindow = new electron.BrowserWindow({
+			x: bX,
+			y: bY,
+			width: bW,
+			height: bH,
+			show: false,
+			frame: false,
+			transparent: true,
+			resizable: false,
+			movable: false,
+			alwaysOnTop: true,
+			skipTaskbar: true,
+			hasShadow: false,
+			webPreferences: {
+				nodeIntegration: true,
+				contextIsolation: false
+			}
+		});
+		borderWindow.setVisibleOnAllWorkspaces(true);
+		borderWindow.setAlwaysOnTop(true, "screen-saver");
+		borderWindow.setIgnoreMouseEvents(true);
+		borderWindow.setBounds({
+			x: bX,
+			y: bY,
+			width: bW,
+			height: bH
+		});
+		borderWindow.show();
+		const borderHtml = `<!DOCTYPE html>
 <html><head><style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:100%;height:100%;overflow:hidden}
 .border{
   position:absolute;left:0;top:0;right:0;bottom:0;
-  border:${n}px solid #e94560;
+  border:${bw}px solid #e94560;
   background:transparent;
 }
 </style></head><body>
 <div class="border"></div>
-</body></html>`;f.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(ne)}`),k.info(`Region border+toolbar shown (split windows):`,e),b=e,t?.cameraEnabled&&re(e,t.cameraDeviceId),f&&!f.isDestroyed()&&f.setAlwaysOnTop(!0,`screen-saver`),p&&!p.isDestroyed()&&p.setAlwaysOnTop(!0,`screen-saver`),g&&!g.isDestroyed()&&g.setAlwaysOnTop(!0,`screen-saver`)}function de(e,t){p&&!p.isDestroyed()&&(p.webContents.send(`toolbar-state`,e,t,h),(e===`recording`||e===`paused`)&&h===`inside`&&m&&p.setBounds({x:m.x+8,y:m.y+8,width:170,height:40}))}function fe(){f&&!f.isDestroyed()&&(f.close(),f=null)}function pe(){fe(),p&&!p.isDestroyed()&&(p.close(),p=null),C(),b=null,k.info(`Region border hidden`)}function me(){d.ipcMain.on(`region-selected`,(e,t)=>{k.info(`Region selected:`,t),l(t)}),d.ipcMain.on(`region-cancelled`,()=>{k.info(`Region selection cancelled`),l(null)}),d.ipcMain.handle(`show-region-border`,(e,t,n)=>{ue(t,n)}),d.ipcMain.handle(`hide-region-border`,()=>{pe()}),d.ipcMain.handle(`hide-border-only`,()=>{fe()}),d.ipcMain.handle(`update-toolbar-state`,(e,t,n)=>{de(t,n)}),d.ipcMain.on(`toolbar-action`,(e,t)=>{if(k.info(`Toolbar action:`,t),t===`close`){n&&!n.isDestroyed()&&n.webContents.send(`on-toolbar-action`,`close`),pe();return}n&&!n.isDestroyed()&&n.webContents.send(`on-toolbar-action`,t)}),d.ipcMain.removeHandler(`set-mouse-ignore`),d.ipcMain.removeAllListeners(`set-mouse-ignore`),d.ipcMain.handle(`show-floating-island`,(e,t,n)=>{se(t,n)}),d.ipcMain.handle(`hide-floating-island`,()=>{D()}),d.ipcMain.handle(`hide-camera-preview`,()=>{C()}),d.ipcMain.handle(`toggle-camera-preview`,(e,t,n)=>{t&&b?re(b,n):C()}),d.ipcMain.on(`camera-drag-start`,()=>te()),d.ipcMain.on(`camera-drag-end`,()=>ne()),d.ipcMain.handle(`set-island-state`,(e,t,n)=>{ce(t,n)}),d.ipcMain.on(`island-action`,(e,t)=>{k.info(`Island action:`,t),n&&!n.isDestroyed()&&n.webContents.send(`on-toolbar-action`,t)}),d.ipcMain.on(`resize-island`,(e,t,n)=>{if(w&&!w.isDestroyed()){if(!Number.isFinite(t))return;let e=oe||d.screen.getPrimaryDisplay().bounds,r=t+20,i=Math.round(e.x+(e.width-r)/2),a=Number.isFinite(n)?n:44;w.setBounds({x:i,y:e.y+4,width:r,height:a})}})}t.exports={selectRegion:c,showRegionBorder:ue,hideRegionBorder:pe,hideBorderOnly:fe,updateToolbarState:de,updateAudioLevels:a,showFloatingIsland:se,hideFloatingIsland:D,showCameraPreview:re,hideCameraPreview:C,setFloatingIslandState:ce,setMainWindow:i,registerRegionSelectorHandlers:me}})),Qe=Ze(),$e=new Map;function et(e=32){let t=$e.get(e);if(t)return t;try{let t=[(0,u.join)(__dirname,`..`,`..`,`public`,`logo.png`),(0,u.join)(__dirname,`..`,`public`,`logo.png`),(0,u.join)(__dirname,`..`,`..`,`resources`,`logo.png`)];for(let n of t)if(_.default.existsSync(n)){let t=d.nativeImage.createFromPath(n).resize({width:e,height:e,quality:`good`}).toDataURL();return $e.set(e,t),t}}catch{}return``}A(),Xe();var P=null,F=null,tt=!1,nt=!1,rt=`ai-island-settings.json`,it={flat:!1},at=null;function ot(){return(0,u.join)(d.app.isPackaged?d.app.getPath(`userData`):(0,u.join)(__dirname,`..`,`..`),rt)}function st(){try{let e=_.default.readFileSync(ot(),`utf-8`),t=JSON.parse(e);return{flat:typeof t.flat==`boolean`?t.flat:it.flat}}catch{}return{...it}}function ct(e){try{_.default.writeFileSync(ot(),JSON.stringify(e),`utf-8`)}catch{}}function lt(e){P&&!P.isDestroyed()&&P.webContents.send(`ai-island-set-flat`,e.flat)}function ut(){return at||(at=st(),at)}function dt(e){let t={...ut()};return typeof e.flat==`boolean`&&(t.flat=e.flat),ct(t),at=t,lt(t),t}function ft(){return d.app.isPackaged?f.join(process.resourcesPath,`question-card-utils.js`):f.join(__dirname,`question-card-utils.js`)}function pt(){return{idle:N(`aiIsland.idle`),thinking:N(`aiIsland.thinking`),working:N(`aiIsland.working`),error:N(`aiIsland.error`),notification:N(`aiIsland.notification`),done:N(`aiIsland.done`),viewDetail:N(`aiIsland.viewDetail`),permTitle:N(`aiIsland.permTitle`),permTool:N(`aiIsland.permTool`),permInput:N(`aiIsland.permInput`),allow:N(`common.allow`),alwaysAllow:N(`common.alwaysAllow`),deny:N(`common.deny`),questionTitle:N(`aiIsland.questionTitle`),prev:N(`aiIsland.prevQuestion`),next:N(`aiIsland.nextQuestion`),submit:N(`aiIsland.submitAnswer`),know:N(`aiIsland.know`),otherPlaceholder:N(`aiIsland.otherPlaceholder`),otherHint:N(`aiIsland.otherHint`),answerInClaude:N(`aiIsland.answerInClaude`),unknown:N(`aiIsland.unknown`),other:N(`aiIsland.other`),progress:N(`aiIsland.progress`),close:N(`common.close`)}}function mt(){let e=ut().flat,t=JSON.stringify(pt());return`<!DOCTYPE html>
+</body></html>`;
+		borderWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(borderHtml)}`);
+		logger_default.info("Region border+toolbar shown (split windows):", region);
+		currentPreviewArea = region;
+		if (audioState?.cameraEnabled) showCameraPreview(region, audioState.cameraDeviceId);
+		if (borderWindow && !borderWindow.isDestroyed()) borderWindow.setAlwaysOnTop(true, "screen-saver");
+		if (toolbarWindow && !toolbarWindow.isDestroyed()) toolbarWindow.setAlwaysOnTop(true, "screen-saver");
+		if (cameraPreviewWindow && !cameraPreviewWindow.isDestroyed()) cameraPreviewWindow.setAlwaysOnTop(true, "screen-saver");
+	}
+	function updateToolbarState(state, elapsedSeconds) {
+		if (toolbarWindow && !toolbarWindow.isDestroyed()) {
+			toolbarWindow.webContents.send("toolbar-state", state, elapsedSeconds, savedToolbarPos);
+			if ((state === "recording" || state === "paused") && savedToolbarPos === "inside" && savedRegion) toolbarWindow.setBounds({
+				x: savedRegion.x + 8,
+				y: savedRegion.y + 8,
+				width: 170,
+				height: 40
+			});
+		}
+	}
+	function hideBorderOnly() {
+		if (borderWindow && !borderWindow.isDestroyed()) {
+			borderWindow.close();
+			borderWindow = null;
+		}
+	}
+	function hideRegionBorder() {
+		hideBorderOnly();
+		if (toolbarWindow && !toolbarWindow.isDestroyed()) {
+			toolbarWindow.close();
+			toolbarWindow = null;
+		}
+		hideCameraPreview();
+		currentPreviewArea = null;
+		logger_default.info("Region border hidden");
+	}
+	function registerRegionSelectorHandlers() {
+		electron.ipcMain.on("region-selected", (_event, region) => {
+			logger_default.info("Region selected:", region);
+			cleanupRegionSelector(region);
+		});
+		electron.ipcMain.on("region-cancelled", () => {
+			logger_default.info("Region selection cancelled");
+			cleanupRegionSelector(null);
+		});
+		electron.ipcMain.handle("show-region-border", (_event, region, audioState) => {
+			showRegionBorder(region, audioState);
+		});
+		electron.ipcMain.handle("hide-region-border", () => {
+			hideRegionBorder();
+		});
+		electron.ipcMain.handle("hide-border-only", () => {
+			hideBorderOnly();
+		});
+		electron.ipcMain.handle("update-toolbar-state", (_event, state, elapsedSeconds) => {
+			updateToolbarState(state, elapsedSeconds);
+		});
+		electron.ipcMain.on("toolbar-action", (_event, action) => {
+			logger_default.info("Toolbar action:", action);
+			if (action === "close") {
+				if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("on-toolbar-action", "close");
+				hideRegionBorder();
+				return;
+			}
+			if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("on-toolbar-action", action);
+		});
+		electron.ipcMain.removeHandler("set-mouse-ignore");
+		electron.ipcMain.removeAllListeners("set-mouse-ignore");
+		electron.ipcMain.handle("show-floating-island", (_event, audioState, targetDisplayId) => {
+			showFloatingIsland(audioState, targetDisplayId);
+		});
+		electron.ipcMain.handle("hide-floating-island", () => {
+			hideFloatingIsland();
+		});
+		electron.ipcMain.handle("hide-camera-preview", () => {
+			hideCameraPreview();
+		});
+		electron.ipcMain.handle("toggle-camera-preview", (_event, show, cameraDeviceId) => {
+			if (show && currentPreviewArea) showCameraPreview(currentPreviewArea, cameraDeviceId);
+			else hideCameraPreview();
+		});
+		electron.ipcMain.on("camera-drag-start", () => startPreviewDrag());
+		electron.ipcMain.on("camera-drag-end", () => stopPreviewDrag());
+		electron.ipcMain.handle("set-island-state", (_event, state, elapsedSeconds) => {
+			setFloatingIslandState(state, elapsedSeconds);
+		});
+		electron.ipcMain.on("island-action", (_event, action) => {
+			logger_default.info("Island action:", action);
+			if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("on-toolbar-action", action);
+		});
+		electron.ipcMain.on("resize-island", (_event, contentWidth, contentHeight) => {
+			if (floatingIsland && !floatingIsland.isDestroyed()) {
+				if (!Number.isFinite(contentWidth)) return;
+				const bounds = islandTargetBounds || electron.screen.getPrimaryDisplay().bounds;
+				const totalW = contentWidth + 20;
+				const newX = Math.round(bounds.x + (bounds.width - totalW) / 2);
+				const h = Number.isFinite(contentHeight) ? contentHeight : 44;
+				floatingIsland.setBounds({
+					x: newX,
+					y: bounds.y + 4,
+					width: totalW,
+					height: h
+				});
+			}
+		});
+	}
+	module.exports = {
+		selectRegion,
+		showRegionBorder,
+		hideRegionBorder,
+		hideBorderOnly,
+		updateToolbarState,
+		updateAudioLevels,
+		showFloatingIsland,
+		hideFloatingIsland,
+		showCameraPreview,
+		hideCameraPreview,
+		setFloatingIslandState,
+		setMainWindow,
+		registerRegionSelectorHandlers
+	};
+}));
+//#endregion
+//#region electron/main/logo.ts
+var import_region_selector = require_region_selector();
+var logoCache = /* @__PURE__ */ new Map();
+function getLogoDataUrl(size = 32) {
+	const hit = logoCache.get(size);
+	if (hit) return hit;
+	try {
+		const paths = [
+			(0, node_path.join)(__dirname, "..", "..", "public", "logo.png"),
+			(0, node_path.join)(__dirname, "..", "public", "logo.png"),
+			(0, node_path.join)(__dirname, "..", "..", "resources", "logo.png")
+		];
+		for (const p of paths) if (node_fs.default.existsSync(p)) {
+			const url = electron.nativeImage.createFromPath(p).resize({
+				width: size,
+				height: size,
+				quality: "good"
+			}).toDataURL();
+			logoCache.set(size, url);
+			return url;
+		}
+	} catch {}
+	return "";
+}
+//#endregion
+//#region electron/main/ai-island.ts
+init_logger();
+init_i18n();
+var aiIsland = null;
+/** AI 岛拖动的基准（绝对增量 + setBounds，仿悬浮球）；用户拖过后锁定位置不再被 resize 拉回 */
+var aiDragOrigin = null;
+var aiIslandUserMoved = false;
+/** 透明空白区鼠标穿透状态：true 时 setIgnoreMouseEvents，让窗口右侧多余透明区不拦截下方点击 */
+var aiIslandMouseIgnored = false;
+var AI_ISLAND_SETTINGS_FILE = "ai-island-settings.json";
+var DEFAULT_AI_ISLAND_SETTINGS = { flat: false };
+var cachedAiIslandSettings = null;
+function aiIslandSettingsFilePath() {
+	return (0, node_path.join)(electron.app.isPackaged ? electron.app.getPath("userData") : (0, node_path.join)(__dirname, "..", ".."), AI_ISLAND_SETTINGS_FILE);
+}
+function loadAiIslandSettings() {
+	try {
+		const data = node_fs.default.readFileSync(aiIslandSettingsFilePath(), "utf-8");
+		const parsed = JSON.parse(data);
+		return { flat: typeof parsed.flat === "boolean" ? parsed.flat : DEFAULT_AI_ISLAND_SETTINGS.flat };
+	} catch {}
+	return { ...DEFAULT_AI_ISLAND_SETTINGS };
+}
+function saveAiIslandSettings(settings) {
+	try {
+		node_fs.default.writeFileSync(aiIslandSettingsFilePath(), JSON.stringify(settings), "utf-8");
+	} catch {}
+}
+/** 把设置作用到活动岛（运行时切换横条态；显隐由 IPC 显式控制，不在此改） */
+function applyAiIslandSettings(s) {
+	if (aiIsland && !aiIsland.isDestroyed()) aiIsland.webContents.send("ai-island-set-flat", s.flat);
+}
+function getAiIslandSettings() {
+	if (cachedAiIslandSettings) return cachedAiIslandSettings;
+	cachedAiIslandSettings = loadAiIslandSettings();
+	return cachedAiIslandSettings;
+}
+/** 主进程内部唯一变更入口：白名单+类型校验→合并→save→刷新缓存→作用到活动岛→返回新值。
+*  写入端与 loadAiIslandSettings 读取端做对称校验：非布尔 flat / 多余 key 一律丢弃，
+*  避免把非法类型持久化进 JSON（否则重启后读取校验失败会静默回退默认值）。 */
+function updateAiIslandSettings(patch) {
+	const next = { ...getAiIslandSettings() };
+	if (typeof patch.flat === "boolean") next.flat = patch.flat;
+	saveAiIslandSettings(next);
+	cachedAiIslandSettings = next;
+	applyAiIslandSettings(next);
+	return next;
+}
+/** 定位提问卡纯逻辑文件（question-card-utils.js）：dev 下随 vite 复制进 dist-electron/main/，打包后走 extraResources。
+*  岛窗口用 data: URL 加载内联 HTML，内联 <script> 须在运行时 require() 这个文件（同 clawd-hook.js 的发布链路）。 */
+function questionCardUtilsPath() {
+	return electron.app.isPackaged ? path.join(process.resourcesPath, "question-card-utils.js") : path.join(__dirname, "question-card-utils.js");
+}
+/** AI 岛内联 HTML 的全部用户文案，构建时按当前语言取词条并内联进页面（data URL 构建机，
+*  语言切换后重建/重载窗口即生效）。 */
+function aiIslandStrings() {
+	return {
+		idle: t("aiIsland.idle"),
+		thinking: t("aiIsland.thinking"),
+		working: t("aiIsland.working"),
+		error: t("aiIsland.error"),
+		notification: t("aiIsland.notification"),
+		done: t("aiIsland.done"),
+		viewDetail: t("aiIsland.viewDetail"),
+		permTitle: t("aiIsland.permTitle"),
+		permTool: t("aiIsland.permTool"),
+		permInput: t("aiIsland.permInput"),
+		allow: t("common.allow"),
+		alwaysAllow: t("common.alwaysAllow"),
+		deny: t("common.deny"),
+		questionTitle: t("aiIsland.questionTitle"),
+		prev: t("aiIsland.prevQuestion"),
+		next: t("aiIsland.nextQuestion"),
+		submit: t("aiIsland.submitAnswer"),
+		know: t("aiIsland.know"),
+		otherPlaceholder: t("aiIsland.otherPlaceholder"),
+		otherHint: t("aiIsland.otherHint"),
+		answerInClaude: t("aiIsland.answerInClaude"),
+		unknown: t("aiIsland.unknown"),
+		other: t("aiIsland.other"),
+		progress: t("aiIsland.progress"),
+		close: t("common.close")
+	};
+}
+function buildAiIslandHtml() {
+	const flat = getAiIslandSettings().flat;
+	const S = JSON.stringify(aiIslandStrings());
+	return `<!DOCTYPE html>
 <html><head><style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif}
@@ -522,56 +4121,56 @@ body.flat .island-row{height:12px;padding:0 16px;gap:5px}
 body.flat .ai-dot{width:5px;height:5px}
 body.flat .ai-label{font-size:8.5px;letter-spacing:0.5px;color:rgba(255,255,255,0.55)}
 body.flat .ai-label.active{color:#fff}
-</style></head><body${e?` class="flat"`:``}>
+</style></head><body${flat ? " class=\"flat\"" : ""}>
 <div class="island" id="island">
   <div class="island-row" id="islandRow">
-    <div class="ai-indicator" id="aiIndicator" onclick="showAiDetail()" title="${N(`aiIsland.viewDetail`)}">
+    <div class="ai-indicator" id="aiIndicator" onclick="showAiDetail()" title="${t("aiIsland.viewDetail")}">
       <span class="ai-dot idle" id="aiDot"></span>
-      <span class="ai-label" id="aiLabel">${N(`aiIsland.idle`)}</span>
+      <span class="ai-label" id="aiLabel">${t("aiIsland.idle")}</span>
     </div>
   </div>
   <div class="perm-card" id="permCard">
     <div class="perm-banner">
       <span class="perm-banner-dot"></span>
-      <span class="perm-banner-text">${N(`aiIsland.permTitle`)}</span>
+      <span class="perm-banner-text">${t("aiIsland.permTitle")}</span>
     </div>
     <div class="perm-body">
       <div class="perm-row">
-        <span class="perm-row-label">${N(`aiIsland.permTool`)}</span>
+        <span class="perm-row-label">${t("aiIsland.permTool")}</span>
         <span class="perm-tool" id="permTool">—</span>
       </div>
       <div class="perm-row" id="permInputRow" style="display:none">
-        <span class="perm-row-label">${N(`aiIsland.permInput`)}</span>
+        <span class="perm-row-label">${t("aiIsland.permInput")}</span>
         <div class="perm-input" id="permInput"></div>
       </div>
     </div>
     <div class="perm-actions">
-      <button class="perm-btn allow" onclick="doAllow()">${N(`common.allow`)}</button>
-      <button class="perm-btn always" onclick="doAlwaysAllow()">${N(`common.alwaysAllow`)}</button>
-      <button class="perm-btn deny" onclick="doDeny()">${N(`common.deny`)}</button>
+      <button class="perm-btn allow" onclick="doAllow()">${t("common.allow")}</button>
+      <button class="perm-btn always" onclick="doAlwaysAllow()">${t("common.alwaysAllow")}</button>
+      <button class="perm-btn deny" onclick="doDeny()">${t("common.deny")}</button>
     </div>
   </div>
   <div class="question-card" id="questionCard">
     <div class="question-banner">
       <span class="question-banner-dot"></span>
-      <span class="question-banner-text">${N(`aiIsland.questionTitle`)}</span>
+      <span class="question-banner-text">${t("aiIsland.questionTitle")}</span>
       <span class="question-progress" id="questionProgress"></span>
-      <span class="question-close" id="questionClose" onclick="closeQuestion()" title="${N(`common.close`)}">✕</span>
+      <span class="question-close" id="questionClose" onclick="closeQuestion()" title="${t("common.close")}">✕</span>
     </div>
     <div class="question-body" id="questionBody"></div>
     <div class="question-actions">
-      <button class="question-btn" id="questionPrevBtn" onclick="prevQuestion()">${N(`aiIsland.prevQuestion`)}</button>
-      <button class="question-btn" id="questionBtn" onclick="stepQuestion()">${N(`aiIsland.know`)}</button>
+      <button class="question-btn" id="questionPrevBtn" onclick="prevQuestion()">${t("aiIsland.prevQuestion")}</button>
+      <button class="question-btn" id="questionBtn" onclick="stepQuestion()">${t("aiIsland.know")}</button>
     </div>
   </div>
 </div>
 <script>
-const __QCU_UTILS_PATH__=${JSON.stringify(ft())}
+const __QCU_UTILS_PATH__=${JSON.stringify(questionCardUtilsPath())}
 const quiz=require(__QCU_UTILS_PATH__)
 const {resolveQuestionList,toQuestionItem,buttonLabel,progressText,questionKey,multiSelectOf,withOther,toggleOption,buildAnswers}=quiz
 const {ipcRenderer}=require('electron')
 // 语言词条：主进程构建 HTML 时按当前语言注入，切语言后重载窗口即更新
-const S=${t};
+const S=${S};
 const OTHER=S.other; // 「其他」选项的本地化标签：与内部 sentinel 逻辑解耦，展示/答案都走它
 function resizeIsland(){
   const island=document.getElementById('island')
@@ -846,7 +4445,525 @@ ipcRenderer.send('set-ai-island-mouse-mode', false)
 resizeIsland()
 initStatus()
 <\/script>
-</body></html>`}function ht(){if(P&&!P.isDestroyed())return;let e=d.screen.getPrimaryDisplay().bounds;P=new d.BrowserWindow({x:Math.round(e.x+(e.width-200)/2),y:e.y+4,width:200,height:44,frame:!1,transparent:!0,resizable:!1,movable:!1,alwaysOnTop:!0,skipTaskbar:!0,hasShadow:!1,webPreferences:{nodeIntegration:!0,contextIsolation:!1}}),P.setVisibleOnAllWorkspaces(!0),P.setMinimumSize(100,12),P.setAlwaysOnTop(!0,`screen-saver`),P.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(mt())}`),k.info(`AI island shown`)}function gt(){P&&!P.isDestroyed()&&(P.close(),P=null,k.info(`AI island hidden`))}function _t(){P&&!P.isDestroyed()&&(P.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(mt())}`).catch(()=>{}),k.info(`AI island reloaded for locale`))}function vt(){d.ipcMain.handle(`get-ai-island-settings`,()=>ut()),d.ipcMain.handle(`set-ai-island-settings`,(e,t)=>dt(t)),d.ipcMain.on(`resize-ai-island`,(e,t,n)=>{if(!P||P.isDestroyed()||!Number.isFinite(t))return;let r=t+20,i=Number.isFinite(n)?n:44;if(!(!Number.isFinite(r)||!Number.isFinite(i)))if(ut().flat){let e=d.screen.getDisplayMatching(P.getBounds()).bounds,n=Math.round(e.x+(e.width-t)/2);if(!Number.isFinite(n))return;P.setBounds({x:n,y:e.y,width:t,height:i})}else if(tt){let[e,t]=P.getPosition();if(!Number.isFinite(e)||!Number.isFinite(t))return;P.setBounds({x:e,y:t,width:r,height:i})}else{let e=d.screen.getPrimaryDisplay().bounds,t=Math.round(e.x+(e.width-r)/2),n=e.y+4;if(!Number.isFinite(t)||!Number.isFinite(n))return;P.setBounds({x:t,y:n,width:r,height:i})}}),d.ipcMain.on(`ai-island-drag-start`,(e,t,n)=>{if(!P||P.isDestroyed()||!Number.isFinite(t)||!Number.isFinite(n))return;let[r,i]=P.getPosition();F={winX:r,winY:i,scrX:t,scrY:n}}),d.ipcMain.on(`ai-island-drag-move`,(e,t,n)=>{if(!P||P.isDestroyed()||!F||!Number.isFinite(t)||!Number.isFinite(F.scrX)||!Number.isFinite(F.winX)||!Number.isFinite(F.winY))return;let r=t-F.scrX,i=Math.round(F.winX+r);if(!Number.isFinite(i))return;let[a,o]=P.getSize();P.setBounds({x:i,y:F.winY,width:a,height:o})}),d.ipcMain.on(`ai-island-drag-end`,()=>{F=null,ut().flat||(tt=!0)}),d.ipcMain.on(`set-ai-island-mouse-mode`,(e,t)=>{if(!P||P.isDestroyed())return;let n=!t;n!==nt&&(nt=n,P.setIgnoreMouseEvents(n,{forward:!0}))})}A(),Xe();var I=null,L=null,R=null,z=66,B=240,yt=`floating-ball-pos.json`;function bt(){return(0,u.join)(d.app.isPackaged?d.app.getPath(`userData`):(0,u.join)(__dirname,`..`,`..`),yt)}function xt(){try{let e=_.default.readFileSync(bt(),`utf-8`),t=JSON.parse(e);if(typeof t.x==`number`&&typeof t.y==`number`)return t}catch{}return null}function St(e){try{_.default.writeFileSync(bt(),JSON.stringify(e),`utf-8`)}catch{}}function V(e){if(!(!I||I.isDestroyed())){if(!Number.isFinite(e.x)||!Number.isFinite(e.y)||!Number.isFinite(e.width)||!Number.isFinite(e.height)){k.warn(`Floating ball setBounds skipped (non-finite):`,e);return}try{I.setBounds(e)}catch(t){k.warn(`Floating ball setBounds failed (swallowed):`,t?.message??t,e)}}}var Ct=`floating-ball-settings.json`,wt=[{key:`record`,labelKey:`ball.menu.record`,icon:`●`,action:`record`},{key:`music`,labelKey:`ball.menu.music`,icon:`♪`,action:`music`},{key:`ai`,labelKey:`ball.menu.ai`,icon:`✦`,action:`ai`},{key:`todo`,labelKey:`ball.menu.todo`,icon:`☑`,action:`todo`},{key:`settings`,labelKey:`ball.menu.settings`,icon:`⚙`,action:`settings`}],Tt=wt.map(e=>e.key),Et={record:!0,music:!0,ai:!0,todo:!0,settings:!0},Dt={visible:!0,alwaysOnTop:!0,openAtLogin:!1,locale:`zh`,snapGutter:0,menuItems:{...Et}},Ot=null;function kt(){return(0,u.join)(d.app.isPackaged?d.app.getPath(`userData`):(0,u.join)(__dirname,`..`,`..`),Ct)}function At(){try{let e=_.default.readFileSync(kt(),`utf-8`),t=JSON.parse(e),n={...Et};for(let e of Tt)typeof t?.menuItems?.[e]==`boolean`&&(n[e]=t.menuItems[e]);return{visible:typeof t.visible==`boolean`?t.visible:Dt.visible,alwaysOnTop:typeof t.alwaysOnTop==`boolean`?t.alwaysOnTop:Dt.alwaysOnTop,openAtLogin:typeof t.openAtLogin==`boolean`?t.openAtLogin:Dt.openAtLogin,locale:Ue(t.locale)?t.locale:Dt.locale,snapGutter:typeof t.snapGutter==`number`&&t.snapGutter>=0&&t.snapGutter<=80?t.snapGutter:Dt.snapGutter,menuItems:n}}catch{}return{...Dt}}function jt(e){try{_.default.writeFileSync(kt(),JSON.stringify(e),`utf-8`)}catch{}}function H(){return Ot||(Ot=At(),Ot)}function Mt(e){let t={...H(),...e};return e.locale!==void 0&&We(t.locale),jt(t),Ot=t,t}function Nt(){let e=H();return wt.filter(t=>e.menuItems[t.key]).map(e=>({...e,label:N(e.labelKey)}))}function Pt(){tn(),I&&!I.isDestroyed()&&I.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(qt())}`).catch(()=>{})}function Ft(){L=null;try{_.default.unlinkSync(bt())}catch{}}function It(){H().visible&&Bt()}function Lt(e){I&&!I.isDestroyed()&&I.setAlwaysOnTop(e,`screen-saver`)}function Rt(e,t,n){!I||I.isDestroyed()||I.webContents.executeJavaScript(`if(window.updateBadge) updateBadge(${Number(e)||0}, ${!!t}, ${!!n})`).catch(()=>{})}function zt(e){e.visible?Bt():Vt(),Lt(e.alwaysOnTop)}function Bt(){if(I&&!I.isDestroyed()){I.show(),I.focus();return}if(!L){let e=xt();if(e)L=e;else{let e=d.screen.getPrimaryDisplay().bounds;L={x:Math.round(e.x+(e.width-z)/2),y:Math.round(e.y+(e.height-z)/2)}}}I=new d.BrowserWindow({x:L.x,y:L.y,width:z,height:z,frame:!1,transparent:!0,backgroundColor:`#00000000`,resizable:!1,alwaysOnTop:H().alwaysOnTop,skipTaskbar:!0,hasShadow:!1,show:!1,webPreferences:{nodeIntegration:!0,contextIsolation:!1}}),I.setVisibleOnAllWorkspaces(!0),I.setAlwaysOnTop(H().alwaysOnTop,`screen-saver`);let e=qt();I.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(e)}`),I.once(`ready-to-show`,()=>{I?.show(),Qt(),I&&!I.isDestroyed()&&I.webContents.executeJavaScript(`ensureMenu()`).catch(()=>{})});let t=I;I.on(`closed`,()=>{I===t&&(I=null)}),I.on(`move`,()=>{if(!I||I.isDestroyed())return;let[e,t]=I.getPosition(),[n,r]=I.getSize();L={x:Math.round(e+n/2-z/2),y:Math.round(t+r/2-z/2)}}),I.on(`close`,()=>{L&&St(L)}),I.on(`blur`,()=>{Ht&&Wt()}),k.info(`Floating ball shown`)}function Vt(){if(I&&!I.isDestroyed()){let[e,t]=I.getPosition(),[n,r]=I.getSize();L={x:Math.round(e+n/2-z/2),y:Math.round(t+r/2-z/2)},St(L);let i=I;I=null,i.destroy(),k.info(`Floating ball hidden`)}}var Ht=!1,U=null;async function Ut(){if(!I||I.isDestroyed())return;nn(),U&&=(clearTimeout(U),null);let[e,t]=I.getPosition(),n=L?L.x:e,r=L?L.y:t,i=Math.round(n+z/2),a=Math.round(r+z/2);k.info(`[Ball] expand at`,[e,t],`center`,[i,a]);let[o]=I.getSize(),s=o!==B;s&&(I.setOpacity(0),V({x:i-B/2,y:a-B/2,width:B,height:B}));try{await I.webContents.executeJavaScript(`restartBloom(); void 0;`)}catch{}if(!(!I||I.isDestroyed())){if(s){try{await I.capturePage()}catch{}if(!I||I.isDestroyed())return;I.setOpacity(1)}Ht=!0,I.webContents.send(`ball-state`,`expanded`)}}async function Wt(){if(Ht=!1,!I||I.isDestroyed())return;if(!L){let[e,t]=I.getPosition();L={x:Math.round(e+B/2-z/2),y:Math.round(t+B/2-z/2)}}let e=L.x,t=L.y;k.info(`[Ball] collapse at`,[e,t]);try{await I.webContents.executeJavaScript(`document.body.classList.remove('expanded'); isExpanded=false; void 0;`)}catch{}!I||I.isDestroyed()||(U&&clearTimeout(U),U=setTimeout(()=>{if(U=null,!(!I||I.isDestroyed())&&!Ht){try{I.webContents.executeJavaScript(`var s=document.getElementById('ringSvg');while(s.firstChild){s.removeChild(s.firstChild)} menuCreated=false; void 0;`)}catch{}!I||I.isDestroyed()||(I.setOpacity(0),V({x:e,y:t,width:z,height:z}),I.setOpacity(1),Qt())}},920))}function Gt(){if(!I||I.isDestroyed())return;Ht=!1;let e,t;if(L)e=L.x,t=L.y;else{let[n,r]=I.getPosition();e=Math.round(n+B/2-z/2),t=Math.round(r+B/2-z/2)}try{I.webContents.executeJavaScript(`document.body.classList.remove('expanded'); document.body.classList.remove('no-anim'); isExpanded=false; var s=document.getElementById('ringSvg'); if(s){while(s.firstChild){s.removeChild(s.firstChild)}} menuCreated=false; void 0;`).catch(()=>{})}catch{}U&&=(clearTimeout(U),null),I.setOpacity(0),V({x:e,y:t,width:z,height:z}),I.setOpacity(1)}function Kt(e){if(e===`record`)process.emit(`clawd-show-record-window`);else if(e===`ai`)process.emit(`clawd-show-ai-window`);else if(e===`todo`)process.emit(`clawd-show-todo-window`);else if(e===`music`)process.emit(`clawd-show-music-window`);else if(e===`settings`)process.emit(`clawd-show-settings-window`);else{let t=d.BrowserWindow.getAllWindows().find(e=>!e.isDestroyed()&&e!==I);t&&!t.isDestroyed()&&t.webContents.send(`on-floating-ball-action`,e)}Wt()}function qt(){return`<!DOCTYPE html>
+</body></html>`;
+}
+function showAiIsland() {
+	if (aiIsland && !aiIsland.isDestroyed()) return;
+	const bounds = electron.screen.getPrimaryDisplay().bounds;
+	const w = 200;
+	aiIsland = new electron.BrowserWindow({
+		x: Math.round(bounds.x + (bounds.width - w) / 2),
+		y: bounds.y + 4,
+		width: w,
+		height: 44,
+		frame: false,
+		transparent: true,
+		resizable: false,
+		movable: false,
+		alwaysOnTop: true,
+		skipTaskbar: true,
+		hasShadow: false,
+		webPreferences: {
+			nodeIntegration: true,
+			contextIsolation: false
+		}
+	});
+	aiIsland.setVisibleOnAllWorkspaces(true);
+	aiIsland.setMinimumSize(100, 12);
+	aiIsland.setAlwaysOnTop(true, "screen-saver");
+	aiIsland.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildAiIslandHtml())}`);
+	logger_default.info("AI island shown");
+}
+function hideAiIsland() {
+	if (aiIsland && !aiIsland.isDestroyed()) {
+		aiIsland.close();
+		aiIsland = null;
+		logger_default.info("AI island hidden");
+	}
+}
+/** 语言切换后重建已打开的岛（HTML 按词条内联，须重新 loadURL；窗口不存在时静默）。
+*  懒创建的岛下次 show 自然用新语言，无需处理。 */
+function reloadAiIsland() {
+	if (aiIsland && !aiIsland.isDestroyed()) {
+		aiIsland.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildAiIslandHtml())}`).catch(() => {});
+		logger_default.info("AI island reloaded for locale");
+	}
+}
+function registerAiIslandHandlers() {
+	electron.ipcMain.handle("get-ai-island-settings", () => getAiIslandSettings());
+	electron.ipcMain.handle("set-ai-island-settings", (_event, patch) => {
+		return updateAiIslandSettings(patch);
+	});
+	electron.ipcMain.on("resize-ai-island", (_event, contentWidth, contentHeight) => {
+		if (!aiIsland || aiIsland.isDestroyed()) return;
+		if (!Number.isFinite(contentWidth)) return;
+		const totalW = contentWidth + 20;
+		const h = Number.isFinite(contentHeight) ? contentHeight : 44;
+		if (!Number.isFinite(totalW) || !Number.isFinite(h)) return;
+		if (getAiIslandSettings().flat) {
+			const b = electron.screen.getDisplayMatching(aiIsland.getBounds()).bounds;
+			const newX = Math.round(b.x + (b.width - contentWidth) / 2);
+			if (!Number.isFinite(newX)) return;
+			aiIsland.setBounds({
+				x: newX,
+				y: b.y,
+				width: contentWidth,
+				height: h
+			});
+		} else if (aiIslandUserMoved) {
+			const [x, y] = aiIsland.getPosition();
+			if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+			aiIsland.setBounds({
+				x,
+				y,
+				width: totalW,
+				height: h
+			});
+		} else {
+			const bounds = electron.screen.getPrimaryDisplay().bounds;
+			const newX = Math.round(bounds.x + (bounds.width - totalW) / 2);
+			const newY = bounds.y + 4;
+			if (!Number.isFinite(newX) || !Number.isFinite(newY)) return;
+			aiIsland.setBounds({
+				x: newX,
+				y: newY,
+				width: totalW,
+				height: h
+			});
+		}
+	});
+	electron.ipcMain.on("ai-island-drag-start", (_event, sx, sy) => {
+		if (!aiIsland || aiIsland.isDestroyed()) return;
+		if (!Number.isFinite(sx) || !Number.isFinite(sy)) return;
+		const [wx, wy] = aiIsland.getPosition();
+		aiDragOrigin = {
+			winX: wx,
+			winY: wy,
+			scrX: sx,
+			scrY: sy
+		};
+	});
+	electron.ipcMain.on("ai-island-drag-move", (_event, sx, _sy) => {
+		if (!aiIsland || aiIsland.isDestroyed() || !aiDragOrigin) return;
+		if (!Number.isFinite(sx) || !Number.isFinite(aiDragOrigin.scrX) || !Number.isFinite(aiDragOrigin.winX) || !Number.isFinite(aiDragOrigin.winY)) return;
+		const dx = sx - aiDragOrigin.scrX;
+		const nx = Math.round(aiDragOrigin.winX + dx);
+		if (!Number.isFinite(nx)) return;
+		const [w, h] = aiIsland.getSize();
+		aiIsland.setBounds({
+			x: nx,
+			y: aiDragOrigin.winY,
+			width: w,
+			height: h
+		});
+	});
+	electron.ipcMain.on("ai-island-drag-end", () => {
+		aiDragOrigin = null;
+		if (!getAiIslandSettings().flat) aiIslandUserMoved = true;
+	});
+	electron.ipcMain.on("set-ai-island-mouse-mode", (_event, interactive) => {
+		if (!aiIsland || aiIsland.isDestroyed()) return;
+		const ignore = !interactive;
+		if (ignore !== aiIslandMouseIgnored) {
+			aiIslandMouseIgnored = ignore;
+			aiIsland.setIgnoreMouseEvents(ignore, { forward: true });
+		}
+	});
+}
+//#endregion
+//#region electron/main/floating-ball.ts
+init_logger();
+init_i18n();
+var floatingBallWindow = null;
+var ballPos = null;
+/** 拖拽起点的绝对基准 */
+var dragOrigin = null;
+var BALL_SIZE = 66;
+var RING_SIZE = 240;
+var BALL_POS_FILE = "floating-ball-pos.json";
+function ballPosFilePath() {
+	return (0, node_path.join)(electron.app.isPackaged ? electron.app.getPath("userData") : (0, node_path.join)(__dirname, "..", ".."), BALL_POS_FILE);
+}
+function loadBallPosition() {
+	try {
+		const data = node_fs.default.readFileSync(ballPosFilePath(), "utf-8");
+		const pos = JSON.parse(data);
+		if (typeof pos.x === "number" && typeof pos.y === "number") return pos;
+	} catch {}
+	return null;
+}
+function saveBallPosition(pos) {
+	try {
+		node_fs.default.writeFileSync(ballPosFilePath(), JSON.stringify(pos), "utf-8");
+	} catch {}
+}
+/** 带防御的 setBounds：任一坐标/尺寸非有限数（NaN/Infinity）时丢弃本次调整，
+*  避免竞态下偶发的坏数值让 BrowserWindow.setBounds 抛 conversion failure 崩主进程。
+*  最外层 try/catch 是最后防线：ESRCH/越界等非有限之外的转换错误也被吞掉，
+*  不让任何一次高频 setBounds 把主进程打死。 */
+function setBallBounds(b) {
+	if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
+	if (!Number.isFinite(b.x) || !Number.isFinite(b.y) || !Number.isFinite(b.width) || !Number.isFinite(b.height)) {
+		logger_default.warn("Floating ball setBounds skipped (non-finite):", b);
+		return;
+	}
+	try {
+		floatingBallWindow.setBounds(b);
+	} catch (e) {
+		logger_default.warn("Floating ball setBounds failed (swallowed):", e?.message ?? e, b);
+	}
+}
+var BALL_SETTINGS_FILE = "floating-ball-settings.json";
+/** 环形菜单目录（key 与 FloatingBallSettings.menuItems 对应），构建 HTML 时按可见性过滤。
+*  labelKey 指向 i18n 词条（ball.menu.<key>），构建时按当前语言解析——不能在此评估 label，
+*  模块加载发生在 setI18nLocale(启动) 之前，这里求值会拿到旧语言 */
+var MENU_CATALOG = [
+	{
+		key: "record",
+		labelKey: "ball.menu.record",
+		icon: "●",
+		action: "record"
+	},
+	{
+		key: "ai",
+		labelKey: "ball.menu.ai",
+		icon: "✦",
+		action: "ai"
+	},
+	{
+		key: "todo",
+		labelKey: "ball.menu.todo",
+		icon: "☑",
+		action: "todo"
+	},
+	{
+		key: "settings",
+		labelKey: "ball.menu.settings",
+		icon: "⚙",
+		action: "settings"
+	}
+];
+var BALL_MENU_KEYS = MENU_CATALOG.map((m) => m.key);
+var DEFAULT_MENU_ITEMS = {
+	record: true,
+	ai: true,
+	todo: true,
+	settings: true
+};
+var DEFAULT_SETTINGS = {
+	visible: true,
+	alwaysOnTop: true,
+	openAtLogin: false,
+	locale: "zh",
+	snapGutter: 0,
+	menuItems: { ...DEFAULT_MENU_ITEMS }
+};
+var cachedSettings = null;
+function ballSettingsFilePath() {
+	return (0, node_path.join)(electron.app.isPackaged ? electron.app.getPath("userData") : (0, node_path.join)(__dirname, "..", ".."), BALL_SETTINGS_FILE);
+}
+function loadBallSettings() {
+	try {
+		const data = node_fs.default.readFileSync(ballSettingsFilePath(), "utf-8");
+		const parsed = JSON.parse(data);
+		const menuItems = { ...DEFAULT_MENU_ITEMS };
+		for (const k of BALL_MENU_KEYS) if (typeof parsed?.menuItems?.[k] === "boolean") menuItems[k] = parsed.menuItems[k];
+		return {
+			visible: typeof parsed.visible === "boolean" ? parsed.visible : DEFAULT_SETTINGS.visible,
+			alwaysOnTop: typeof parsed.alwaysOnTop === "boolean" ? parsed.alwaysOnTop : DEFAULT_SETTINGS.alwaysOnTop,
+			openAtLogin: typeof parsed.openAtLogin === "boolean" ? parsed.openAtLogin : DEFAULT_SETTINGS.openAtLogin,
+			locale: isLocale(parsed.locale) ? parsed.locale : DEFAULT_SETTINGS.locale,
+			snapGutter: typeof parsed.snapGutter === "number" && parsed.snapGutter >= 0 && parsed.snapGutter <= 80 ? parsed.snapGutter : DEFAULT_SETTINGS.snapGutter,
+			menuItems
+		};
+	} catch {}
+	return { ...DEFAULT_SETTINGS };
+}
+function saveBallSettings(settings) {
+	try {
+		node_fs.default.writeFileSync(ballSettingsFilePath(), JSON.stringify(settings), "utf-8");
+	} catch {}
+}
+/** 读取设置（带模块级缓存，避免每次 show 都重读磁盘） */
+function getBallSettings() {
+	if (cachedSettings) return cachedSettings;
+	cachedSettings = loadBallSettings();
+	return cachedSettings;
+}
+/** 主进程内部唯一变更入口：合并→save→刷新缓存→返回新值。locale 变更时同步 i18n 进程内缓存 */
+function updateBallSettings(patch) {
+	const next = {
+		...getBallSettings(),
+		...patch
+	};
+	if (patch.locale !== void 0) setI18nLocale(next.locale);
+	saveBallSettings(next);
+	cachedSettings = next;
+	return next;
+}
+/** 当前应显示的菜单项（按 menuItems 设置过滤目录）；label 在此按当前语言动态解析。
+*  构建悬浮球 HTML 时内联为页内 ITEMS */
+function getVisibleMenuItems() {
+	const s = getBallSettings();
+	return MENU_CATALOG.filter((m) => s.menuItems[m.key]).map((m) => ({
+		...m,
+		label: t(m.labelKey)
+	}));
+}
+/** 悬浮球菜单项变更后重建窗口内容：花瓣形制嵌入 HTML，须重新走 buildFloatingBallHtml 生成新 HTML
+*  （webContents.reload() 只会重载旧的 data URL，带不上新菜单），再 loadURL 替换当前内容 */
+function reloadFloatingBall() {
+	clearSnap();
+	if (floatingBallWindow && !floatingBallWindow.isDestroyed()) floatingBallWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildFloatingBallHtml())}`).catch(() => {});
+}
+/** 清空位置缓存 + 删 pos 文件，下次 show 回屏幕中心 */
+function clearBallPosition() {
+	ballPos = null;
+	try {
+		node_fs.default.unlinkSync(ballPosFilePath());
+	} catch {}
+}
+/** 仅在设置允许时才显示悬浮球（启动时按持久化的 visible 决定） */
+function showFloatingBallIfVisible() {
+	if (getBallSettings().visible) showFloatingBall();
+}
+/** 活动窗口即时切换置顶层级；隐藏态下次 show 自然从缓存读 */
+function setFloatingBallAlwaysOnTop(value) {
+	if (floatingBallWindow && !floatingBallWindow.isDestroyed()) floatingBallWindow.setAlwaysOnTop(value, "screen-saver");
+}
+/** 向悬浮球右上角推送待办气泡（count 数量 / flash 到期闪烁 / visible 显隐开关）。
+*  窗口不存在或已销毁时静默。由 todo-badge.ts 在数据变更后调用。 */
+function applyFloatingBallBadge(count, flash, visible) {
+	if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
+	floatingBallWindow.webContents.executeJavaScript(`if(window.updateBadge) updateBadge(${Number(count) || 0}, ${!!flash}, ${!!visible})`).catch(() => {});
+}
+/** 把设置作用到活动悬浮球（visible 切换显隐，alwaysOnTop 切层级） */
+function applyFloatingBallSettings(s) {
+	if (s.visible) showFloatingBall();
+	else hideFloatingBall();
+	setFloatingBallAlwaysOnTop(s.alwaysOnTop);
+}
+function showFloatingBall() {
+	if (floatingBallWindow && !floatingBallWindow.isDestroyed()) {
+		floatingBallWindow.show();
+		floatingBallWindow.focus();
+		return;
+	}
+	if (!ballPos) {
+		const cached = loadBallPosition();
+		if (cached) ballPos = cached;
+		else {
+			const display = electron.screen.getPrimaryDisplay().bounds;
+			ballPos = {
+				x: Math.round(display.x + (display.width - BALL_SIZE) / 2),
+				y: Math.round(display.y + (display.height - BALL_SIZE) / 2)
+			};
+		}
+	}
+	floatingBallWindow = new electron.BrowserWindow({
+		x: ballPos.x,
+		y: ballPos.y,
+		width: BALL_SIZE,
+		height: BALL_SIZE,
+		frame: false,
+		transparent: true,
+		backgroundColor: "#00000000",
+		resizable: false,
+		alwaysOnTop: getBallSettings().alwaysOnTop,
+		skipTaskbar: true,
+		hasShadow: false,
+		show: false,
+		webPreferences: {
+			nodeIntegration: true,
+			contextIsolation: false
+		}
+	});
+	floatingBallWindow.setVisibleOnAllWorkspaces(true);
+	floatingBallWindow.setAlwaysOnTop(getBallSettings().alwaysOnTop, "screen-saver");
+	const html = buildFloatingBallHtml();
+	floatingBallWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+	floatingBallWindow.once("ready-to-show", () => {
+		floatingBallWindow?.show();
+		restoreSnapIfNeeded();
+		if (floatingBallWindow && !floatingBallWindow.isDestroyed()) floatingBallWindow.webContents.executeJavaScript("ensureMenu()").catch(() => {});
+	});
+	const self = floatingBallWindow;
+	floatingBallWindow.on("closed", () => {
+		if (floatingBallWindow === self) floatingBallWindow = null;
+	});
+	floatingBallWindow.on("move", () => {
+		if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
+		const [wx, wy] = floatingBallWindow.getPosition();
+		const [ww, wh] = floatingBallWindow.getSize();
+		ballPos = {
+			x: Math.round(wx + ww / 2 - BALL_SIZE / 2),
+			y: Math.round(wy + wh / 2 - BALL_SIZE / 2)
+		};
+	});
+	floatingBallWindow.on("close", () => {
+		if (ballPos) saveBallPosition(ballPos);
+	});
+	floatingBallWindow.on("blur", () => {
+		if (isBallExpanded) collapseBall();
+	});
+	logger_default.info("Floating ball shown");
+}
+function hideFloatingBall() {
+	if (floatingBallWindow && !floatingBallWindow.isDestroyed()) {
+		const [wx, wy] = floatingBallWindow.getPosition();
+		const [ww, wh] = floatingBallWindow.getSize();
+		ballPos = {
+			x: Math.round(wx + ww / 2 - BALL_SIZE / 2),
+			y: Math.round(wy + wh / 2 - BALL_SIZE / 2)
+		};
+		saveBallPosition(ballPos);
+		const win = floatingBallWindow;
+		floatingBallWindow = null;
+		win.destroy();
+		logger_default.info("Floating ball hidden");
+	}
+}
+/** 主进程侧跟踪展开态，供失焦等场景判断是否需要收起 */
+var isBallExpanded = false;
+/** 待定的收起收尾定时器：快速连点时，新的 expand 应取消它，避免中途缩窗/清 DOM 造成抖动 */
+var collapseTimer = null;
+/** 展开前冻结的 66 球左上角锚点：收起/立即收起用它定位。
+*  展开期间 move 事件会用 240 窗口 + 系统缩放抖动反推出一个 ±1px 的 ballPos，
+*  若收起直接读 ballPos 收缩，会沿贴边方向漂移（restoreSnapIfNeeded 只修正贴边轴）。
+*  展开只清了视觉未动位置，收起应回到展开前的真实锚点，故冻结之。 */
+var collapseAnchor = null;
+async function expandBall() {
+	if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
+	clearSnapVisualOnly();
+	if (collapseTimer) {
+		clearTimeout(collapseTimer);
+		collapseTimer = null;
+	}
+	const [x, y] = floatingBallWindow.getPosition();
+	const bx = ballPos ? ballPos.x : x;
+	const by = ballPos ? ballPos.y : y;
+	collapseAnchor = {
+		x: bx,
+		y: by
+	};
+	const cx = Math.round(bx + BALL_SIZE / 2);
+	const cy = Math.round(by + BALL_SIZE / 2);
+	logger_default.info("[Ball] expand at", [x, y], "center", [cx, cy]);
+	const [w] = floatingBallWindow.getSize();
+	const needResize = w !== RING_SIZE;
+	if (needResize) {
+		floatingBallWindow.setOpacity(0);
+		setBallBounds({
+			x: cx - RING_SIZE / 2,
+			y: cy - RING_SIZE / 2,
+			width: RING_SIZE,
+			height: RING_SIZE
+		});
+	}
+	try {
+		await floatingBallWindow.webContents.executeJavaScript(`restartBloom(); void 0;`);
+	} catch {}
+	if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
+	if (needResize) {
+		try {
+			await floatingBallWindow.capturePage();
+		} catch {}
+		if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
+		floatingBallWindow.setOpacity(1);
+	}
+	isBallExpanded = true;
+	floatingBallWindow.webContents.send("ball-state", "expanded");
+}
+async function collapseBall() {
+	isBallExpanded = false;
+	if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
+	if (!collapseAnchor) {
+		if (!ballPos) {
+			const [x, y] = floatingBallWindow.getPosition();
+			ballPos = {
+				x: Math.round(x + RING_SIZE / 2 - BALL_SIZE / 2),
+				y: Math.round(y + RING_SIZE / 2 - BALL_SIZE / 2)
+			};
+		}
+		collapseAnchor = {
+			x: ballPos.x,
+			y: ballPos.y
+		};
+	}
+	const bx = collapseAnchor.x;
+	const by = collapseAnchor.y;
+	logger_default.info("[Ball] collapse at", [bx, by]);
+	try {
+		await floatingBallWindow.webContents.executeJavaScript(`document.body.classList.remove('expanded'); isExpanded=false; void 0;`);
+	} catch {}
+	if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
+	if (collapseTimer) clearTimeout(collapseTimer);
+	collapseTimer = setTimeout(() => {
+		collapseTimer = null;
+		if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
+		if (isBallExpanded) return;
+		try {
+			floatingBallWindow.webContents.executeJavaScript(`var s=document.getElementById('ringSvg');while(s.firstChild){s.removeChild(s.firstChild)} menuCreated=false; void 0;`);
+		} catch {}
+		if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
+		floatingBallWindow.setOpacity(0);
+		setBallBounds({
+			x: bx,
+			y: by,
+			width: BALL_SIZE,
+			height: BALL_SIZE
+		});
+		floatingBallWindow.setOpacity(1);
+		restoreSnapIfNeeded();
+	}, 920);
+}
+/** 立即收起成 66 报纸球（非动画版收起）：从 240 展开态同帧缩成 66，用于"展开态起拖/贴屏"。
+*  与 collapseBall 的 920ms 动画收起不同，这里不播花开/合拢、立即缩窗并清 DOM，
+*  以免拖动锚点/贴屏判定用 240 几何造成错乱。若正在动画收起则取消其收尾定时器。 */
+function collapseToBallImmediate() {
+	if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
+	isBallExpanded = false;
+	let bx, by;
+	if (collapseAnchor) {
+		bx = collapseAnchor.x;
+		by = collapseAnchor.y;
+	} else if (ballPos) {
+		bx = ballPos.x;
+		by = ballPos.y;
+	} else {
+		const [x, y] = floatingBallWindow.getPosition();
+		bx = Math.round(x + RING_SIZE / 2 - BALL_SIZE / 2);
+		by = Math.round(y + RING_SIZE / 2 - BALL_SIZE / 2);
+	}
+	try {
+		floatingBallWindow.webContents.executeJavaScript(`document.body.classList.remove('expanded'); document.body.classList.remove('no-anim'); isExpanded=false; var s=document.getElementById('ringSvg'); if(s){while(s.firstChild){s.removeChild(s.firstChild)}} menuCreated=false; void 0;`).catch(() => {});
+	} catch {}
+	if (collapseTimer) {
+		clearTimeout(collapseTimer);
+		collapseTimer = null;
+	}
+	floatingBallWindow.setOpacity(0);
+	setBallBounds({
+		x: bx,
+		y: by,
+		width: BALL_SIZE,
+		height: BALL_SIZE
+	});
+	floatingBallWindow.setOpacity(1);
+}
+function forwardAction(action) {
+	if (action === "record") process.emit("clawd-show-record-window");
+	else if (action === "ai") process.emit("clawd-show-ai-window");
+	else if (action === "todo") process.emit("clawd-show-todo-window");
+	else if (action === "settings") process.emit("clawd-show-settings-window");
+	else {
+		const mainWindow = electron.BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w !== floatingBallWindow);
+		if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("on-floating-ball-action", action);
+	}
+	collapseBall();
+}
+function buildFloatingBallHtml() {
+	return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -1082,7 +5199,7 @@ body.snap-bottom #ballBadge{ top:24px; right:4px; } /* 水滴贴下缘(下/右�
   </svg>
   <div class="core">
     <button id="trigger">
-      <img id="logoImg" class="logo-img" src="${et(48)}" alt="logo" />
+      <img id="logoImg" class="logo-img" src="${getLogoDataUrl(48)}" alt="logo" />
     </button>
     <!-- 待办数量气泡：悬浮球右上角红色数字胶囊。放在恒 66px 的 .core 内（始终贴球心居中），
          锚点是球而非随展开放大的容器 ⇒ 展开菜单时不偏移；top/right=0 落在窗口内，不会被裁切 -->
@@ -1093,7 +5210,7 @@ body.snap-bottom #ballBadge{ top:24px; right:4px; } /* 水滴贴下缘(下/右�
 <script>
 const {ipcRenderer} = require('electron')
 
-const ITEMS = ${JSON.stringify(Nt())};
+const ITEMS = ${JSON.stringify(getVisibleMenuItems())};
 
 let isExpanded = false
 let menuCreated = false
@@ -1326,38 +5443,754 @@ document.addEventListener('click',function(e){
 })
 <\/script>
 </body>
-</html>`}var Jt=null,W=null;function Yt(e){if(!(!I||I.isDestroyed()))try{I.webContents.send(`ball-snap`,e)}catch{}}function Xt(e,t,n,r){let i=d.screen.getDisplayMatching({x:e,y:t,width:n,height:r}).bounds,a=H().snapGutter,o=Math.abs(e-(i.x+a)),s=Math.abs(i.x+i.width-a-(e+n)),c=Math.abs(t-(i.y+a)),l=Math.abs(i.y+i.height-a-(t+r)),u=null,f=Number.MAX_VALUE;return o<40&&o<f&&(f=o,u=`left`),s<40&&s<f&&(f=s,u=`right`),c<40&&c<f&&(f=c,u=`top`),l<40&&l<f&&(f=l,u=`bottom`),u}function Zt(e,t,n,r,i){let a=d.screen.getDisplayMatching({x:t,y:n,width:r,height:i}).bounds,o=H().snapGutter;return e===`left`?{x:a.x+o,y:n}:e===`right`?{x:a.x+a.width-o-r,y:n}:e===`top`?{x:t,y:a.y+o}:{x:t,y:a.y+a.height-o-i}}function Qt(){if(!I||I.isDestroyed())return;let[e,t]=I.getPosition(),[n,r]=I.getSize(),i=Jt;if(i||=Xt(e,t,n,r),i){let a=Zt(i,e,t,n,r);V({x:a.x,y:a.y,width:z,height:z}),L&&(L={x:a.x,y:a.y},St(L)),Jt=i,Yt(i),k.info(`Floating ball snap restored (edge):`,[a.x,a.y],i)}}function $t(e){if(e<=0)return 0;if(e>=1)return 1;let t=2*Math.PI/3;return 2**(-10*e)*Math.sin((e*10-.75)*t)+1}function en(e,t,n,r){if(!Number.isFinite(e)||!Number.isFinite(t)||!Number.isFinite(n.x)||!Number.isFinite(n.y)){k.warn(`Floating ball snap skipped (non-finite input):`,{x:e,y:t,to:n});return}W&&=(clearInterval(W),null);let i=Date.now();W=setInterval(()=>{if(!I||I.isDestroyed()){W&&=(clearInterval(W),null);return}let a=Math.min(1,(Date.now()-i)/420),o=$t(a);if(V({x:Math.round(e+(n.x-e)*o),y:Math.round(t+(n.y-t)*o),width:z,height:z}),a>=1){W&&=(clearInterval(W),null);let[e,t]=I.getPosition();(e!==n.x||t!==n.y)&&V({x:n.x,y:n.y,width:z,height:z}),Jt=r,Yt(r),L&&(L={x:n.x,y:n.y},St(L)),k.info(`Floating ball snapped (elastic) to edge:`,[n.x,n.y],r)}},16)}function tn(){W&&=(clearInterval(W),null),Jt&&(Jt=null,Yt(null))}function nn(){W&&=(clearInterval(W),null),Jt&&Yt(null)}function rn(){d.ipcMain.handle(`show-floating-ball`,()=>{Bt()}),d.ipcMain.handle(`hide-floating-ball`,()=>{Vt()}),d.ipcMain.handle(`toggle-floating-ball`,()=>{Vt()}),d.ipcMain.on(`floating-ball-expand`,()=>{Ut()}),d.ipcMain.on(`floating-ball-collapse`,()=>{Wt()}),d.ipcMain.on(`floating-ball-action`,(e,t)=>{k.info(`Floating ball action:`,t),Kt(t)});let e=null;d.ipcMain.on(`floating-ball-drag-start`,(t,n,r)=>{if(!I||I.isDestroyed())return;let[i,a]=I.getPosition(),[o,s]=I.getSize();R={winX:i,winY:a,scrX:n,scrY:r},e={w:o,h:s}}),d.ipcMain.on(`floating-ball-drag-clear`,(t,n,r)=>{if(!I||I.isDestroyed()||(Ht&&Gt(),tn(),!I||I.isDestroyed()))return;let[i,a]=I.getPosition(),[o,s]=I.getSize();R={winX:i,winY:a,scrX:n,scrY:r},e={w:o,h:s}}),d.ipcMain.on(`floating-ball-move`,(t,n,r)=>{if(!I||I.isDestroyed()||!R||!e||!Number.isFinite(n)||!Number.isFinite(r))return;let i=n-R.scrX,a=r-R.scrY,o=Math.round(R.winX+i),s=Math.round(R.winY+a);V({x:o,y:s,width:e.w,height:e.h});let[c,l]=I.getPosition();(c!==o||l!==s)&&V({x:o+(o-c),y:s+(s-l),width:e.w,height:e.h})}),d.ipcMain.on(`floating-ball-drag-end`,()=>{if(R=null,e=null,I&&!I.isDestroyed()){let[e,t]=I.getPosition(),[n,r]=I.getSize(),i=d.screen.getDisplayMatching(I.getBounds()).bounds,a=H().snapGutter,o=Math.abs(e-(i.x+a)),s=Math.abs(i.x+i.width-a-(e+n)),c=Math.abs(t-(i.y+a)),l=Math.abs(i.y+i.height-a-(t+r)),u=null,f=Number.MAX_VALUE;o<40&&o<f&&(f=o,u=`left`),s<40&&s<f&&(f=s,u=`right`),c<40&&c<f&&(f=c,u=`top`),l<40&&l<f&&(f=l,u=`bottom`),u===`left`?en(e,t,{x:i.x+a,y:t},`left`):u===`right`?en(e,t,{x:i.x+i.width-a-n,y:t},`right`):u===`top`?en(e,t,{x:e,y:i.y+a},`top`):u===`bottom`&&en(e,t,{x:e,y:i.y+i.height-a-r},`bottom`)}L&&St(L)}),d.ipcMain.handle(`get-floating-ball-settings`,()=>H()),d.ipcMain.handle(`set-floating-ball-settings`,(e,t)=>{let n={...H()},r=Mt(t);if(zt(r),t.openAtLogin!==void 0)try{d.app.setLoginItemSettings({openAtLogin:t.openAtLogin})}catch(e){k.error(`setLoginItemSettings failed:`,e)}if(t.menuItems&&JSON.stringify(n.menuItems)!==JSON.stringify(r.menuItems)&&Pt(),t.locale!==void 0&&n.locale!==r.locale){Pt(),_t();let e=d.BrowserWindow.getAllWindows();for(let t of e)if(!t.isDestroyed())try{t.webContents.send(`app-locale-changed`,{locale:r.locale})}catch{}k.info(`Floating ball locale changed: ${n.locale} -> ${r.locale}`)}return r}),d.ipcMain.handle(`reset-floating-ball-position`,()=>{if(Ft(),tn(),I&&!I.isDestroyed()){let e=d.screen.getPrimaryDisplay().bounds,t=Math.round(e.x+(e.width-z)/2),n=Math.round(e.y+(e.height-z)/2);Ht=!1;try{I.webContents.executeJavaScript(`document.body.classList.remove('expanded'); var s=document.getElementById('ringSvg');if(s){while(s.firstChild){s.removeChild(s.firstChild)}} menuCreated=false; isExpanded=false; void 0;`).catch(()=>{})}catch{}V({x:t,y:n,width:z,height:z}),L={x:t,y:n};let[r,i]=I.getPosition();(r!==t||i!==n)&&V({x:t+(t-r),y:n+(n-i),width:z,height:z})}})}var an=s(((e,t)=>{A();var n=null;function r(){let e=d.app.isPackaged?(0,u.join)(process.resourcesPath,`logo.ico`):(0,u.join)(__dirname,`../../public/logo.ico`);return d.nativeImage.createFromPath(e).resize({width:16,height:16})}function i(){let e=d.app.isPackaged?(0,u.join)(process.resourcesPath,`logo.png`):(0,u.join)(__dirname,`../../public/logo.png`);return e?d.nativeImage.createFromPath(e).resize({width:64,height:64,quality:`better`}):d.nativeImage.createEmpty()}function a(){if(n&&!n.isDestroyed())return;n=new d.Tray(r()),n.setToolTip(`二支录制`);let e=d.Menu.buildFromTemplate([{label:`显示设置窗口`,click:()=>{process.emit(`clawd-show-settings-window`)}},{type:`separator`},{label:`退出`,click:()=>{let{app:e}=require(`electron`);e.quit()}}]);n.setContextMenu(e),n.on(`click`,()=>{process.emit(`clawd-show-settings-window`)}),k.info(`System tray created`)}function o(e,t){n&&!n.isDestroyed()&&(n.displayBalloon({title:e,content:t,icon:i()}),k.info(`Tray balloon:`,e,t))}function s(){n&&!n.isDestroyed()&&(n.destroy(),n=null)}t.exports={createTray:a,showBalloon:o,destroyTray:s}}))();A();var on={available:!1,playing:!1,title:``,artist:``,album:``,hasSession:null},sn=`
-Add-Type -AssemblyName System.Runtime.WindowsRuntime
-$asTaskGeneric=([System.WindowsRuntimeSystemExtensions].GetMethods()|Where-Object{$_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation\`1'})[0]
-function Await($t,$rt){$asTask=$asTaskGeneric.MakeGenericMethod($rt);$n=$asTask.Invoke($null,@($t));$n.Wait(-1)|Out-Null;$n.Result}
-try{
-  [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager,Windows.Media.Control,ContentType=WindowsRuntime]|Out-Null
-  $m=Await ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])
-  if(-not $m){'{"available":true,"hasSession":false}';exit}
-  $s=$m.GetCurrentSession()
-  if(-not $s){'{"available":true,"hasSession":false}';exit}
-  $p=Await ($s.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])
-  $st=[int]$s.PlaybackInfo.PlaybackStatus
-  $title=[string]$p.Title;$artist=[string]$p.Artist;$album=[string]$p.AlbumTitle
-  $play=($st -eq 4)
-  # 拼 JSON：PowerShell 双引号串不接受 \\" 转义，改单引号字面量 + 变量拼接（歌名含引号属极端，忽略）
-  '{' + '"available":true,"hasSession":true,"playing":' + $play.ToString().ToLower() + ',"title":"' + $title + '","artist":"' + $artist + '","album":"' + $album + '"' + '}'
-}catch{
-  # 任何失败都降级为不可用，不抛异常污染主进程
-  '{"available":false,"hasSession":null}'
+</html>`;
 }
-`,cn={play:`TryPlayAsync`,pause:`TryPauseAsync`,next:`TrySkipNextAsync`,prev:`TrySkipPreviousAsync`},ln=e=>`
-Add-Type -AssemblyName System.Runtime.WindowsRuntime
-$asTaskGeneric=([System.WindowsRuntimeSystemExtensions].GetMethods()|Where-Object{$_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation\`1'})[0]
-function Await($t,$rt){$asTask=$asTaskGeneric.MakeGenericMethod($rt);$n=$asTask.Invoke($null,@($t));$n.Wait(-1)|Out-Null;$n.Result}
-try{
-  [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager,Windows.Media.Control,ContentType=WindowsRuntime]|Out-Null
-  $m=Await ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])
-  $s=$m.GetCurrentSession()
-  if($s){ $null=Await ($s.${e}()) ([boolean]) }
-  '{"ok":true}'
-}catch{'{"ok":false}'}
-`;function un(e){return new Promise(t=>{(0,p.execFile)(`powershell.exe`,[`-NoProfile`,`-NonInteractive`,`-NoLogo`,`-Command`,e],{windowsHide:!0,timeout:8e3,maxBuffer:4*1024*1024},(e,n)=>{if(e){t(``);return}t(n.trim())})})}async function dn(){try{let e=(await un(sn)).match(/\{.*\}/s);if(!e)return on;let t=JSON.parse(e[0]);return t.available?{available:!0,playing:!!t.playing,title:t.title||``,artist:t.artist||``,album:t.album||``,hasSession:t.hasSession}:on}catch(e){return k.warn(`[music-smtc] read failed:`,e?.message??e),on}}async function fn(e){let t=cn[e];if(!t)return!1;try{let e=await un(ln(t));return/"ok":true/.test(e)}catch{return!1}}A();var G=null;function pn(){let e=d.app.isPackaged?(0,u.join)(process.resourcesPath,`logo.ico`):(0,u.join)(__dirname,`..`,`..`,`public`,`logo.ico`);return d.nativeImage.createFromPath(e)}function mn(){if(G&&!G.isDestroyed()){G.show(),G.focus();return}let e=process.env.VITE_DEV_SERVER_URL,t=(0,u.join)(__dirname,`..`,`preload`,`index.cjs`);G=new d.BrowserWindow({icon:pn(),width:400,height:480,minWidth:340,minHeight:380,show:!1,skipTaskbar:!1,frame:!1,titleBarStyle:`hidden`,title:`音乐`,backgroundColor:`#eaeaec`,webPreferences:{preload:t,contextIsolation:!0,nodeIntegration:!1,sandbox:!1}}),e?G.loadURL(`${e}#/music?t=${Date.now()}`):G.loadFile((0,u.join)(process.env.DIST,`index.html`),{hash:`/music`}),G.once(`ready-to-show`,()=>{G?.show()}),G.on(`closed`,()=>{G=null}),k.info(`Music window shown`)}function hn(){G&&!G.isDestroyed()&&G.destroy(),G=null}function gn(){d.ipcMain.handle(`show-music-window`,()=>mn()),d.ipcMain.handle(`close-music-window`,()=>hn()),d.ipcMain.handle(`music-get-status`,()=>dn()),d.ipcMain.handle(`music-control`,(e,t)=>fn(t))}var _n={info:()=>{},warn:()=>{},error:()=>{}},vn=null,yn=`todo-notes.json`,bn=`todo-settings.json`;function xn(){if(vn)return vn;let{app:e}=require(`electron`);return e.getPath(`userData`)}function Sn(){return(0,u.join)(xn(),yn)}function Cn(){return(0,u.join)(xn(),bn)}function wn(){try{let e=_.readFileSync(Sn(),`utf-8`),t=JSON.parse(e);if(Array.isArray(t.items))return{items:t.items.filter(e=>e&&typeof e.id==`string`),meta:{schemaVersion:t.meta?.schemaVersion??1}}}catch{}return{items:[],meta:{schemaVersion:1}}}function K(){return wn().items}function Tn(e){let t=Sn(),n=t+`.tmp`;try{_.writeFileSync(n,JSON.stringify(e,null,2),`utf-8`),_.renameSync(n,t)}catch{try{_.writeFileSync(t,JSON.stringify(e,null,2),`utf-8`)}catch(e){_n.error(`todo store save failed:`,e?.message??e)}}}function En(e){Tn({items:e,meta:{schemaVersion:1}})}function Dn(e){let t=K(),n=Date.now(),r={id:(0,x.randomUUID)(),type:e.type,title:e.title??``,content:e.content??``,priority:e.priority??`medium`,reminder:e.reminder??null,reminderFired:!1,done:e.done??!1,pinned:!1,pinX:null,pinY:null,createdAt:n,updatedAt:n};return t.unshift(r),En(t),t}function On(e,t){let n=K(),r=n.find(t=>t.id===e);return r?(Object.assign(r,t,{updatedAt:Date.now()}),En(n),n):n}function kn(e){e.type===`todo`&&e.done&&(e.pinned=!1)}function An(e,t){let n=K(),r=n.find(t=>t.id===e);return r?(t.reminder!==void 0&&t.reminder!==r.reminder&&(r.reminderFired=!1),Object.assign(r,t,{updatedAt:Date.now()}),kn(r),En(n),n):n}function jn(e){let t=K().filter(t=>t.id!==e);return En(t),t}function Mn(e){let t=K(),n=t.find(t=>t.id===e);return n&&n.type===`todo`&&(n.done=!n.done,n.updatedAt=Date.now(),kn(n),En(t)),t}function Nn(e){let t=K(),n=t.find(t=>t.id===e);return!n||n.type!==`todo`?t:(n.done=!0,n.pinned=!1,n.updatedAt=Date.now(),En(t),t)}function Pn(e){return On(e,{reminderFired:!0})}function Fn(e,t){let n=K(),r=n.find(t=>t.id===e);if(!r)return n;let i=!r.pinned;return r.pinned=i,i&&t&&(r.pinX=Math.round(t.x),r.pinY=Math.round(t.y)),i&&r.type===`todo`&&r.done&&(r.done=!1),r.updatedAt=Date.now(),En(n),n}function In(e){return e.filter(e=>e.type===`todo`&&!e.done).length}var Ln={badgeVisible:!0,windowAlwaysOnTop:!0,stickyBoardPos:null};function Rn(){try{let e=JSON.parse(_.readFileSync(Cn(),`utf-8`));return{badgeVisible:typeof e.badgeVisible==`boolean`?e.badgeVisible:Ln.badgeVisible,windowAlwaysOnTop:typeof e.windowAlwaysOnTop==`boolean`?e.windowAlwaysOnTop:Ln.windowAlwaysOnTop,stickyBoardPos:e.stickyBoardPos&&typeof e.stickyBoardPos.x==`number`&&typeof e.stickyBoardPos.y==`number`?{x:e.stickyBoardPos.x,y:e.stickyBoardPos.y}:null}}catch{return{...Ln}}}function zn(e){let t={...Rn(),...e};try{_.writeFileSync(Cn(),JSON.stringify(t,null,2),`utf-8`)}catch(e){_n.error(`todo settings save failed:`,e?.message??e)}return t}var Bn=!1;function q(){let e=In(K()),t=Rn().badgeVisible;Rt(e,Bn,t)}function Vn(e){Bn=e,q()}function Hn(){Vn(!1)}function Un(){d.ipcMain.on(`floating-ball-badge-ready`,()=>{q()})}A(),Xe();var J=null;function Wn(){let e=d.app.isPackaged?(0,u.join)(process.resourcesPath,`logo.ico`):(0,u.join)(__dirname,`..`,`..`,`public`,`logo.ico`);return d.nativeImage.createFromPath(e)}function Gn(){if(J&&!J.isDestroyed()){J.show(),J.focus(),Hn();return}let e=process.env.VITE_DEV_SERVER_URL,t=(0,u.join)(__dirname,`..`,`preload`,`index.cjs`);J=new d.BrowserWindow({icon:Wn(),width:525,height:450,minWidth:320,minHeight:360,show:!1,skipTaskbar:!1,frame:!1,titleBarStyle:`hidden`,title:N(`todo.stickyTitle`),backgroundColor:`#eaeaec`,webPreferences:{preload:t,contextIsolation:!0,nodeIntegration:!1,sandbox:!1}}),J.setAlwaysOnTop(Rn().windowAlwaysOnTop,`normal`),e?J.loadURL(`${e}#/todo?t=${Date.now()}`):J.loadFile((0,u.join)(process.env.DIST,`index.html`),{hash:`/todo`}),J.once(`ready-to-show`,()=>{J?.show()}),J.on(`closed`,()=>{J=null}),Hn(),k.info(`Todo window shown`)}function Kn(){J&&!J.isDestroyed()&&J.close(),J=null}function qn(){return!!(J&&!J.isDestroyed())}function Jn(){let e=!Rn().windowAlwaysOnTop;return zn({windowAlwaysOnTop:e}),J&&!J.isDestroyed()&&J.setAlwaysOnTop(e,`normal`),e}function Yn(e){if(Gn(),!J||J.isDestroyed())return;let t=()=>{J&&!J.isDestroyed()&&J.webContents.send(`todo-focus-item`,e)};J.webContents.isLoading()?J.webContents.once(`did-finish-load`,t):t()}function Xn(e){if(!J||J.isDestroyed())return;let t=()=>{J&&!J.isDestroyed()&&J.webContents.send(`todo-data-changed`,e)};J.webContents.isLoading()?J.webContents.once(`did-finish-load`,t):t()}A(),Xe();var Y=null;function Zn(e,t){let n=et(32);return`<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+var snappedSide = null;
+var snapTimer = null;
+/** 通知渲染层悬浮球吸附边（null = 未吸附），由内联 script 切换 body.snap-* class 触发水滴形状。 */
+function sendSnapVisual(side) {
+	if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
+	try {
+		floatingBallWindow.webContents.send("ball-snap", side);
+	} catch {}
+}
+/** 检测窗口当前左上角 (x,y) 尺寸 (w,h) 是否贴在所属显示器某边缘（吸附阈值内）。
+* 与吸附判定复用同一套几何 ⇒ 吸附落点与恢复判定一致。角上只判最近边，返回该边或 null。 */
+function detectEdgeSnap(x, y, w, h) {
+	const b = electron.screen.getDisplayMatching({
+		x,
+		y,
+		width: w,
+		height: h
+	}).bounds;
+	const gutter = getBallSettings().snapGutter;
+	const SNAP = 40;
+	const dl = Math.abs(x - (b.x + gutter));
+	const dr = Math.abs(b.x + b.width - gutter - (x + w));
+	const dt = Math.abs(y - (b.y + gutter));
+	const db = Math.abs(b.y + b.height - gutter - (y + h));
+	let best = null;
+	let bestD = Number.MAX_VALUE;
+	if (dl < SNAP && dl < bestD) {
+		bestD = dl;
+		best = "left";
+	}
+	if (dr < SNAP && dr < bestD) {
+		bestD = dr;
+		best = "right";
+	}
+	if (dt < SNAP && dt < bestD) {
+		bestD = dt;
+		best = "top";
+	}
+	if (db < SNAP && db < bestD) {
+		bestD = db;
+		best = "bottom";
+	}
+	return best;
+}
+/** 恢复吸附态：show 启动、收起、重置后调用。优先用内存里保存的 snappedSide（展开只清了视觉、
+*  未动位置）把球直接钉回对应屏幕边缘并重发水滴视觉；无保存边时才回退到位置重判。
+*  窗口已在终点、无需动画。目标坐标复用 drag-end 的贴边几何。 */
+function snapTargetFor(side, x, y, w, h) {
+	const b = electron.screen.getDisplayMatching({
+		x,
+		y,
+		width: w,
+		height: h
+	}).bounds;
+	const gutter = getBallSettings().snapGutter;
+	if (side === "left") return {
+		x: b.x + gutter,
+		y
+	};
+	if (side === "right") return {
+		x: b.x + b.width - gutter - w,
+		y
+	};
+	if (side === "top") return {
+		x,
+		y: b.y + gutter
+	};
+	return {
+		x,
+		y: b.y + b.height - gutter - h
+	};
+}
+function restoreSnapIfNeeded() {
+	if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
+	const [x, y] = floatingBallWindow.getPosition();
+	const [w, h] = floatingBallWindow.getSize();
+	let side = snappedSide;
+	if (!side) side = detectEdgeSnap(x, y, w, h);
+	if (side) {
+		const t = snapTargetFor(side, x, y, w, h);
+		setBallBounds({
+			x: t.x,
+			y: t.y,
+			width: BALL_SIZE,
+			height: BALL_SIZE
+		});
+		if (ballPos) {
+			ballPos = {
+				x: t.x,
+				y: t.y
+			};
+			saveBallPosition(ballPos);
+		}
+		snappedSide = side;
+		sendSnapVisual(side);
+		logger_default.info("Floating ball snap restored (edge):", [t.x, t.y], side);
+	}
+}
+/** 弹性 out 缓动：末尾轻微过冲回弹，模拟水滴/弹簧贴边手感（参考 easeOutBack 微调）。 */
+function elasticOut(t) {
+	if (t <= 0) return 0;
+	if (t >= 1) return 1;
+	const c4 = 2 * Math.PI / 3;
+	return Math.pow(2, -10 * t) * Math.sin((t * 10 - .75) * c4) + 1;
+}
+/** 从当前 (x,y) 弹性动画贴到目标边；落稳后读回修正 DWM 1px 偏移、记录吸附边并持久化位置。
+*  防御：起点/目标任一处出现非有限数，直接放弃吸附（不启动高频 setBounds 动画），
+*  避免竞态坏值把主进程打死（参考 a8d8389 的 NaN 防御 + setBallBounds 兜底）。 */
+function animateSnapToEdge(x, y, to, side) {
+	if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(to.x) || !Number.isFinite(to.y)) {
+		logger_default.warn("Floating ball snap skipped (non-finite input):", {
+			x,
+			y,
+			to
+		});
+		return;
+	}
+	if (snapTimer) {
+		clearInterval(snapTimer);
+		snapTimer = null;
+	}
+	const DUR = 420;
+	const start = Date.now();
+	const step = () => {
+		if (!floatingBallWindow || floatingBallWindow.isDestroyed()) {
+			if (snapTimer) {
+				clearInterval(snapTimer);
+				snapTimer = null;
+			}
+			return;
+		}
+		const t = Math.min(1, (Date.now() - start) / DUR);
+		const e = elasticOut(t);
+		setBallBounds({
+			x: Math.round(x + (to.x - x) * e),
+			y: Math.round(y + (to.y - y) * e),
+			width: BALL_SIZE,
+			height: BALL_SIZE
+		});
+		if (t >= 1) {
+			if (snapTimer) {
+				clearInterval(snapTimer);
+				snapTimer = null;
+			}
+			const [ax, ay] = floatingBallWindow.getPosition();
+			if (ax !== to.x || ay !== to.y) setBallBounds({
+				x: to.x,
+				y: to.y,
+				width: BALL_SIZE,
+				height: BALL_SIZE
+			});
+			snappedSide = side;
+			sendSnapVisual(side);
+			if (ballPos) {
+				ballPos = {
+					x: to.x,
+					y: to.y
+				};
+				saveBallPosition(ballPos);
+			}
+			logger_default.info("Floating ball snapped (elastic) to edge:", [to.x, to.y], side);
+		}
+	};
+	snapTimer = setInterval(step, 16);
+}
+/** 清除吸附态（拖动开始/隐藏时）：停动画、清边标记、收圆角。 */
+function clearSnap() {
+	if (snapTimer) {
+		clearInterval(snapTimer);
+		snapTimer = null;
+	}
+	if (snappedSide) {
+		snappedSide = null;
+		sendSnapVisual(null);
+	}
+}
+/** 仅清除吸附*视觉*（渲染层移除 body.snap-* 让菜单正常开花），但保留内存里的 snappedSide。
+*  展开菜单需要球变回普通圆球以显示 240 圆环，但展开并未改变贴边位置——保留吸附边，
+*  收起时即可按已保存的边恢复水滴，避免依赖易被 DWM/缩放微调打偏的"位置重判"（否则偶发失效变圆球）。 */
+function clearSnapVisualOnly() {
+	if (snapTimer) {
+		clearInterval(snapTimer);
+		snapTimer = null;
+	}
+	if (snappedSide) sendSnapVisual(null);
+}
+function registerFloatingBallHandlers() {
+	electron.ipcMain.handle("show-floating-ball", () => {
+		showFloatingBall();
+	});
+	electron.ipcMain.handle("hide-floating-ball", () => {
+		hideFloatingBall();
+	});
+	electron.ipcMain.handle("toggle-floating-ball", () => {
+		hideFloatingBall();
+	});
+	electron.ipcMain.on("floating-ball-expand", () => {
+		expandBall();
+	});
+	electron.ipcMain.on("floating-ball-collapse", () => {
+		collapseBall();
+	});
+	electron.ipcMain.on("floating-ball-action", (_event, action) => {
+		logger_default.info("Floating ball action:", action);
+		forwardAction(action);
+	});
+	let dragSize = null;
+	electron.ipcMain.on("floating-ball-drag-start", (_event, sx, sy) => {
+		if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
+		const [wx, wy] = floatingBallWindow.getPosition();
+		const [ww, wh] = floatingBallWindow.getSize();
+		dragOrigin = {
+			winX: wx,
+			winY: wy,
+			scrX: sx,
+			scrY: sy
+		};
+		dragSize = {
+			w: ww,
+			h: wh
+		};
+	});
+	electron.ipcMain.on("floating-ball-drag-clear", (_event, sx, sy) => {
+		if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
+		if (isBallExpanded) collapseToBallImmediate();
+		clearSnap();
+		if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
+		const [wx, wy] = floatingBallWindow.getPosition();
+		const [ww, wh] = floatingBallWindow.getSize();
+		dragOrigin = {
+			winX: wx,
+			winY: wy,
+			scrX: sx,
+			scrY: sy
+		};
+		dragSize = {
+			w: ww,
+			h: wh
+		};
+	});
+	electron.ipcMain.on("floating-ball-move", (_event, sx, sy) => {
+		if (!floatingBallWindow || floatingBallWindow.isDestroyed() || !dragOrigin || !dragSize) return;
+		if (!Number.isFinite(sx) || !Number.isFinite(sy)) return;
+		const dx = sx - dragOrigin.scrX;
+		const dy = sy - dragOrigin.scrY;
+		const nx = Math.round(dragOrigin.winX + dx);
+		const ny = Math.round(dragOrigin.winY + dy);
+		setBallBounds({
+			x: nx,
+			y: ny,
+			width: dragSize.w,
+			height: dragSize.h
+		});
+		const [ax, ay] = floatingBallWindow.getPosition();
+		if (ax !== nx || ay !== ny) setBallBounds({
+			x: nx + (nx - ax),
+			y: ny + (ny - ay),
+			width: dragSize.w,
+			height: dragSize.h
+		});
+	});
+	electron.ipcMain.on("floating-ball-drag-end", () => {
+		dragOrigin = null;
+		dragSize = null;
+		if (floatingBallWindow && !floatingBallWindow.isDestroyed()) {
+			const [x, y] = floatingBallWindow.getPosition();
+			const [w, h] = floatingBallWindow.getSize();
+			const b = electron.screen.getDisplayMatching(floatingBallWindow.getBounds()).bounds;
+			const gutter = getBallSettings().snapGutter;
+			const SNAP = 40;
+			const dl = Math.abs(x - (b.x + gutter));
+			const dr = Math.abs(b.x + b.width - gutter - (x + w));
+			const dt = Math.abs(y - (b.y + gutter));
+			const db = Math.abs(b.y + b.height - gutter - (y + h));
+			let best = null;
+			let bestD = Number.MAX_VALUE;
+			if (dl < SNAP && dl < bestD) {
+				bestD = dl;
+				best = "left";
+			}
+			if (dr < SNAP && dr < bestD) {
+				bestD = dr;
+				best = "right";
+			}
+			if (dt < SNAP && dt < bestD) {
+				bestD = dt;
+				best = "top";
+			}
+			if (db < SNAP && db < bestD) {
+				bestD = db;
+				best = "bottom";
+			}
+			if (best === "left") animateSnapToEdge(x, y, {
+				x: b.x + gutter,
+				y
+			}, "left");
+			else if (best === "right") animateSnapToEdge(x, y, {
+				x: b.x + b.width - gutter - w,
+				y
+			}, "right");
+			else if (best === "top") animateSnapToEdge(x, y, {
+				x,
+				y: b.y + gutter
+			}, "top");
+			else if (best === "bottom") animateSnapToEdge(x, y, {
+				x,
+				y: b.y + b.height - gutter - h
+			}, "bottom");
+		}
+		if (ballPos) saveBallPosition(ballPos);
+	});
+	electron.ipcMain.handle("get-floating-ball-settings", () => getBallSettings());
+	electron.ipcMain.handle("set-floating-ball-settings", (_event, patch) => {
+		const prev = { ...getBallSettings() };
+		const next = updateBallSettings(patch);
+		applyFloatingBallSettings(next);
+		if (patch.openAtLogin !== void 0) try {
+			electron.app.setLoginItemSettings({ openAtLogin: patch.openAtLogin });
+		} catch (e) {
+			logger_default.error("setLoginItemSettings failed:", e);
+		}
+		if (patch.menuItems && JSON.stringify(prev.menuItems) !== JSON.stringify(next.menuItems)) reloadFloatingBall();
+		if (patch.locale !== void 0 && prev.locale !== next.locale) {
+			reloadFloatingBall();
+			reloadAiIsland();
+			const wins = electron.BrowserWindow.getAllWindows();
+			for (const win of wins) if (!win.isDestroyed()) try {
+				win.webContents.send("app-locale-changed", { locale: next.locale });
+			} catch {}
+			logger_default.info(`Floating ball locale changed: ${prev.locale} -> ${next.locale}`);
+		}
+		return next;
+	});
+	electron.ipcMain.handle("reset-floating-ball-position", () => {
+		clearBallPosition();
+		clearSnap();
+		if (floatingBallWindow && !floatingBallWindow.isDestroyed()) {
+			const display = electron.screen.getPrimaryDisplay().bounds;
+			const nx = Math.round(display.x + (display.width - BALL_SIZE) / 2);
+			const ny = Math.round(display.y + (display.height - BALL_SIZE) / 2);
+			isBallExpanded = false;
+			try {
+				floatingBallWindow.webContents.executeJavaScript(`document.body.classList.remove('expanded'); var s=document.getElementById('ringSvg');if(s){while(s.firstChild){s.removeChild(s.firstChild)}} menuCreated=false; isExpanded=false; void 0;`).catch(() => {});
+			} catch {}
+			setBallBounds({
+				x: nx,
+				y: ny,
+				width: BALL_SIZE,
+				height: BALL_SIZE
+			});
+			ballPos = {
+				x: nx,
+				y: ny
+			};
+			const [ax, ay] = floatingBallWindow.getPosition();
+			if (ax !== nx || ay !== ny) setBallBounds({
+				x: nx + (nx - ax),
+				y: ny + (ny - ay),
+				width: BALL_SIZE,
+				height: BALL_SIZE
+			});
+		}
+	});
+}
+//#endregion
+//#region electron/main/todo-store.ts
+var import_tray = (/* @__PURE__ */ __commonJSMin(((exports, module) => {
+	init_logger();
+	var tray = null;
+	function getTrayIcon() {
+		const iconPath = electron.app.isPackaged ? (0, node_path.join)(process.resourcesPath, "logo.ico") : (0, node_path.join)(__dirname, "../../public/logo.ico");
+		return electron.nativeImage.createFromPath(iconPath).resize({
+			width: 16,
+			height: 16
+		});
+	}
+	function getBalloonIcon() {
+		const iconPath = electron.app.isPackaged ? (0, node_path.join)(process.resourcesPath, "logo.png") : (0, node_path.join)(__dirname, "../../public/logo.png");
+		if (iconPath) return electron.nativeImage.createFromPath(iconPath).resize({
+			width: 64,
+			height: 64,
+			quality: "better"
+		});
+		return electron.nativeImage.createEmpty();
+	}
+	function createTray$1() {
+		if (tray && !tray.isDestroyed()) return;
+		tray = new electron.Tray(getTrayIcon());
+		tray.setToolTip("二支录制");
+		const contextMenu = electron.Menu.buildFromTemplate([
+			{
+				label: "显示设置窗口",
+				click: () => {
+					process.emit("clawd-show-settings-window");
+				}
+			},
+			{ type: "separator" },
+			{
+				label: "退出",
+				click: () => {
+					const { app } = require("electron");
+					app.quit();
+				}
+			}
+		]);
+		tray.setContextMenu(contextMenu);
+		tray.on("click", () => {
+			process.emit("clawd-show-settings-window");
+		});
+		logger_default.info("System tray created");
+	}
+	function showBalloon(title, content) {
+		if (tray && !tray.isDestroyed()) {
+			tray.displayBalloon({
+				title,
+				content,
+				icon: getBalloonIcon()
+			});
+			logger_default.info("Tray balloon:", title, content);
+		}
+	}
+	function destroyTray() {
+		if (tray && !tray.isDestroyed()) {
+			tray.destroy();
+			tray = null;
+		}
+	}
+	module.exports = {
+		createTray: createTray$1,
+		showBalloon,
+		destroyTray
+	};
+})))();
+var logger$2 = {
+	info: () => {},
+	warn: () => {},
+	error: () => {}
+};
+var dataDirOverride = null;
+var TODO_STORE_FILE = "todo-notes.json";
+var TODO_SETTINGS_FILE = "todo-settings.json";
+/** 数据根目录：单测注入覆盖；否则 electron userData。 */
+function dataDir() {
+	if (dataDirOverride) return dataDirOverride;
+	const { app } = require("electron");
+	return app.getPath("userData");
+}
+function todoFilePath() {
+	return (0, node_path.join)(dataDir(), TODO_STORE_FILE);
+}
+function todoSettingsFilePath() {
+	return (0, node_path.join)(dataDir(), TODO_SETTINGS_FILE);
+}
+/** 读取整份 store；文件缺失/损坏时回退空态（沿用 loadBallSettings 的容错模式）。
+*  注意：每次返回**全新数组**，绝不复用同一个共享空数组引用——否则上层（如 createTodo）
+*  unshift 直接改写共享状态，污染后续"空文件"读出的结果。 */
+function readStore() {
+	try {
+		const data = node_fs.readFileSync(todoFilePath(), "utf-8");
+		const parsed = JSON.parse(data);
+		if (Array.isArray(parsed.items)) return {
+			items: parsed.items.filter((it) => it && typeof it.id === "string"),
+			meta: { schemaVersion: parsed.meta?.schemaVersion ?? 1 }
+		};
+	} catch {}
+	return {
+		items: [],
+		meta: { schemaVersion: 1 }
+	};
+}
+/** 读取全部条目的便捷封装（渲染层 / 统计常用）。 */
+function loadItems() {
+	return readStore().items;
+}
+/** 把整份 state 写盘（原子写：先写临时文件再 rename，降低写一半损坏概率）。 */
+function saveState(state) {
+	const path = todoFilePath();
+	const tmp = path + ".tmp";
+	try {
+		node_fs.writeFileSync(tmp, JSON.stringify(state, null, 2), "utf-8");
+		node_fs.renameSync(tmp, path);
+	} catch (err) {
+		try {
+			node_fs.writeFileSync(path, JSON.stringify(state, null, 2), "utf-8");
+		} catch (err2) {
+			logger$2.error("todo store save failed:", err2?.message ?? err2);
+		}
+	}
+}
+/** 保存条目数组（便捷封装）。 */
+function saveItems(items) {
+	saveState({
+		items,
+		meta: { schemaVersion: 1 }
+	});
+}
+/** 生成一条新待办并持久化，返回更新后的全量 items。 */
+function createTodo(input) {
+	const items = loadItems();
+	const now = Date.now();
+	const item = {
+		id: (0, node_crypto.randomUUID)(),
+		type: input.type,
+		title: input.title ?? "",
+		content: input.content ?? "",
+		priority: input.priority ?? "medium",
+		reminder: input.reminder ?? null,
+		reminderFired: false,
+		done: input.done ?? false,
+		pinned: false,
+		pinX: null,
+		pinY: null,
+		createdAt: now,
+		updatedAt: now
+	};
+	items.unshift(item);
+	saveItems(items);
+	return items;
+}
+function patchItem(id, patch) {
+	const items = loadItems();
+	const it = items.find((x) => x.id === id);
+	if (!it) return items;
+	Object.assign(it, patch, { updatedAt: Date.now() });
+	saveItems(items);
+	return items;
+}
+/** 完成态默认不再贴屏：任意让 done 变 true 的改动都顺带取消贴屏（勾选完成/编辑改完成）。
+*  备忘（type==='memo'）不支持完成态，不处理。 */
+function ensureDoneUnpins(it) {
+	if (it.type === "todo" && it.done) it.pinned = false;
+}
+/** 更新一条，返回更新后的全量 items。若提醒时间被改动，重置已触发标志，让新提醒能再次到期触发。 */
+function updateTodo(id, patch) {
+	const items = loadItems();
+	const it = items.find((x) => x.id === id);
+	if (!it) return items;
+	if (patch.reminder !== void 0 && patch.reminder !== it.reminder) it.reminderFired = false;
+	Object.assign(it, patch, { updatedAt: Date.now() });
+	ensureDoneUnpins(it);
+	saveItems(items);
+	return items;
+}
+/** 删除一条，返回剩余全量 items。 */
+function deleteTodo(id) {
+	const items = loadItems().filter((x) => x.id !== id);
+	saveItems(items);
+	return items;
+}
+/** 切换完成态（仅 todo 语义：to-do 才可以勾选；memo 忽略置回 false）。 */
+function toggleTodoDone(id) {
+	const items = loadItems();
+	const it = items.find((x) => x.id === id);
+	if (!it) return items;
+	if (it.type === "todo") {
+		it.done = !it.done;
+		it.updatedAt = Date.now();
+		ensureDoneUnpins(it);
+		saveItems(items);
+	}
+	return items;
+}
+/** 完成一条待办并取消贴屏（便签板 ✕ = 完成 + 摘下）。备忘不支持完成态；todo 才处理。 */
+function completeTodo(id) {
+	const items = loadItems();
+	const it = items.find((x) => x.id === id);
+	if (!it || it.type !== "todo") return items;
+	it.done = true;
+	it.pinned = false;
+	it.updatedAt = Date.now();
+	saveItems(items);
+	return items;
+}
+/** 标记某条的提醒已触发（调度器调用），落库。 */
+function markReminderFired(id) {
+	return patchItem(id, { reminderFired: true });
+}
+/** 切换“贴屏”。新贴时可给初始位置（主进程按屏幕算好传入）；取消贴屏保留位置（再贴可复用）。 */
+function togglePin(id, initial) {
+	const items = loadItems();
+	const it = items.find((x) => x.id === id);
+	if (!it) return items;
+	const nowPinned = !it.pinned;
+	it.pinned = nowPinned;
+	if (nowPinned && initial) {
+		it.pinX = Math.round(initial.x);
+		it.pinY = Math.round(initial.y);
+	}
+	if (nowPinned && it.type === "todo" && it.done) it.done = false;
+	it.updatedAt = Date.now();
+	saveItems(items);
+	return items;
+}
+/** 待办数量气泡的计数口径：未完成的 type==='todo' 条数（done===false），memo 不计。 */
+function incompleteTodoCount(items) {
+	return items.filter((it) => it.type === "todo" && !it.done).length;
+}
+var DEFAULT_TODO_SETTINGS = {
+	badgeVisible: true,
+	windowAlwaysOnTop: true,
+	stickyBoardPos: null
+};
+function loadTodoSettings() {
+	try {
+		const parsed = JSON.parse(node_fs.readFileSync(todoSettingsFilePath(), "utf-8"));
+		return {
+			badgeVisible: typeof parsed.badgeVisible === "boolean" ? parsed.badgeVisible : DEFAULT_TODO_SETTINGS.badgeVisible,
+			windowAlwaysOnTop: typeof parsed.windowAlwaysOnTop === "boolean" ? parsed.windowAlwaysOnTop : DEFAULT_TODO_SETTINGS.windowAlwaysOnTop,
+			stickyBoardPos: parsed.stickyBoardPos && typeof parsed.stickyBoardPos.x === "number" && typeof parsed.stickyBoardPos.y === "number" ? {
+				x: parsed.stickyBoardPos.x,
+				y: parsed.stickyBoardPos.y
+			} : null
+		};
+	} catch {
+		return { ...DEFAULT_TODO_SETTINGS };
+	}
+}
+/** 合并更新设置并落盘，返回新值。 */
+function updateTodoSettings(patch) {
+	const next = {
+		...loadTodoSettings(),
+		...patch
+	};
+	try {
+		node_fs.writeFileSync(todoSettingsFilePath(), JSON.stringify(next, null, 2), "utf-8");
+	} catch (err) {
+		logger$2.error("todo settings save failed:", err?.message ?? err);
+	}
+	return next;
+}
+//#endregion
+//#region electron/main/todo-badge.ts
+/** 是否有「已到期但用户尚未打开待办窗口查看」的提醒 → 气泡进入闪烁。 */
+var flashPending = false;
+/** 重算计数并推送到悬浮球（数据/设置/闪烁态变化后调用）。窗口不在则静默。 */
+function refreshTodoBadge() {
+	const count = incompleteTodoCount(loadItems());
+	const visible = loadTodoSettings().badgeVisible;
+	applyFloatingBallBadge(count, flashPending, visible);
+}
+/** 置到期闪烁态（true=有到期未确认；false=已确认/熄灭），并立刻重推。 */
+function setTodoBadgeFlash(on) {
+	flashPending = on;
+	refreshTodoBadge();
+}
+/** 待办窗口被打开 / 到期项被查看后调用：熄灭闪烁。 */
+function acknowledgeTodoBadgeFlash() {
+	setTodoBadgeFlash(false);
+}
+/** 注册「悬浮球渲染层 DOM 就绪后请求补推计数」的 IPC 监听（挂在主进程 ipcMain 上）。 */
+function registerTodoBadgeHandlers() {
+	electron.ipcMain.on("floating-ball-badge-ready", () => {
+		refreshTodoBadge();
+	});
+}
+//#endregion
+//#region electron/main/todo-window.ts
+init_logger();
+init_i18n();
+var todoWindow = null;
+function getIcon$1() {
+	const iconPath = electron.app.isPackaged ? (0, node_path.join)(process.resourcesPath, "logo.ico") : (0, node_path.join)(__dirname, "..", "..", "public", "logo.ico");
+	return electron.nativeImage.createFromPath(iconPath);
+}
+function showTodoWindow() {
+	if (todoWindow && !todoWindow.isDestroyed()) {
+		todoWindow.show();
+		todoWindow.focus();
+		acknowledgeTodoBadgeFlash();
+		return;
+	}
+	const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
+	const preloadPath = (0, node_path.join)(__dirname, "..", "preload", "index.cjs");
+	todoWindow = new electron.BrowserWindow({
+		icon: getIcon$1(),
+		width: 525,
+		height: 450,
+		minWidth: 320,
+		minHeight: 360,
+		show: false,
+		skipTaskbar: false,
+		frame: false,
+		titleBarStyle: "hidden",
+		title: t("todo.stickyTitle"),
+		backgroundColor: "#eaeaec",
+		webPreferences: {
+			preload: preloadPath,
+			contextIsolation: true,
+			nodeIntegration: false,
+			sandbox: false
+		}
+	});
+	todoWindow.setAlwaysOnTop(loadTodoSettings().windowAlwaysOnTop, "normal");
+	if (VITE_DEV_SERVER_URL) todoWindow.loadURL(`${VITE_DEV_SERVER_URL}#/todo?t=${Date.now()}`);
+	else todoWindow.loadFile((0, node_path.join)(process.env.DIST, "index.html"), { hash: "/todo" });
+	todoWindow.once("ready-to-show", () => {
+		todoWindow?.show();
+	});
+	todoWindow.on("closed", () => {
+		todoWindow = null;
+	});
+	acknowledgeTodoBadgeFlash();
+	logger_default.info("Todo window shown");
+}
+function closeTodoWindow() {
+	if (todoWindow && !todoWindow.isDestroyed()) todoWindow.close();
+	todoWindow = null;
+}
+function isTodoWindowVisible() {
+	return !!(todoWindow && !todoWindow.isDestroyed());
+}
+/** 切换待办窗口置顶并持久化，返回新值。 */
+function toggleTodoWindowAlwaysOnTop() {
+	const next = !loadTodoSettings().windowAlwaysOnTop;
+	updateTodoSettings({ windowAlwaysOnTop: next });
+	if (todoWindow && !todoWindow.isDestroyed()) todoWindow.setAlwaysOnTop(next, "normal");
+	return next;
+}
+/** 打开待办窗口并定位到指定条（贴屏便签点击“打开待办”用）。 */
+function focusTodoItem(id) {
+	showTodoWindow();
+	if (!todoWindow || todoWindow.isDestroyed()) return;
+	const send = () => {
+		if (todoWindow && !todoWindow.isDestroyed()) todoWindow.webContents.send("todo-focus-item", id);
+	};
+	if (todoWindow.webContents.isLoading()) todoWindow.webContents.once("did-finish-load", send);
+	else send();
+}
+/** 把待办数据变更推给已打开的待办窗口（渲染层 store 订阅 todo-data-changed 刷新镜像）。
+用于"主进程侧发起的更改"——比如便签板 ✕ 取消贴屏；渲染层自己发起时本就收到返回值，无需推送。 */
+function broadcastTodoUpdate(items) {
+	if (!todoWindow || todoWindow.isDestroyed()) return;
+	const send = () => {
+		if (todoWindow && !todoWindow.isDestroyed()) todoWindow.webContents.send("todo-data-changed", items);
+	};
+	if (todoWindow.webContents.isLoading()) todoWindow.webContents.once("did-finish-load", send);
+	else send();
+}
+//#endregion
+//#region electron/main/todo-reminder-window.ts
+init_logger();
+init_i18n();
+var reminderWindow = null;
+function buildReminderHtml(title, body) {
+	const logo = getLogoDataUrl(32);
+	return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box;user-select:none}
 html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-family:'Segoe UI',system-ui,sans-serif}
 .card{
@@ -1387,22 +6220,125 @@ html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-fam
 .open:hover{background:#404db9}
 </style></head><body><div class="card">
   <div class="bar">
-    <div class="brand">${n?`<img class="logo" src="${n}">`:`<div class="logo">MU</div>`}<div class="brand-txt">MUERZHI</div></div>
+    <div class="brand">${logo ? `<img class="logo" src="${logo}">` : "<div class=\"logo\">MU</div>"}<div class="brand-txt">MUERZHI</div></div>
     <div class="bar-right">
-      <div class="ring">${N(`todo.reminderRing`)}</div>
-      <button class="close" title="${N(`common.close`)}" onclick="ipc.send('todo-reminder-close')">✕</button>
+      <div class="ring">${t("todo.reminderRing")}</div>
+      <button class="close" title="${t("common.close")}" onclick="ipc.send('todo-reminder-close')">✕</button>
     </div>
   </div>
   <div class="body">
-    <div class="t">${Qn(e)||N(`todo.reminTitle`)}</div>
-    <div class="b">${Qn(t)||N(`todo.reminderBody`)}</div>
-    <div class="foot"><button class="open" onclick="ipc.send('todo-reminder-open')">${N(`todo.openTodo`)}</button></div>
+    <div class="t">${escapeHtml(title) || t("todo.reminTitle")}</div>
+    <div class="b">${escapeHtml(body) || t("todo.reminderBody")}</div>
+    <div class="foot"><button class="open" onclick="ipc.send('todo-reminder-open')">${t("todo.openTodo")}</button></div>
   </div>
 </div>
 <script>
 const {ipcRenderer} = require('electron')
 window.ipc = ipcRenderer
-<\/script></body></html>`}function Qn(e){return String(e).replace(/&/g,`&amp;`).replace(/</g,`&lt;`).replace(/>/g,`&gt;`).replace(/"/g,`&quot;`)}var $n=[];function er(e,t){$n.push({title:e,body:t}),tr()}function tr(){if(Y&&!Y.isDestroyed())return;let e=$n.shift();e&&nr(e.title,e.body)}function nr(e,t){let n=d.screen.getPrimaryDisplay().workArea;Y=new d.BrowserWindow({x:n.x+n.width-300-16,y:n.y+n.height-150-16,width:300,height:150,frame:!1,transparent:!0,backgroundColor:`#00000000`,resizable:!1,movable:!1,alwaysOnTop:!0,skipTaskbar:!0,hasShadow:!1,show:!1,webPreferences:{nodeIntegration:!0,contextIsolation:!1}}),Y.setAlwaysOnTop(!0,`screen-saver`),Y.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(Zn(e,t))}`),Y.once(`ready-to-show`,()=>Y?.show()),Y.on(`closed`,()=>{Y=null,tr()}),k.info(`Todo reminder popup shown`)}function rr(){Y&&!Y.isDestroyed()&&Y.destroy()}function ir(){$n.length=0,Y&&!Y.isDestroyed()&&Y.destroy(),Y=null}function ar(e){return e?String(e).replace(/<img[^>]*alt=["']([^"']*)["'][^>]*>/gi,(e,t)=>t||`[图]`).replace(/<img[^>]*>/gi,`[图]`).replace(/<br\s*\/?>/gi,` `).replace(/<\/(p|div|h[1-6]|li|blockquote)>/gi,` `).replace(/<[^>]+>/gi,``).replace(/&nbsp;/g,` `).replace(/&amp;/g,`&`).replace(/&lt;/g,`<`).replace(/&gt;/g,`>`).replace(/&quot;/g,`"`).replace(/&#39;/g,`'`).replace(/\s+/g,` `).trim():``}Xe();var or=208,sr=120,X=null,cr=0;function lr(){return K().filter(e=>e.pinned).map(e=>{let t=ar(e.content).trim(),n=e.type===`memo`?ar(e.title).trim():``;return{id:e.id,type:e.type,title:n||t,body:n?t:``,done:e.done,priority:e.priority}})}function ur(){let e=d.screen.getPrimaryDisplay().workArea;return{x:e.x+e.width-or-16,y:e.y+e.height-sr-16}}function dr(){let e=et(28),t=JSON.stringify({noContent:N(`todo.noContent`),open:N(`todo.open`),unpin:N(`todo.unpin`)});return`<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+<\/script></body></html>`;
+}
+function escapeHtml(s) {
+	return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+var reminderQueue = [];
+/** 入队一条提醒；同一时刻只弹一个，关闭后再弹下一条（多个同时到期不互相覆盖丢弃）。 */
+function showTodoReminder(title, body) {
+	reminderQueue.push({
+		title,
+		body
+	});
+	pump();
+}
+function pump() {
+	if (reminderWindow && !reminderWindow.isDestroyed()) return;
+	const next = reminderQueue.shift();
+	if (!next) return;
+	openPopup(next.title, next.body);
+}
+function openPopup(title, body) {
+	const W = 300;
+	const H = 150;
+	const area = electron.screen.getPrimaryDisplay().workArea;
+	reminderWindow = new electron.BrowserWindow({
+		x: area.x + area.width - W - 16,
+		y: area.y + area.height - H - 16,
+		width: W,
+		height: H,
+		frame: false,
+		transparent: true,
+		backgroundColor: "#00000000",
+		resizable: false,
+		movable: false,
+		alwaysOnTop: true,
+		skipTaskbar: true,
+		hasShadow: false,
+		show: false,
+		webPreferences: {
+			nodeIntegration: true,
+			contextIsolation: false
+		}
+	});
+	reminderWindow.setAlwaysOnTop(true, "screen-saver");
+	reminderWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildReminderHtml(title, body))}`);
+	reminderWindow.once("ready-to-show", () => reminderWindow?.show());
+	reminderWindow.on("closed", () => {
+		reminderWindow = null;
+		pump();
+	});
+	logger_default.info("Todo reminder popup shown");
+}
+function hideTodoReminder() {
+	if (reminderWindow && !reminderWindow.isDestroyed()) reminderWindow.destroy();
+}
+/** 用户点了「打开待办」：清空未弹队列 + 关闭当前弹窗（打开窗口即视为已查看到期项）。 */
+function clearTodoReminderQueue() {
+	reminderQueue.length = 0;
+	if (reminderWindow && !reminderWindow.isDestroyed()) reminderWindow.destroy();
+	reminderWindow = null;
+}
+//#endregion
+//#region electron/main/todo-text.ts
+/** 去掉 HTML 标签与实体，返回纯文本。空/纯标签输入返回 ''。 */
+function stripHtml(html) {
+	if (!html) return "";
+	return String(html).replace(/<img[^>]*alt=["']([^"']*)["'][^>]*>/gi, (_, alt) => alt || "[图]").replace(/<img[^>]*>/gi, "[图]").replace(/<br\s*\/?>/gi, " ").replace(/<\/(p|div|h[1-6]|li|blockquote)>/gi, " ").replace(/<[^>]+>/gi, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&#39;/g, "'").replace(/\s+/g, " ").trim();
+}
+//#endregion
+//#region electron/main/todo-sticky.ts
+init_i18n();
+var BOARD_W = 208;
+var BOARD_H = 120;
+var boardWindow = null;
+var currentIndex = 0;
+function pinnedNotes() {
+	return loadItems().filter((i) => i.pinned).map((it) => {
+		const txt = stripHtml(it.content).trim();
+		const memoTitle = it.type === "memo" ? stripHtml(it.title).trim() : "";
+		return {
+			id: it.id,
+			type: it.type,
+			title: memoTitle || txt,
+			body: memoTitle ? txt : "",
+			done: it.done,
+			priority: it.priority
+		};
+	});
+}
+function defaultBoardPos() {
+	const area = electron.screen.getPrimaryDisplay().workArea;
+	return {
+		x: area.x + area.width - BOARD_W - 16,
+		y: area.y + area.height - BOARD_H - 16
+	};
+}
+function buildBoardHtml() {
+	const logo = getLogoDataUrl(28);
+	const I18N = JSON.stringify({
+		noContent: t("todo.noContent"),
+		open: t("todo.open"),
+		unpin: t("todo.unpin")
+	});
+	return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box;user-select:none}
 html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-family:'Segoe UI',system-ui,sans-serif}
 .board{height:100%;background:#ffffff;border:1px solid #e3e4ea;border-radius:16px;display:flex;flex-direction:column;overflow:hidden}
@@ -1441,17 +6377,17 @@ html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-fam
 .dot.on{width:14px;background:#4e5cd4}
 </style></head><body><div class="board" id="board">
   <div class="bar">
-    <img class="logo" src="${e}">
+    <img class="logo" src="${logo}">
     <div class="brand">MUERZHI</div>
     <div class="counter" id="counter"></div>
-    <button class="close" title="${N(`todo.unpin`)}" onclick="act('unpin')">✕</button>
+    <button class="close" title="${t("todo.unpin")}" onclick="act('unpin')">✕</button>
   </div>
   <div class="note" id="note" onclick="act('open')">
     <div class="accent" id="accent"></div>
     <div class="in">
       <div class="t" id="t"></div>
       <div class="b" id="b"></div>
-      <div class="open-hint">${N(`todo.open`)}</div>
+      <div class="open-hint">${t("todo.open")}</div>
     </div>
     <div class="tip none" id="tip"></div>
   </div>
@@ -1462,7 +6398,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-fam
   </div>
 </div>
 <script>
-const I18N=${t};
+const I18N=${I18N};
 const {ipcRenderer} = require('electron')
 window.ipc = ipcRenderer
 var NOTES=[], IDX=0, LAST=null
@@ -1510,6 +6446,2183 @@ function renderNotes(list, idx){
   if (NOTES.length && (LAST===null || !NOTES.some(function(x){return x.id===LAST}))) IDX = Math.max(0, Math.min(idx||0, NOTES.length-1))
   draw()
 }
-<\/script></body></html>`}function fr(){let e=Rn().stickyBoardPos??ur();X=new d.BrowserWindow({x:e.x,y:e.y,width:or,height:sr,frame:!1,transparent:!0,backgroundColor:`#00000000`,resizable:!1,alwaysOnTop:!0,skipTaskbar:!0,hasShadow:!1,show:!1,webPreferences:{nodeIntegration:!0,contextIsolation:!1}}),X.setAlwaysOnTop(!0,`screen-saver`),X.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(dr())}`),X.once(`ready-to-show`,()=>{X&&!X.isDestroyed()&&(X.show(),hr())}),X.on(`move`,()=>{if(!X||X.isDestroyed())return;let[e,t]=X.getPosition();pr&&clearTimeout(pr),pr=setTimeout(()=>{pr=null,zn({stickyBoardPos:{x:e,y:t}})},300)}),X.on(`closed`,()=>{X=null})}var pr=null;function mr(){let e=lr();if(e.length===0){X&&!X.isDestroyed()&&X.destroy(),X=null;return}cr=Math.max(0,Math.min(cr,e.length-1)),!X||X.isDestroyed()?fr():hr()}function hr(){let e=lr();!X||X.isDestroyed()||X.webContents.executeJavaScript(`if(window.renderNotes) renderNotes(${JSON.stringify(e)}, ${cr})`).catch(()=>{})}function gr(){pr&&=(clearTimeout(pr),null),X&&!X.isDestroyed()&&X.destroy(),X=null}A();var{updateAudioLevels:_r}=Ze();function vr(){return(0,u.join)(d.app.getPath(`userData`),`recordings.json`)}function yr(e){(0,Qe.registerRegionSelectorHandlers)(),rn(),vt(),gn(),d.ipcMain.handle(`show-ai-island`,()=>{ht()}),d.ipcMain.handle(`hide-ai-island`,()=>{gt()}),d.ipcMain.handle(`select-region`,async()=>(0,Qe.selectRegion)()),d.ipcMain.handle(`get-sources`,async(e,t)=>(await d.desktopCapturer.getSources({types:t??[`screen`,`window`],thumbnailSize:{width:340,height:200},fetchWindowIcons:!0})).map(e=>({id:e.id,name:e.name,display_id:e.display_id,appIcon:e.appIcon?.toDataURL()||null,thumbnail:e.thumbnail.toDataURL()}))),d.ipcMain.handle(`get-system-audio-sources`,async()=>{try{return(await d.desktopCapturer.getSources({types:[`audio`]})).map(e=>({id:e.id,name:e.name}))}catch{return[]}}),d.ipcMain.handle(`show-save-dialog`,async(e,t)=>{let n=d.BrowserWindow.getFocusedWindow();return n?d.dialog.showSaveDialog(n,{title:t?.title??`Save Recording`,defaultPath:t?.defaultPath??`recording-${Date.now()}.webm`,filters:t?.filters??[{name:`WebM Video`,extensions:[`webm`]},{name:`MP4 Video`,extensions:[`mp4`]},{name:`GIF`,extensions:[`gif`]}]}):{canceled:!0,filePath:null}}),d.ipcMain.handle(`show-open-dialog`,async(e,t)=>{let n=d.BrowserWindow.getFocusedWindow();return n?d.dialog.showOpenDialog(n,{title:t?.title??`Select File`,defaultPath:t?.defaultPath,filters:t?.filters??[{name:`Video Files`,extensions:[`webm`,`mp4`,`gif`]}],properties:t?.properties}):{canceled:!0,filePaths:[]}}),d.ipcMain.handle(`get-default-save-dir`,async()=>d.app.getPath(`videos`)||d.app.getPath(`desktop`)),d.ipcMain.handle(`write-file`,async(e,t,n)=>{try{return await _.default.promises.mkdir((0,u.dirname)(n),{recursive:!0}),await _.default.promises.writeFile(n,t),k.info(`保存文件`,n),{success:!0,filePath:n}}catch(e){return k.error(`保存文件失败`,n,e.message),{success:!1,filePath:n,error:e.message}}}),d.ipcMain.handle(`read-file`,async(e,t)=>{try{return(await _.default.promises.readFile(t)).buffer}catch(e){throw Error(`Failed to read file: ${e.message}`)}}),d.ipcMain.handle(`file-exists`,async(e,t)=>{try{return await _.default.promises.access(t),!0}catch{return!1}}),d.ipcMain.handle(`delete-file`,async(e,t)=>{try{return await _.default.promises.unlink(t),!0}catch{return!1}}),d.ipcMain.handle(`get-file-size`,async(e,t)=>{try{return(await _.default.promises.stat(t)).size}catch{return 0}});function t(e,t,...n){if(!(!e||e.isDestroyed()))try{e.webContents.send(t,...n)}catch{}}d.ipcMain.handle(`convert-to-mp4`,async(e,n,r,i)=>{k.info(`转换为 MP4`,n,`->`,r,i?`crop: ${i.width}x${i.height}`:``);let a=d.BrowserWindow.fromWebContents(e.sender);return ze(n,r,e=>{t(a,`on-conversion-progress`,e)},i)}),d.ipcMain.handle(`crop-video`,async(e,n,r,i)=>{k.info(`裁剪视频`,n,`->`,r,`crop: ${i.width}x${i.height}+${i.x}+${i.y}`);let a=d.BrowserWindow.fromWebContents(e.sender);return Be(n,r,i,e=>{t(a,`on-conversion-progress`,e)})}),d.ipcMain.handle(`convert-to-gif`,async(e,n,r,i)=>{k.info(`转换为 GIF`,n,`->`,r);let a=d.BrowserWindow.fromWebContents(e.sender);return He(n,r,i,e=>{t(a,`on-conversion-progress`,e)})}),d.ipcMain.handle(`merge-multi-screen`,async(e,n,r)=>{k.info(`合并多屏录制`,n.length,`个屏幕 ->`,r);let i=d.BrowserWindow.fromWebContents(e.sender);return Ve(n,r,e=>{t(i,`on-conversion-progress`,e)})}),d.ipcMain.handle(`open-file-location`,async(e,t)=>{d.shell.showItemInFolder(t)}),d.ipcMain.handle(`open-external`,async(e,t)=>{d.shell.openExternal(t)}),d.ipcMain.handle(`open-path`,async(e,t)=>{await d.shell.openPath(t)}),d.ipcMain.handle(`get-app-version`,async()=>d.app.getVersion()),d.ipcMain.handle(`get-screen-scale-factor`,async()=>d.screen.getPrimaryDisplay().scaleFactor),d.ipcMain.handle(`get-screen-bounds`,async()=>{let e=d.screen.getPrimaryDisplay(),t=e.scaleFactor;return{x:Math.round(e.bounds.x/t),y:Math.round(e.bounds.y/t),width:Math.round(e.bounds.width/t),height:Math.round(e.bounds.height/t)}}),d.ipcMain.handle(`take-screenshot`,async e=>{try{let e=await d.desktopCapturer.getSources({types:[`screen`],thumbnailSize:{width:0,height:0}});if(!e.length)throw Error(`未找到屏幕源`);let t=e[0].thumbnail.toPNG(),n=new Date,r=`截图_${n.getFullYear()}${String(n.getMonth()+1).padStart(2,`0`)}${String(n.getDate()).padStart(2,`0`)}_${String(n.getHours()).padStart(2,`0`)}${String(n.getMinutes()).padStart(2,`0`)}${String(n.getSeconds()).padStart(2,`0`)}.png`,i=(0,u.join)(d.app.getPath(`desktop`),r);return await _.default.promises.writeFile(i,t),(0,an.showBalloon)(`二支录制`,`截图已保存到桌面：${r}`),{success:!0,filePath:i}}catch(e){return k.error(`截图失败`,e.message),{success:!1,error:e.message}}}),d.ipcMain.handle(`get-all-displays`,async()=>{let e=d.screen.getAllDisplays(),t=d.screen.getPrimaryDisplay(),n=await d.desktopCapturer.getSources({types:[`screen`],thumbnailSize:{width:340,height:200}});return e.map((e,r)=>{let i=n[r];return{id:e.id,label:e.id===t.id?`主屏幕`:`屏幕 ${r+1}`,bounds:e.bounds,scaleFactor:e.scaleFactor,size:{width:e.size.width,height:e.size.height},isPrimary:e.id===t.id,sourceId:i?.id||null,sourceName:i?.name||``,thumbnail:i?.thumbnail?.toDataURL()||``}})}),d.ipcMain.handle(`minimize-window`,async e=>{d.BrowserWindow.fromWebContents(e.sender)?.minimize()}),d.ipcMain.handle(`show-window`,async e=>{let t=d.BrowserWindow.fromWebContents(e.sender);t&&(t.show(),t.focus())}),d.ipcMain.handle(`maximize-window`,async e=>{let t=d.BrowserWindow.fromWebContents(e.sender);t?.isMaximized()?t.unmaximize():t?.maximize()}),d.ipcMain.handle(`close-window`,async e=>{let t=d.BrowserWindow.fromWebContents(e.sender);t&&(t.webContents.send(`app-main-window-close`),t.hide())}),d.ipcMain.on(`notify-conversion-start`,()=>{(0,an.showBalloon)(`二支录制`,`录制完成，正在转换视频格式...`)}),d.ipcMain.on(`show-about-window`,()=>{let e=d.BrowserWindow.getFocusedWindow();if(e){let t=new d.BrowserWindow({width:360,height:400,resizable:!1,skipTaskbar:!0,frame:!1,modal:!0,parent:e,backgroundColor:`#eaeaec`,webPreferences:{preload:(0,u.join)(__dirname,`..`,`preload`,`index.cjs`),contextIsolation:!0,nodeIntegration:!1,sandbox:!1}});d.ipcMain.on(`close-about-window`,()=>{t.close(),d.ipcMain.removeAllListeners(`close-about-window`)}),t.on(`closed`,()=>{d.ipcMain.removeAllListeners(`close-about-window`)});let n=process.env.VITE_DEV_SERVER_URL?`${process.env.VITE_DEV_SERVER_URL}about.html`:(0,u.join)(d.app.getAppPath(),`dist`,`about.html`);n.startsWith(`http`)?t.loadURL(n):t.loadFile(n)}}),d.ipcMain.on(`notify-conversion-done`,()=>{(0,an.showBalloon)(`二支录制`,`视频转换完成！`)}),d.ipcMain.on(`update-audio-levels`,(e,t,n)=>{_r(t,n)}),d.ipcMain.handle(`load-recordings`,async()=>{let e=vr();try{let t=await _.default.promises.readFile(e,`utf-8`),n=JSON.parse(t);return k.info(`加载录制历史`,e,n.length,`条`),n}catch(t){return k.info(`加载录制历史失败（可能首次运行）`,e,t.message),[]}}),d.ipcMain.handle(`save-recordings`,async(e,t)=>{let n=vr();try{return await _.default.promises.writeFile(n,JSON.stringify(t),`utf-8`),k.info(`保存录制历史`,n,t.length,`条`),!0}catch(e){return k.error(`保存录制历史失败`,n,e.message),!1}}),e&&(e.setStateListener((e,t)=>{(e!==`idle`||t&&t.length>0)&&ht();let n=d.BrowserWindow.getAllWindows();for(let r of n)if(!r.isDestroyed())try{r.webContents.send(`agent-state-update`,{state:e,sessions:t})}catch{}}),e.setCardListener(e=>{e&&ht();let t;t=e?e.kind===`permission`?{kind:`permission`,sessionId:e.sessionId,toolName:e.toolName,toolInput:e.toolInput,suggestions:e.suggestions,createdAt:e.createdAt}:{kind:`question`,sessionId:e.sessionId,toolName:e.toolName,toolInput:e.toolInput,questions:e.questions,answerable:e.answerable,createdAt:e.createdAt}:null,k.info(`[IPC] broadcast card: kind=${e?e.kind:`null`}, wins=${d.BrowserWindow.getAllWindows().length}`);let n=d.BrowserWindow.getAllWindows();for(let e of n)if(!e.isDestroyed())try{e.webContents.send(`agent-card-update`,t)}catch(e){k.error(`[IPC] send card to window failed: ${e.message}`)}}),d.ipcMain.handle(`agent-get-status`,()=>{let t=e?.getStatus()??null;return k.info(`[IPC] agentGetStatus: sessionCount=${t?.sessionCount}, displayState=${t?.displayState}, serverRunning=${t?.serverRunning}`),t}),d.ipcMain.handle(`agent-install-hooks`,()=>(e?.installHooks(),e?.getStatus())),d.ipcMain.handle(`agent-uninstall-hooks`,()=>(e?.uninstallHooks(),e?.getStatus())),d.ipcMain.handle(`agent-resolve-permission`,(t,n)=>e?.resolvePermission(n)),d.ipcMain.handle(`agent-dismiss-question`,()=>e?.dismissQuestion()),d.ipcMain.handle(`agent-submit-question`,(t,n,r)=>e?.submitQuestion(n,r)),d.ipcMain.handle(`agent-set-auto-allow`,(t,n)=>e?.setAutoAllow(n)),d.ipcMain.handle(`agent-get-auto-allow`,()=>e?.getAutoAllow()??!1)),br()}function br(){d.ipcMain.handle(`todo-get`,()=>K()),d.ipcMain.handle(`todo-create`,(e,t)=>{let n=Dn(t);return q(),mr(),n}),d.ipcMain.handle(`todo-update`,(e,t,n)=>{let r=An(t,n);return q(),mr(),r}),d.ipcMain.handle(`todo-delete`,(e,t)=>{let n=jn(t);return q(),mr(),n}),d.ipcMain.handle(`todo-toggle-done`,(e,t)=>{let n=Mn(t);return q(),mr(),n}),d.ipcMain.handle(`todo-toggle-pin`,(e,t)=>{let n=Fn(t);return mr(),q(),n}),d.ipcMain.handle(`todo-show-window`,()=>{Gn()}),d.ipcMain.handle(`todo-close-window`,()=>{Kn()}),d.ipcMain.handle(`todo-window-visible`,()=>qn()),d.ipcMain.handle(`todo-toggle-always-on-top`,()=>Jn()),d.ipcMain.handle(`todo-get-settings`,()=>Rn()),d.ipcMain.handle(`todo-set-settings`,(e,t)=>{let n=zn(t);return q(),n}),d.ipcMain.on(`todo-reminder-close`,()=>{rr()}),d.ipcMain.on(`todo-reminder-open`,()=>{ir(),Gn()}),d.ipcMain.on(`todo-sticky-open`,(e,t)=>{Yn(t)}),d.ipcMain.on(`todo-sticky-unpin`,(e,t)=>{let n=K().find(e=>e.id===t);n&&n.type===`todo`?Nn(t):Fn(t),mr(),q(),Xn(K())})}A();var xr=null;function Sr(e){xr=e,d.globalShortcut.register(`CommandOrControl+Shift+R`,()=>{k.info(`Global shortcut: start/stop recording`),xr?.webContents.send(`on-global-shortcut`,`startStop`)}),d.globalShortcut.register(`CommandOrControl+Shift+P`,()=>{k.info(`Global shortcut: pause/resume recording`),xr?.webContents.send(`on-global-shortcut`,`pauseResume`)}),k.info(`Global shortcuts registered`)}function Cr(){d.globalShortcut.unregisterAll()}A();var wr=`http://8.163.43.7:3000/report-ip`;function Tr(){return(0,u.join)(d.app.getPath(`userData`),`pending-reports.json`)}function Er(e){let t=[];try{_.default.existsSync(Tr())&&(t=JSON.parse(_.default.readFileSync(Tr(),`utf-8`)))}catch{}t.push(e),_.default.writeFileSync(Tr(),JSON.stringify(t,null,2),`utf-8`),k.info(`Saved offline report to local, total pending:`,t.length)}function Dr(){try{if(_.default.existsSync(Tr()))return JSON.parse(_.default.readFileSync(Tr(),`utf-8`))}catch{}return[]}function Or(){try{_.default.unlinkSync(Tr())}catch{}}async function kr(e){try{return await fetch(wr,{method:`POST`,headers:{"Content-Type":`application/json`},body:JSON.stringify(e)}),!0}catch{return!1}}async function Ar(){let e=Dr();if(e.length===0)return!0;let t=[];for(let n of e)await kr(n)?k.info(`Flushed pending report:`,n.公网IP,n.上报时间):t.push(n);return t.length===0?(Or(),k.info(`All pending reports flushed`),!0):(_.default.writeFileSync(Tr(),JSON.stringify(t,null,2),`utf-8`),!1)}async function jr(){let e=[async()=>{let e=(await fetch(`https://qifu.baidu.com/opus/api/ip/local`,{headers:{Referer:`https://www.baidu.com`}}).then(e=>e.json()))?.data;if(!e?.ip)throw Error(`empty`);return{公网IP:e.ip,国家:e.country||``,省份:e.province||``,城市:e.city||``,区县:e.district||e.area||``,详细地址:[e.country,e.province,e.city,e.district||e.area].filter(Boolean).join(``),运营商:e.isp||``}},async()=>{let e=await fetch(`http://whois.pconline.com.cn/ipJson.jsp`).then(e=>e.arrayBuffer()),t=new TextDecoder(`gbk`).decode(e),n=JSON.parse(t);if(!n.ip)throw Error(`empty`);return{公网IP:n.ip,国家:`中国`,省份:n.pro||``,城市:n.city||``,区县:n.region||``,详细地址:n.addr||``,运营商:n.addr?.split(` `)?.[1]||``}},async()=>{let e=await fetch(`http://ip-api.com/json/?lang=zh-CN`).then(e=>e.json());if(!e.query)throw Error(`empty`);return{公网IP:e.query,国家:e.country,省份:e.regionName,城市:e.city,区县:``,详细地址:`${e.country}${e.regionName}${e.city}`,运营商:e.isp,纬度:String(e.lat??``),经度:String(e.lon??``)}}];for(let t of e)try{return await t()}catch{continue}return{公网IP:``,国家:``,省份:``,城市:``,区县:``,详细地址:``,运营商:``}}function Mr(){let e=(0,b.networkInterfaces)();for(let t of Object.keys(e))for(let n of e[t])if(n.family===`IPv4`&&!n.internal)return n.address;return`127.0.0.1`}async function Nr(){let e=Mr(),t={电脑名:(0,b.hostname)(),局域网IP:e,上报时间:new Date().toISOString()},n;try{n=await jr()}catch{n={公网IP:``,国家:``,省份:``,城市:``,区县:``,详细地址:``,运营商:``}}let r={...t,...n};await kr(r)?(k.info(`IP reported:`,n.公网IP,n.省份,n.城市),Ar()):(k.info(`Network unavailable, saving report locally`),Er(r))}function Pr(){Dr().length>0&&Ar()}var Fr={info:()=>{},warn:()=>{}};function Ir(e){Fr=e}var Lr={error:4,notification:3,working:2,thinking:1,idle:0},Rr=600*1e3,zr=300*1e3,Br=10*1e3,Vr=2e3;function Hr(e={}){let t=e.isClaudeRunning,n=new Map,r=null,i=[],a=null,o=`idle`;function s(e){return i.push(e),()=>{i=i.filter(t=>t!==e)}}function c(){let e=d(),t=Array.from(n.values());e!==o&&(o=e);for(let e of i)e(o,t)}function l(e,t,r,i={}){a&&=(clearTimeout(a),null);let o=n.get(e),s={sessionId:e,agentId:i.agentId||`claude-code`,state:t,event:r,updatedAt:Date.now(),toolName:i.toolName||o?.toolName,toolInput:i.toolInput||o?.toolInput,contextUsage:i.contextUsage||o?.contextUsage,model:i.model||o?.model};n.set(e,s),Fr.info(`[StateMachine] updateSession: id=${e}, state=${t}, event=${r}, total=${n.size}`),t===`idle`&&r===`Stop`&&(a=setTimeout(()=>{if(a=null,n.has(e)){let t=n.get(e);t.state=`idle`,t.updatedAt=Date.now()}Fr.info(`[StateMachine] doneTimer fired for ${e}, total=${n.size}`),c()},Vr)),c()}function u(e){n.delete(e),c()}function d(){let e=`idle`;for(let[,t]of n)(Lr[t.state]??0)>(Lr[e]??0)&&(e=t.state);return a&&e===`idle`?`done`:e}function f(){return o}function p(){let e=[];for(let[,t]of n)e.push(t);return e}function m(){let e=Date.now(),r=t?t():null,i=!1;for(let[t,a]of n){let o=e-a.updatedAt;a.state===`idle`?o>Rr&&(n.delete(t),Fr.info(`[StateMachine] cleanStale: removed idle ${t} (age=${Math.round(o/1e3)}s)`),i=!0):r===!1?o>zr&&(a.state=`idle`,a.updatedAt=e,Fr.info(`[StateMachine] cleanStale: reset zombie ${t} to idle (age=${Math.round(o/1e3)}s, no claude running)`),i=!0):r===null&&o>zr&&(a.state=`idle`,a.updatedAt=e,Fr.info(`[StateMachine] cleanStale: reset ${t} to idle (age=${Math.round(o/1e3)}s, no liveness check)`),i=!0)}i&&c()}function h(){r||=setInterval(m,Br)}function g(){r&&=(clearInterval(r),null),a&&=(clearTimeout(a),null)}return{updateSession:l,dismissSession:u,resolveDisplayState:d,getCurrentState:f,getSessions:p,subscribe:s,cleanStaleSessions:m,start:h,stop:g}}function Ur(e){return e==null?`null`:typeof e==`object`?Array.isArray(e)?`[`+e.map(Ur).join(`,`)+`]`:`{`+Object.keys(e).sort().map(t=>JSON.stringify(t)+`:`+Ur(e[t])).join(`,`)+`}`:JSON.stringify(e)}function Wr(e,t,n){let r=n?.tool_use_id||n?.toolUseId||null,i=n?.tool_name||n?.toolName||null,a=i!=null&&i!==``?Ur(n?.tool_input??n?.toolInput??null):null,o=-1,s=0;for(let n=0;n<e.length;n++){let c=e[n];if(c.kind===`permission`&&c.sessionId===t){if(r&&c.toolUseId&&c.toolUseId===r)return n;if(i!=null&&c.toolName===i){if(a!=null&&Ur(c.toolInput??null)===a)return n;o===-1&&(o=n),s++}}}return s===1?o:-1}A();var Gr=6e4,Kr=60019,qr=12e4,Jr=null;function Yr(){return Jr||(Jr=f.join(require(`os`).homedir(),`.erzhi-recording`),Jr)}function Xr(e){let t=null,n=null,r=[],i=null,a=null,o=[`PostToolUse`,`PostToolUseFailure`,`Stop`,`StopFailure`,`SessionEnd`,`ApiError`],s=[`PostToolUse`,`PostToolUseFailure`,`PermissionDenied`],c=[`Stop`,`StopFailure`,`SessionEnd`];class l extends Error{code=`PAYLOAD_TOO_LARGE`}function u(e){return new Promise((t,n)=>{let r=``;e.on(`data`,t=>{if(r+=t,Buffer.byteLength(r)>1048576){try{e.destroy()}catch{}n(new l(`Body exceeds 1MB limit`))}}),e.on(`end`,()=>{try{t(JSON.parse(r))}catch{n(Error(`Invalid JSON`))}}),e.on(`error`,n)})}function d(e,t,n){e.writeHead(t,{"Content-Type":`application/json`}),e.end(JSON.stringify(n))}function p(e,t){try{!e.headersSent&&!e.destroyed&&!e.writableEnded&&(e.writeHead(200,{"Content-Type":`application/json`}),e.end(t))}catch{}}function m(){return r[0]??null}function _(e){let t=m();t&&((t.kind===`permission`||t.answerable)&&t.reject(e),v())}function v(){r.shift(),clearTimeout(i),i=null,y(),b()}function y(){if(i&&clearTimeout(i),!r.length){i=null;return}i=setTimeout(()=>{i=null,_(`timeout`)},qr)}function b(){a&&a(m())}function x(e){let t=r.length,n=[],a=r.filter(t=>t.kind===`question`&&t.sessionId===e?(n.push(t),!1):!0);if(a.length!==t){r=a;for(let e of n)e.kind===`question`&&e.answerable&&e.reject(`completed`);clearTimeout(i),i=null,y(),b()}}function ee(e,t){let n=Wr(r,e,t);if(n===-1)return;let[a]=r.splice(n,1);a.reject(`resolved-in-cli`),clearTimeout(i),i=null,y(),b(),k.info(`[AgentServer] permission resolved externally (CLI): session=${e}, tool=${a.toolName}`)}function S(e){let t=r.length,n=[],a=r.filter(t=>t.kind===`permission`&&t.sessionId===e?(n.push(t),!1):!0);if(a.length!==t){r=a;for(let e of n)e.reject(`completed`);clearTimeout(i),i=null,y(),b(),k.info(`[AgentServer] permissions cleared for ended session=${e}, count=${n.length}`)}}function te(t,n){let r=t.session_id||t.sessionId,i=t.state,a=t.event;if(k.info(`[AgentServer] /state received: session=${r}, state=${i}, event=${a}, tool=${t.tool_name||t.toolName}`),!r||!i||!a){k.warn(`[AgentServer] /state rejected: missing fields (sessionId=${r}, state=${i}, event=${a})`),d(n,400,{error:`Missing required fields: session_id, state, event`});return}e.updateSession(r,i,a,{agentId:t.agent_id||`claude-code`,toolName:t.tool_name||t.toolName,toolInput:t.tool_input||t.toolInput,contextUsage:t.context_usage||t.contextUsage,model:t.model}),o.includes(a)&&x(r),c.includes(a)&&S(r),s.includes(a)&&ee(r,t),k.info(`[AgentServer] /state ok, total sessions=${e.getSessions().length}`),d(n,200,{ok:!0,app:`erzhi-recording`})}function ne(t,n){let i=t.tool_name||t.toolName||`unknown`,a=t.tool_input||t.toolInput||{},o=t.session_id||t.sessionId||`unknown`;if(i===`AskUserQuestion`){re(n,o,a);return}e.updateSession(o,`notification`,`PermissionRequest`,{toolName:i,toolInput:a});let s=t.tool_use_id||t.toolUseId||null,c={kind:`permission`,sessionId:o,toolName:i,toolInput:a,suggestions:t.permission_suggestions||null,toolUseId:s,resolve:()=>{},reject:()=>{},createdAt:Date.now()};new Promise((e,t)=>{c.resolve=e,c.reject=t}).then(t=>{e.updateSession(o,`idle`,`PermissionResolved`);let r=t===`always`?`allow`:t,i=JSON.stringify({hookSpecificOutput:{hookEventName:`PermissionRequest`,decision:{behavior:r}}});k.info(`[AgentServer] /permission resolved: behavior=${t} -> ${r}`),p(n,i)}).catch(t=>{e.updateSession(o,`idle`,`PermissionCancelled`);let r=JSON.stringify({hookSpecificOutput:{hookEventName:`PermissionRequest`,decision:{behavior:`cancel`}}});k.info(`[AgentServer] /permission cancelled: ${t}`),p(n,r)}),r.push(c),r.length===1&&y(),b(),k.info(`[AgentServer] /permission queued: session=${o}, queue=${r.length}`)}function re(t,n,i){let a=Array.isArray(i&&i.questions)&&i.questions||null;e.updateSession(n,`notification`,`AskUserQuestion`,{toolName:`AskUserQuestion`,toolInput:i});let o={kind:`question`,sessionId:n,toolName:`AskUserQuestion`,toolInput:i,questions:a,answerable:!0,resolve:()=>{},reject:()=>{},createdAt:Date.now()};new Promise((e,t)=>{o.resolve=e,o.reject=t}).then(r=>{e.updateSession(n,`idle`,`QuestionAnswered`);let i=JSON.stringify({hookSpecificOutput:{hookEventName:`PermissionRequest`,decision:{behavior:`allow`,updatedInput:{questions:a,answers:r}}}});k.info(`[AgentServer] AskUserQuestion answered via /permission: session=${n}`),p(t,i)}).catch(r=>{e.updateSession(n,`idle`,`QuestionDenied`);let i=JSON.stringify({hookSpecificOutput:{hookEventName:`PermissionRequest`,decision:{behavior:`deny`}}});k.info(`[AgentServer] AskUserQuestion denied: reason=${r}, session=${n}`),p(t,i)}),r.push(o),r.length===1&&y(),b(),k.info(`[AgentServer] AskUserQuestion (answerable) queued: session=${n}, queue=${r.length}`)}function C(t,n){let r=t.session_id||t.sessionId||`unknown`,i=t.tool_name||t.toolName||`AskUserQuestion`,a=t.tool_input||t.toolInput||{};e.updateSession(r,`notification`,`AskUserQuestion`,{toolName:i,toolInput:a}),k.info(`[AgentServer] /question notified (read-only card removed): session=${r}`),d(n,200,{ok:!0,app:`erzhi-recording`})}function ie(t){let r=e.getSessions().length;d(t,200,{ok:!0,app:`erzhi-recording`,port:n,sessionCount:r})}function w(e,t){t.setHeader(`Access-Control-Allow-Origin`,`*`),k.info(`[AgentServer] ${e.method} ${e.url}`),e.method===`POST`&&e.url===`/state`?u(e).then(e=>te(e,t)).catch(e=>{k.error(`[AgentServer] parseBody error:`,e),d(t,e?.code===`PAYLOAD_TOO_LARGE`?413:400,{error:e?.code===`PAYLOAD_TOO_LARGE`?`Payload too large`:`Invalid JSON`})}):e.method===`POST`&&e.url===`/permission`?u(e).then(e=>ne(e,t)).catch(e=>{k.error(`[AgentServer] parseBody error:`,e),d(t,e?.code===`PAYLOAD_TOO_LARGE`?413:400,{error:e?.code===`PAYLOAD_TOO_LARGE`?`Payload too large`:`Invalid JSON`})}):e.method===`POST`&&e.url===`/question`?u(e).then(e=>C(e,t)).catch(e=>{k.error(`[AgentServer] parseBody error:`,e),d(t,e?.code===`PAYLOAD_TOO_LARGE`?413:400,{error:e?.code===`PAYLOAD_TOO_LARGE`?`Payload too large`:`Invalid JSON`})}):e.method===`GET`&&e.url===`/health`?ie(t):d(t,404,{error:`Not found`})}function T(e){let t=m();t&&t.kind===`permission`&&(t.resolve(e),v())}function E(){let e=m();e&&e.kind===`question`&&(e.answerable&&e.reject(`dismissed`),v())}function ae(e,t){let n=m();n&&n.kind===`question`&&n.answerable&&n.sessionId===e?(n.resolve(t),v(),k.info(`[AgentServer] submitQuestion accepted: session=${e}`)):k.warn(`[AgentServer] submitQuestion ignored: no matching answerable head for session=${e}`)}function oe(e){a=e}function se(){let e=m();return e?e.kind===`permission`?{kind:`permission`,sessionId:e.sessionId,toolName:e.toolName,toolInput:e.toolInput,suggestions:e.suggestions,createdAt:e.createdAt}:{kind:`question`,sessionId:e.sessionId,toolName:e.toolName,toolInput:e.toolInput,questions:e.questions,answerable:e.answerable,createdAt:e.createdAt}:null}function D(){return new Promise(e=>{let r=Gr,i=null;function a(){if(r>Kr){k.error(`Agent server: all ports ${Gr}-${Kr} occupied`),e(null);return}i=g.createServer(w),i.on(`error`,t=>{t.code===`EADDRINUSE`?(r++,a()):(k.error(`Agent server error:`,t.message),e(null))}),i.listen(r,`127.0.0.1`,()=>{n=r,t=i;try{let e=Yr();h.mkdirSync(e,{recursive:!0}),h.writeFileSync(f.join(e,`runtime.json`),JSON.stringify({port:r,pid:process.pid}),`utf8`)}catch{}k.info(`Agent server listening on 127.0.0.1:${r}`),e(r)})}a()})}function ce(){for(let e of r)e.kind===`permission`&&e.reject(`stopped`);r=[],clearTimeout(i),i=null,a&&a(null),t&&=(t.close(),null),n=null}function O(){return n}return{start:D,stop:ce,getPort:O,getSafeCurrentCard:se,resolvePendingPermission:T,dismissQuestion:E,submitQuestion:ae,setOnCardChange:oe}}A();var Zr=f.join(m.homedir(),`.claude`,`settings.json`),Qr=300*1e3,$r=3,ei=[`SessionStart`,`SessionEnd`,`UserPromptSubmit`,`PreToolUse`,`PostToolUse`,`PostToolUseFailure`,`Stop`,`StopFailure`,`ApiError`,`Notification`,`PermissionRequest`];function ti(e){let t=null,n=0,r=!1;function i(){try{if(require(`electron`)?.app?.isPackaged)return f.join(process.resourcesPath,`clawd-hook.js`)}catch{}return f.join(__dirname,`clawd-hook.js`)}function a(){try{let{execSync:e}=require(`child_process`),t=e(`where node`,{encoding:`utf8`}).trim().split(`
-`)[0];if(t)return t}catch{}return process.execPath.replace(`electron.exe`,`node.exe`)}function o(){try{let e=h.readFileSync(Zr,`utf8`);return JSON.parse(e)}catch{return null}}function s(e){try{return h.writeFileSync(Zr,JSON.stringify(e,null,2),`utf8`),!0}catch(e){return k.error(`Failed to write Claude settings:`,e.message),!1}}function c(e,t){return{command:`& "${a()}" "${t}" ${e}`,shell:`powershell`}}function l(e){let t=e.hooks;return!t||!Array.isArray(t)?!1:t.some(e=>e.name&&e.events&&Array.isArray(e.events))}function u(e){return l(e)?(e.hooks=(e.hooks||[]).filter(e=>!e.name?.startsWith(`erzhi-recording`)),!0):!1}function d(){let t=o();if(!t)return{added:!1,updated:!1};let n=i(),r=t.hooks||{};if(u(t),e(),ei.every(e=>(r[e]||[]).some(t=>t.hooks?.some(t=>e===`PermissionRequest`?t.type===`http`&&t.url?.includes(`/permission`):t.type===`command`&&t.command?.startsWith(`&`)&&t.command?.includes(`clawd-hook.js`)&&t.shell===`powershell`))))return{added:!1,updated:!1};for(let t of ei){let i;if(t===`PermissionRequest`)i={type:`http`,url:`http://127.0.0.1:${e()||6e4}/permission`,timeout:600};else{let{command:e,shell:r}=c(t,n);i={type:`command`,command:e,shell:r,async:!0,timeout:5}}r[t]=[{matcher:``,hooks:[i]}]}return t.hooks=r,s(t),{added:!0,updated:!1}}function p(){let e=o();if(!e)return{removed:!1};let t=!1;if(l(e)){let n=e.hooks.length;e.hooks=e.hooks.filter(e=>!e.name?.startsWith(`erzhi-recording`)),e.hooks.length<n&&(t=!0)}let n=e.hooks||{};for(let e of ei)if(n[e]){let r=n[e].length;n[e]=n[e].filter(e=>!e.hooks?.some(e=>e.command?.includes(`clawd-hook.js`))),n[e].length===0?delete n[e]:n[e].length<r&&(t=!0)}return e.hooks=n,s(e),{removed:t}}function m(){let e=o();return e?((e.hooks||{})[ei[0]]||[]).some(e=>e.hooks?.some(e=>e.command?.includes(`clawd-hook.js`))):!1}function g(){let e=[];if(!o())return e.push(`Claude settings file not found`),{healthy:!1,issues:e};if(!m())return e.push(`Hook entry missing`),{healthy:!1,issues:e};let t=i();return h.existsSync(t)?{healthy:e.length===0,issues:e}:(e.push(`Hook script file missing`),{healthy:!1,issues:e})}function _(){if(r)return!1;if(n>=$r)return r=!0,!1;let e=d();return(e.added||e.updated)&&g().healthy?(n=0,!0):(n++,!1)}function v(){let e=g();e.healthy?(n>0&&(n=0),r&&=!1):(k.warn(`Claude hook health check failed:`,e.issues.join(`, `)),_())}function y(){t||(v(),t=setInterval(v,Qr),k.info(`Claude hook watcher started`))}function b(){t&&=(clearInterval(t),null)}function x(){let e=g();return{installed:m(),scriptExists:h.existsSync(i()),claudeExists:o()!==null,healthy:e.healthy,repairFailures:n,manualFixRequired:r}}return{install:d,uninstall:p,isInstalled:m,startWatcher:y,stopWatcher:b,getStatus:x,checkHealth:g,repair:_}}var ni={info:()=>{},warn:()=>{}},ri=1e4;function ii(e,t=ri){let n=new Map;for(let t of e)n.set(t.id,{id:t.id,nameKey:t.nameKey,running:!1,approval:t.approval,working:!1,sessions:[],lastProbed:0,error:!1});let r=null;function i(){for(let t of e){let e=n.get(t.id);try{let n=t.probeRunning(),r=t.fetchSessions();e.running=n,e.sessions=r,e.working=n&&r.some(e=>e.state!==`idle`),e.lastProbed=Date.now(),e.error=!1,ni.info(`[ToolRegistry] ${t.id} probed: running=${n}, sessions=${r.length}, working=${e.working}`)}catch(n){e.error=!0,e.lastProbed=Date.now(),ni.warn(`[ToolRegistry] ${t.id} probe failed:`,n?.message??n)}}}function a(){r||=(i(),setInterval(i,t))}function o(){r&&=(clearInterval(r),null)}function s(){return Array.from(n.values())}return{start:a,stop:o,pollOnce:i,getStatus:s}}var ai=3e4,oi=300*1e3,si=5,ci=null,li=0;function ui(){return process.env.CODEX_HOME??(0,u.join)(b.default.homedir(),`.codex`,`sessions`)}function di(){let e=Date.now();if(ci!==null&&e-li<ai)return ci;try{ci=(0,p.execSync)(`tasklist /NH /FI "IMAGENAME eq codex.exe"`,{encoding:`utf8`,timeout:2e3}).includes(`codex.exe`)}catch{ci=!1}return li=e,ci}function fi(e){try{let t=_.default.readFileSync(e,`utf8`).split(`
-`).find(e=>e.trim());if(!t)return``;let n=JSON.parse(t)?.content;return(Array.isArray(n)?n.map(e=>typeof e==`string`?e:e?.text||``).filter(Boolean).join(` `):typeof n==`string`?n:``).trim().slice(0,40)||``}catch{return``}}function pi(){return{id:`codex`,nameKey:`tools.codex`,approval:`none`,probeRunning:di,fetchSessions(){let e=ui(),t;try{t=_.default.readdirSync(e).filter(e=>e.endsWith(`.jsonl`))}catch{return[]}let n=Date.now(),r=t.map(t=>({file:(0,u.join)(e,t),mtime:_.default.statSync((0,u.join)(e,t),{throwIfNoEntry:!1})?.mtimeMs??0})).filter(e=>e.mtime>0).sort((e,t)=>t.mtime-e.mtime).slice(0,si);if(r.length===0)return[];let i=di();return r.map(e=>{let t=e.file.split(/[\\/]/).pop().replace(/\.jsonl$/,``),r=i&&n-e.mtime<oi;return{sessionId:`codex:${t}`,agentId:`codex`,state:r?`working`:`idle`,updatedAt:Math.round(e.mtime),label:fi(e.file)}})}}}A();var mi=`agent-settings.json`,hi={autoAllow:!1};function gi(){let{app:e}=require(`electron`);return(0,u.join)(e.isPackaged?e.getPath(`userData`):(0,u.join)(__dirname,`..`,`..`),mi)}function _i(){try{let e=_.default.readFileSync(gi(),`utf-8`),t=JSON.parse(e);return{autoAllow:typeof t.autoAllow==`boolean`?t.autoAllow:hi.autoAllow}}catch{}return{...hi}}function vi(e){try{_.default.writeFileSync(gi(),JSON.stringify(e),`utf-8`)}catch(e){k.warn(`[AgentBridge] save agent settings failed:`,e?.message??e)}}function yi(e={}){let t=null,n=0;function r(){let e=Date.now();if(t!==null&&e-n<3e4)return t;try{let{execSync:e}=require(`child_process`);t=e(`tasklist /NH /FI "IMAGENAME eq claude.exe"`,{encoding:`utf8`,timeout:2e3}).includes(`claude.exe`)}catch{t=!1}return n=e,t}let i=Hr({isClaudeRunning:r}),a=Xr(i),o=ti(()=>a.getPort()),s=ii([pi()]),c=null,l=null,u=_i().autoAllow;i.subscribe((e,t)=>{c&&c(e,t)}),a.setOnCardChange(e=>{if(u&&e&&e.kind===`permission`){k.info(`[AgentBridge] auto-allow permission: tool=${e.toolName}`),a.resolvePendingPermission(`allow`);return}l&&l(e)});async function d(){if(i.start(),s.start(),await a.start()!==null){if(e.autoInstallHooks!==!1){let e=o.install();e.added&&k.info(`Claude Code hooks installed`),e.updated&&k.info(`Claude Code hooks updated`)}e.autoStartWatcher!==!1&&o.isInstalled()&&o.startWatcher()}}function f(){o.stopWatcher(),s.stop(),i.stop(),a.stop()}function p(){return a}function m(){return i}function h(){return o}function g(e){c=e}function _(e){l=e}function v(e){a.resolvePendingPermission(e)}function y(){a.dismissQuestion()}function b(e,t){a.submitQuestion(e,t)}function x(){o.install()}function ee(){o.uninstall()}function S(e){u=e,vi({autoAllow:u}),k.info(`[AgentBridge] autoAllow=${e} (persisted)`)}function te(){return u}function ne(){let e=i.getSessions(),t=e.length,n=i.getCurrentState(),c=e.map(e=>e.sessionId).join(`,`);k.info(`[AgentBridge] getStatus: real_count=${t}, ids=[${c}], display=${n}`);let l=i.getSessions().length,u=r();return{serverRunning:a.getPort()!==null,port:a.getPort(),hookInstalled:o.isInstalled(),hookManagerStatus:o.getStatus(),displayState:n,currentCard:a.getSafeCurrentCard(),sessionCount:l,claudeRunning:u,tools:[{id:`claude-code`,nameKey:`tools.claudeCode`,running:u,approval:`hook`,working:n!==`idle`,sessions:e.map(e=>({sessionId:e.sessionId,label:e.toolName||``})),error:!1,lastProbed:0},...s.getStatus()]}}return{start:d,stop:f,getServer:p,getStateMachine:m,getHookManager:h,getStatus:ne,setStateListener:g,setCardListener:_,resolvePermission:v,dismissQuestion:y,submitQuestion:b,installHooks:x,uninstallHooks:ee,setAutoAllow:S,getAutoAllow:te}}var bi=`local-video`;function xi(){d.protocol.registerSchemesAsPrivileged([{scheme:bi,privileges:{standard:!0,secure:!0,supportFetchAPI:!0,stream:!0}}])}function Si(){d.protocol.handle(bi,e=>{let t=new URL(e.url),n=decodeURIComponent(t.pathname).replace(/^\//,``),r=e.headers.get(`range`),i=0;try{i=(0,_.statSync)(n).size}catch{return new Response(`File not found: `+n,{status:404})}let a=(0,u.extname)(n).toLowerCase(),o=a===`.mp4`?`video/mp4`:a===`.webm`?`video/webm`:`application/octet-stream`;if(r){let e=/bytes=(\d*)-(\d*)/.exec(r),t=e&&e[1]?parseInt(e[1],10):0,a=e&&e[2]?parseInt(e[2],10):i-1,s=Math.min(a,i-1),c=(0,_.createReadStream)(n,{start:t,end:s});return new Response(te.Readable.toWeb(c),{status:206,headers:{"Content-Range":`bytes ${t}-${s}/${i}`,"Accept-Ranges":`bytes`,"Content-Length":String(s-t+1),"Content-Type":o}})}let s=(0,_.createReadStream)(n);return new Response(te.Readable.toWeb(s),{status:200,headers:{"Content-Length":String(i),"Content-Type":o,"Accept-Ranges":`bytes`}})})}function Ci(e,t){let n=new Date(t).toISOString();return e.filter(e=>!!e.reminder&&!e.reminderFired&&!(e.type===`todo`&&e.done)&&e.reminder<=n)}A();var wi=3e4,Ti=null;function Ei(){let e=Ci(K(),Date.now());if(e.length!==0){for(let t of e){let e=ar(t.content).trim();er(t.type===`memo`&&ar(t.title).trim()?ar(t.title).trim():e.slice(0,24),e.slice(0,90)),Pn(t.id)}qn()||Vn(!0)}}function Di(){Ti||(Ei(),Ti=setInterval(Ei,wi),k.info(`Todo reminder scheduler started`))}function Oi(){Ti&&=(clearInterval(Ti),null),k.info(`Todo reminder scheduler stopped`)}A(),Xe(),xi();var Z=null,Q=null,$=null,ki=null,Ai=null,ji=process.env.VITE_DEV_SERVER_URL;function Mi(){let e=d.app.isPackaged?(0,u.join)(process.resourcesPath,`logo.ico`):(0,u.join)(__dirname,`../../public/logo.ico`);return d.nativeImage.createFromPath(e)}function Ni(e){Z=new d.BrowserWindow({icon:Mi(),width:550,height:420,minWidth:420,minHeight:340,show:!1,skipTaskbar:!1,frame:!1,titleBarStyle:`hidden`,title:`二支录制`,backgroundColor:`#eaeaec`,webPreferences:{preload:e,contextIsolation:!0,nodeIntegration:!1,sandbox:!1,backgroundThrottling:!1}}),ji?Z.loadURL(ji):Z.loadFile((0,u.join)(process.env.DIST,`index.html`)),Z.on(`close`,e=>{d.app.isQuitting||(e.preventDefault(),Z?.webContents.send(`app-main-window-close`),Z?.hide())})}d.app.on(`gpu-process-crashed`,(e,t)=>{k.error(`GPU process crashed:`,JSON.stringify(t))}),d.app.whenReady().then(()=>{process.env.DIST=(0,u.join)(__dirname,`../../dist`),process.env.VITE_PUBLIC=d.app.isPackaged?process.env.DIST:(0,u.join)(__dirname,`../../public`),Si(),xe(),k.info(`App starting...`),Ee(k),Ne(k),Ir(k),We(H().locale);let e=(0,u.join)(__dirname,`..`,`preload`,`index.cjs`);try{d.session.defaultSession.clearCache()}catch(e){k.warn(`clearCache() failed:`,e)}ki=yi({autoInstallHooks:!0,autoStartWatcher:!0}),ki.start().catch(e=>{k.error(`Agent bridge start failed:`,e?.message??e)}),yr(ki),Ni(e),(0,Qe.setMainWindow)(Z),(0,an.createTray)(),Sr(Z),It(),Nr(),Un(),Di(),q(),mr();try{let e=H();d.app.setLoginItemSettings({openAtLogin:e.openAtLogin})}catch(e){k.error(`Sync openAtLogin on startup failed:`,e)}d.ipcMain.handle(`show-ai-window`,()=>{Pi()}),d.ipcMain.handle(`show-settings-window`,()=>{Fi()}),d.ipcMain.handle(`get-app-i18n`,()=>Ke()),d.ipcMain.handle(`show-main-window`,()=>{Z&&!Z.isDestroyed()&&(Z.show(),Z.focus())}),process.on(`clawd-show-record-window`,()=>{Z&&!Z.isDestroyed()&&(Z.show(),Z.focus())}),process.on(`clawd-show-ai-window`,()=>{Pi()}),process.on(`clawd-show-settings-window`,()=>{Fi()}),process.on(`clawd-show-todo-window`,()=>{Gn()}),process.on(`clawd-show-music-window`,()=>{mn()}),Ai=setInterval(Pr,3e4),d.app.on(`activate`,()=>{d.BrowserWindow.getAllWindows().length===0&&Ni(e)})}),d.app.on(`window-all-closed`,()=>{}),d.app.on(`before-quit`,()=>{d.app.isQuitting=!0;for(let e of d.BrowserWindow.getAllWindows())if(!e.isDestroyed())try{e.webContents.send(`app-before-quit`)}catch{}(0,Qe.hideRegionBorder)(),(0,Qe.hideFloatingIsland)(),(0,Qe.hideCameraPreview)(),Vt(),ki?.stop(),gt(),De(),Oi(),Kn(),rr(),gr(),hn(),Cr(),(0,an.destroyTray)(),Ai&&=(clearInterval(Ai),null),Z=null,Q=null,$=null});function Pi(){if(Q&&!Q.isDestroyed()){Q.show(),Q.focus();return}let e=process.env.VITE_DEV_SERVER_URL,t=(0,u.join)(__dirname,`..`,`preload`,`index.cjs`);Q=new d.BrowserWindow({icon:Mi(),width:480,height:540,minWidth:400,minHeight:400,show:!1,skipTaskbar:!1,frame:!1,titleBarStyle:`hidden`,title:`AI 助手`,backgroundColor:`#eaeaec`,webPreferences:{preload:t,contextIsolation:!0,nodeIntegration:!1,sandbox:!1}}),e?Q.loadURL(`${e}#/ai?t=${Date.now()}`):Q.loadFile((0,u.join)(process.env.DIST,`index.html`),{hash:`/ai`}),Q.once(`ready-to-show`,()=>{Q?.show()}),Q.on(`closed`,()=>{Q=null})}function Fi(){if($&&!$.isDestroyed()){$.show(),$.focus();return}let e=(0,u.join)(__dirname,`..`,`preload`,`index.cjs`);$=new d.BrowserWindow({icon:Mi(),width:420,height:480,minWidth:380,minHeight:420,show:!1,skipTaskbar:!1,frame:!1,titleBarStyle:`hidden`,title:`设置`,backgroundColor:`#eaeaec`,webPreferences:{preload:e,contextIsolation:!0,nodeIntegration:!1,sandbox:!1}}),ji?$.loadURL(`${ji}#/settings?t=${Date.now()}`):$.loadFile((0,u.join)(process.env.DIST,`index.html`),{hash:`/settings`}),$.once(`ready-to-show`,()=>{$?.show()}),$.on(`closed`,()=>{$=null})}
+<\/script></body></html>`;
+}
+function createBoard() {
+	const pos = loadTodoSettings().stickyBoardPos ?? defaultBoardPos();
+	boardWindow = new electron.BrowserWindow({
+		x: pos.x,
+		y: pos.y,
+		width: BOARD_W,
+		height: BOARD_H,
+		frame: false,
+		transparent: true,
+		backgroundColor: "#00000000",
+		resizable: false,
+		alwaysOnTop: true,
+		skipTaskbar: true,
+		hasShadow: false,
+		show: false,
+		webPreferences: {
+			nodeIntegration: true,
+			contextIsolation: false
+		}
+	});
+	boardWindow.setAlwaysOnTop(true, "screen-saver");
+	boardWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildBoardHtml())}`);
+	boardWindow.once("ready-to-show", () => {
+		if (boardWindow && !boardWindow.isDestroyed()) {
+			boardWindow.show();
+			pushNotes();
+		}
+	});
+	boardWindow.on("move", () => {
+		if (!boardWindow || boardWindow.isDestroyed()) return;
+		const [x, y] = boardWindow.getPosition();
+		if (moveTimer) clearTimeout(moveTimer);
+		moveTimer = setTimeout(() => {
+			moveTimer = null;
+			updateTodoSettings({ stickyBoardPos: {
+				x,
+				y
+			} });
+		}, 300);
+	});
+	boardWindow.on("closed", () => {
+		boardWindow = null;
+	});
+}
+var moveTimer = null;
+/** 数据变更后调用：重建贴屏便签板（合并一个窗口，圆点/箭头切换）。 */
+function syncStickyNotes() {
+	const notes = pinnedNotes();
+	if (notes.length === 0) {
+		if (boardWindow && !boardWindow.isDestroyed()) boardWindow.destroy();
+		boardWindow = null;
+		return;
+	}
+	currentIndex = Math.max(0, Math.min(currentIndex, notes.length - 1));
+	if (!boardWindow || boardWindow.isDestroyed()) createBoard();
+	else pushNotes();
+}
+/** 把当前便签列表推进板窗口（窗口尚在加载时会吞掉，由 ready-to-show 补推）。 */
+function pushNotes() {
+	const notes = pinnedNotes();
+	if (!boardWindow || boardWindow.isDestroyed()) return;
+	boardWindow.webContents.executeJavaScript(`if(window.renderNotes) renderNotes(${JSON.stringify(notes)}, ${currentIndex})`).catch(() => {});
+}
+/** 退出前关闭便签板（before-quit 接线）：先清去抖定时器，避免 teardown 期间再写位置。 */
+function closeAllStickyNotes() {
+	if (moveTimer) {
+		clearTimeout(moveTimer);
+		moveTimer = null;
+	}
+	if (boardWindow && !boardWindow.isDestroyed()) boardWindow.destroy();
+	boardWindow = null;
+}
+//#endregion
+//#region electron/main/ipc-handlers.ts
+init_logger();
+var { updateAudioLevels } = require_region_selector();
+function getRecordingsPath() {
+	return (0, node_path.join)(electron.app.getPath("userData"), "recordings.json");
+}
+function registerIpcHandlers(agentBridge) {
+	(0, import_region_selector.registerRegionSelectorHandlers)();
+	registerFloatingBallHandlers();
+	registerAiIslandHandlers();
+	electron.ipcMain.handle("show-ai-island", () => {
+		showAiIsland();
+	});
+	electron.ipcMain.handle("hide-ai-island", () => {
+		hideAiIsland();
+	});
+	electron.ipcMain.handle("select-region", async () => {
+		return (0, import_region_selector.selectRegion)();
+	});
+	electron.ipcMain.handle("get-sources", async (_event, types) => {
+		return (await electron.desktopCapturer.getSources({
+			types: types ?? ["screen", "window"],
+			thumbnailSize: {
+				width: 340,
+				height: 200
+			},
+			fetchWindowIcons: true
+		})).map((s) => ({
+			id: s.id,
+			name: s.name,
+			display_id: s.display_id,
+			appIcon: s.appIcon?.toDataURL() || null,
+			thumbnail: s.thumbnail.toDataURL()
+		}));
+	});
+	electron.ipcMain.handle("get-system-audio-sources", async () => {
+		try {
+			return (await electron.desktopCapturer.getSources({ types: ["audio"] })).map((s) => ({
+				id: s.id,
+				name: s.name
+			}));
+		} catch {
+			return [];
+		}
+	});
+	electron.ipcMain.handle("show-save-dialog", async (_event, options) => {
+		const win = electron.BrowserWindow.getFocusedWindow();
+		if (!win) return {
+			canceled: true,
+			filePath: null
+		};
+		return electron.dialog.showSaveDialog(win, {
+			title: options?.title ?? "Save Recording",
+			defaultPath: options?.defaultPath ?? `recording-${Date.now()}.webm`,
+			filters: options?.filters ?? [
+				{
+					name: "WebM Video",
+					extensions: ["webm"]
+				},
+				{
+					name: "MP4 Video",
+					extensions: ["mp4"]
+				},
+				{
+					name: "GIF",
+					extensions: ["gif"]
+				}
+			]
+		});
+	});
+	electron.ipcMain.handle("show-open-dialog", async (_event, options) => {
+		const win = electron.BrowserWindow.getFocusedWindow();
+		if (!win) return {
+			canceled: true,
+			filePaths: []
+		};
+		return electron.dialog.showOpenDialog(win, {
+			title: options?.title ?? "Select File",
+			defaultPath: options?.defaultPath,
+			filters: options?.filters ?? [{
+				name: "Video Files",
+				extensions: [
+					"webm",
+					"mp4",
+					"gif"
+				]
+			}],
+			properties: options?.properties
+		});
+	});
+	electron.ipcMain.handle("get-default-save-dir", async () => {
+		return electron.app.getPath("videos") || electron.app.getPath("desktop");
+	});
+	electron.ipcMain.handle("write-file", async (_event, data, filePath) => {
+		try {
+			await node_fs.default.promises.mkdir((0, node_path.dirname)(filePath), { recursive: true });
+			await node_fs.default.promises.writeFile(filePath, data);
+			logger_default.info("保存文件", filePath);
+			return {
+				success: true,
+				filePath
+			};
+		} catch (err) {
+			logger_default.error("保存文件失败", filePath, err.message);
+			return {
+				success: false,
+				filePath,
+				error: err.message
+			};
+		}
+	});
+	electron.ipcMain.handle("read-file", async (_event, filePath) => {
+		try {
+			return (await node_fs.default.promises.readFile(filePath)).buffer;
+		} catch (err) {
+			throw new Error(`Failed to read file: ${err.message}`);
+		}
+	});
+	electron.ipcMain.handle("file-exists", async (_event, filePath) => {
+		try {
+			await node_fs.default.promises.access(filePath);
+			return true;
+		} catch {
+			return false;
+		}
+	});
+	electron.ipcMain.handle("delete-file", async (_event, filePath) => {
+		try {
+			await node_fs.default.promises.unlink(filePath);
+			return true;
+		} catch {
+			return false;
+		}
+	});
+	electron.ipcMain.handle("get-file-size", async (_event, filePath) => {
+		try {
+			return (await node_fs.default.promises.stat(filePath)).size;
+		} catch {
+			return 0;
+		}
+	});
+	function safeSend(win, channel, ...args) {
+		if (!win || win.isDestroyed()) return;
+		try {
+			win.webContents.send(channel, ...args);
+		} catch {}
+	}
+	electron.ipcMain.handle("convert-to-mp4", async (event, inputPath, outputPath, crop) => {
+		logger_default.info("转换为 MP4", inputPath, "->", outputPath, crop ? `crop: ${crop.width}x${crop.height}` : "");
+		const win = electron.BrowserWindow.fromWebContents(event.sender);
+		return convertWebmToMp4(inputPath, outputPath, (progress) => {
+			safeSend(win, "on-conversion-progress", progress);
+		}, crop);
+	});
+	electron.ipcMain.handle("crop-video", async (event, inputPath, outputPath, crop) => {
+		logger_default.info("裁剪视频", inputPath, "->", outputPath, `crop: ${crop.width}x${crop.height}+${crop.x}+${crop.y}`);
+		const win = electron.BrowserWindow.fromWebContents(event.sender);
+		return cropVideo(inputPath, outputPath, crop, (progress) => {
+			safeSend(win, "on-conversion-progress", progress);
+		});
+	});
+	electron.ipcMain.handle("convert-to-gif", async (event, inputPath, outputPath, options) => {
+		logger_default.info("转换为 GIF", inputPath, "->", outputPath);
+		const win = electron.BrowserWindow.fromWebContents(event.sender);
+		return convertToGif(inputPath, outputPath, options, (progress) => {
+			safeSend(win, "on-conversion-progress", progress);
+		});
+	});
+	electron.ipcMain.handle("merge-multi-screen", async (event, inputs, outputPath) => {
+		logger_default.info("合并多屏录制", inputs.length, "个屏幕 ->", outputPath);
+		const win = electron.BrowserWindow.fromWebContents(event.sender);
+		return mergeMultiScreen(inputs, outputPath, (progress) => {
+			safeSend(win, "on-conversion-progress", progress);
+		});
+	});
+	electron.ipcMain.handle("open-file-location", async (_event, filePath) => {
+		electron.shell.showItemInFolder(filePath);
+	});
+	electron.ipcMain.handle("open-external", async (_event, url) => {
+		electron.shell.openExternal(url);
+	});
+	electron.ipcMain.handle("open-path", async (_event, filePath) => {
+		await electron.shell.openPath(filePath);
+	});
+	electron.ipcMain.handle("get-app-version", async () => {
+		return electron.app.getVersion();
+	});
+	electron.ipcMain.handle("get-screen-scale-factor", async () => {
+		return electron.screen.getPrimaryDisplay().scaleFactor;
+	});
+	electron.ipcMain.handle("get-screen-bounds", async () => {
+		const display = electron.screen.getPrimaryDisplay();
+		const scaleFactor = display.scaleFactor;
+		return {
+			x: Math.round(display.bounds.x / scaleFactor),
+			y: Math.round(display.bounds.y / scaleFactor),
+			width: Math.round(display.bounds.width / scaleFactor),
+			height: Math.round(display.bounds.height / scaleFactor)
+		};
+	});
+	electron.ipcMain.handle("take-screenshot", async (_event) => {
+		try {
+			const sources = await electron.desktopCapturer.getSources({
+				types: ["screen"],
+				thumbnailSize: {
+					width: 0,
+					height: 0
+				}
+			});
+			if (!sources.length) throw new Error("未找到屏幕源");
+			const pngData = sources[0].thumbnail.toPNG();
+			const now = /* @__PURE__ */ new Date();
+			const filename = `截图_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}_${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}${String(now.getSeconds()).padStart(2, "0")}.png`;
+			const savePath = (0, node_path.join)(electron.app.getPath("desktop"), filename);
+			await node_fs.default.promises.writeFile(savePath, pngData);
+			(0, import_tray.showBalloon)("二支录制", `截图已保存到桌面：${filename}`);
+			return {
+				success: true,
+				filePath: savePath
+			};
+		} catch (err) {
+			logger_default.error("截图失败", err.message);
+			return {
+				success: false,
+				error: err.message
+			};
+		}
+	});
+	electron.ipcMain.handle("get-all-displays", async () => {
+		const displays = electron.screen.getAllDisplays();
+		const primary = electron.screen.getPrimaryDisplay();
+		const sources = await electron.desktopCapturer.getSources({
+			types: ["screen"],
+			thumbnailSize: {
+				width: 340,
+				height: 200
+			}
+		});
+		return displays.map((d, i) => {
+			const src = sources[i];
+			return {
+				id: d.id,
+				label: d.id === primary.id ? `主屏幕` : `屏幕 ${i + 1}`,
+				bounds: d.bounds,
+				scaleFactor: d.scaleFactor,
+				size: {
+					width: d.size.width,
+					height: d.size.height
+				},
+				isPrimary: d.id === primary.id,
+				sourceId: src?.id || null,
+				sourceName: src?.name || "",
+				thumbnail: src?.thumbnail?.toDataURL() || ""
+			};
+		});
+	});
+	electron.ipcMain.handle("minimize-window", async (event) => {
+		electron.BrowserWindow.fromWebContents(event.sender)?.minimize();
+	});
+	electron.ipcMain.handle("show-window", async (event) => {
+		const win = electron.BrowserWindow.fromWebContents(event.sender);
+		if (win) {
+			win.show();
+			win.focus();
+		}
+	});
+	electron.ipcMain.handle("maximize-window", async (event) => {
+		const win = electron.BrowserWindow.fromWebContents(event.sender);
+		if (win?.isMaximized()) win.unmaximize();
+		else win?.maximize();
+	});
+	electron.ipcMain.handle("close-window", async (event) => {
+		const win = electron.BrowserWindow.fromWebContents(event.sender);
+		if (win) {
+			win.webContents.send("app-main-window-close");
+			win.hide();
+		}
+	});
+	electron.ipcMain.on("notify-conversion-start", () => {
+		(0, import_tray.showBalloon)("二支录制", "录制完成，正在转换视频格式...");
+	});
+	electron.ipcMain.on("show-about-window", () => {
+		const parent = electron.BrowserWindow.getFocusedWindow();
+		if (parent) {
+			const win = new electron.BrowserWindow({
+				width: 360,
+				height: 400,
+				resizable: false,
+				skipTaskbar: true,
+				frame: false,
+				modal: true,
+				parent,
+				backgroundColor: "#eaeaec",
+				webPreferences: {
+					preload: (0, node_path.join)(__dirname, "..", "preload", "index.cjs"),
+					contextIsolation: true,
+					nodeIntegration: false,
+					sandbox: false
+				}
+			});
+			electron.ipcMain.on("close-about-window", () => {
+				win.close();
+				electron.ipcMain.removeAllListeners("close-about-window");
+			});
+			win.on("closed", () => {
+				electron.ipcMain.removeAllListeners("close-about-window");
+			});
+			const aboutPath = process.env["VITE_DEV_SERVER_URL"] ? `${process.env["VITE_DEV_SERVER_URL"]}about.html` : (0, node_path.join)(electron.app.getAppPath(), "dist", "about.html");
+			if (aboutPath.startsWith("http")) win.loadURL(aboutPath);
+			else win.loadFile(aboutPath);
+		}
+	});
+	electron.ipcMain.on("notify-conversion-done", () => {
+		(0, import_tray.showBalloon)("二支录制", "视频转换完成！");
+	});
+	electron.ipcMain.on("update-audio-levels", (_event, micLevel, sysLevel) => {
+		updateAudioLevels(micLevel, sysLevel);
+	});
+	electron.ipcMain.handle("load-recordings", async () => {
+		const filePath = getRecordingsPath();
+		try {
+			const data = await node_fs.default.promises.readFile(filePath, "utf-8");
+			const parsed = JSON.parse(data);
+			logger_default.info("加载录制历史", filePath, parsed.length, "条");
+			return parsed;
+		} catch (err) {
+			logger_default.info("加载录制历史失败（可能首次运行）", filePath, err.message);
+			return [];
+		}
+	});
+	electron.ipcMain.handle("save-recordings", async (_event, recordings) => {
+		const filePath = getRecordingsPath();
+		try {
+			await node_fs.default.promises.writeFile(filePath, JSON.stringify(recordings), "utf-8");
+			logger_default.info("保存录制历史", filePath, recordings.length, "条");
+			return true;
+		} catch (err) {
+			logger_default.error("保存录制历史失败", filePath, err.message);
+			return false;
+		}
+	});
+	if (agentBridge) {
+		agentBridge.setStateListener((state, sessions) => {
+			if (state !== "idle" || sessions && sessions.length > 0) showAiIsland();
+			const wins = electron.BrowserWindow.getAllWindows();
+			for (const win of wins) if (!win.isDestroyed()) try {
+				win.webContents.send("agent-state-update", {
+					state,
+					sessions
+				});
+			} catch {}
+		});
+		agentBridge.setCardListener((card) => {
+			if (card) showAiIsland();
+			let safe;
+			if (!card) safe = null;
+			else if (card.kind === "permission") safe = {
+				kind: "permission",
+				sessionId: card.sessionId,
+				toolName: card.toolName,
+				toolInput: card.toolInput,
+				suggestions: card.suggestions,
+				createdAt: card.createdAt
+			};
+			else safe = {
+				kind: "question",
+				sessionId: card.sessionId,
+				toolName: card.toolName,
+				toolInput: card.toolInput,
+				questions: card.questions,
+				answerable: card.answerable,
+				createdAt: card.createdAt
+			};
+			logger_default.info(`[IPC] broadcast card: kind=${card ? card.kind : "null"}, wins=${electron.BrowserWindow.getAllWindows().length}`);
+			const wins = electron.BrowserWindow.getAllWindows();
+			for (const win of wins) if (!win.isDestroyed()) try {
+				win.webContents.send("agent-card-update", safe);
+			} catch (e) {
+				logger_default.error(`[IPC] send card to window failed: ${e.message}`);
+			}
+		});
+		electron.ipcMain.handle("agent-get-status", () => {
+			const status = agentBridge?.getStatus() ?? null;
+			logger_default.info(`[IPC] agentGetStatus: sessionCount=${status?.sessionCount}, displayState=${status?.displayState}, serverRunning=${status?.serverRunning}`);
+			return status;
+		});
+		electron.ipcMain.handle("agent-install-hooks", () => {
+			agentBridge?.installHooks();
+			return agentBridge?.getStatus();
+		});
+		electron.ipcMain.handle("agent-uninstall-hooks", () => {
+			agentBridge?.uninstallHooks();
+			return agentBridge?.getStatus();
+		});
+		electron.ipcMain.handle("agent-resolve-permission", (_event, behavior) => agentBridge?.resolvePermission(behavior));
+		electron.ipcMain.handle("agent-dismiss-question", () => agentBridge?.dismissQuestion());
+		electron.ipcMain.handle("agent-submit-question", (_event, sessionId, answers) => agentBridge?.submitQuestion(sessionId, answers));
+		electron.ipcMain.handle("agent-set-auto-allow", (_event, enabled) => agentBridge?.setAutoAllow(enabled));
+		electron.ipcMain.handle("agent-get-auto-allow", () => agentBridge?.getAutoAllow() ?? false);
+	}
+	registerTodoIpcHandlers();
+}
+function registerTodoIpcHandlers() {
+	electron.ipcMain.handle("todo-get", () => loadItems());
+	electron.ipcMain.handle("todo-create", (_event, input) => {
+		const items = createTodo(input);
+		refreshTodoBadge();
+		syncStickyNotes();
+		return items;
+	});
+	electron.ipcMain.handle("todo-update", (_event, id, patch) => {
+		const items = updateTodo(id, patch);
+		refreshTodoBadge();
+		syncStickyNotes();
+		return items;
+	});
+	electron.ipcMain.handle("todo-delete", (_event, id) => {
+		const items = deleteTodo(id);
+		refreshTodoBadge();
+		syncStickyNotes();
+		return items;
+	});
+	electron.ipcMain.handle("todo-toggle-done", (_event, id) => {
+		const items = toggleTodoDone(id);
+		refreshTodoBadge();
+		syncStickyNotes();
+		return items;
+	});
+	electron.ipcMain.handle("todo-toggle-pin", (_event, id) => {
+		const items = togglePin(id);
+		syncStickyNotes();
+		refreshTodoBadge();
+		return items;
+	});
+	electron.ipcMain.handle("todo-show-window", () => {
+		showTodoWindow();
+	});
+	electron.ipcMain.handle("todo-close-window", () => {
+		closeTodoWindow();
+	});
+	electron.ipcMain.handle("todo-window-visible", () => isTodoWindowVisible());
+	electron.ipcMain.handle("todo-toggle-always-on-top", () => toggleTodoWindowAlwaysOnTop());
+	electron.ipcMain.handle("todo-get-settings", () => loadTodoSettings());
+	electron.ipcMain.handle("todo-set-settings", (_event, patch) => {
+		const s = updateTodoSettings(patch);
+		refreshTodoBadge();
+		return s;
+	});
+	electron.ipcMain.on("todo-reminder-close", () => {
+		hideTodoReminder();
+	});
+	electron.ipcMain.on("todo-reminder-open", () => {
+		clearTodoReminderQueue();
+		showTodoWindow();
+	});
+	electron.ipcMain.on("todo-sticky-open", (_event, id) => {
+		focusTodoItem(id);
+	});
+	electron.ipcMain.on("todo-sticky-unpin", (_event, id) => {
+		const current = loadItems().find((x) => x.id === id);
+		if (current && current.type === "todo") completeTodo(id);
+		else togglePin(id);
+		syncStickyNotes();
+		refreshTodoBadge();
+		broadcastTodoUpdate(loadItems());
+	});
+}
+//#endregion
+//#region electron/main/global-shortcuts.ts
+init_logger();
+var mainWindow$1 = null;
+function registerGlobalShortcuts(win) {
+	mainWindow$1 = win;
+	electron.globalShortcut.register("CommandOrControl+Shift+R", () => {
+		logger_default.info("Global shortcut: start/stop recording");
+		mainWindow$1?.webContents.send("on-global-shortcut", "startStop");
+	});
+	electron.globalShortcut.register("CommandOrControl+Shift+P", () => {
+		logger_default.info("Global shortcut: pause/resume recording");
+		mainWindow$1?.webContents.send("on-global-shortcut", "pauseResume");
+	});
+	logger_default.info("Global shortcuts registered");
+}
+function unregisterGlobalShortcuts() {
+	electron.globalShortcut.unregisterAll();
+}
+//#endregion
+//#region electron/main/ip-reporter.ts
+init_logger();
+var REPORT_URL = "http://8.163.43.7:3000/report-ip";
+function getPendingPath() {
+	return (0, node_path.join)(electron.app.getPath("userData"), "pending-reports.json");
+}
+function savePending(payload) {
+	let pending = [];
+	try {
+		if (node_fs.default.existsSync(getPendingPath())) pending = JSON.parse(node_fs.default.readFileSync(getPendingPath(), "utf-8"));
+	} catch {}
+	pending.push(payload);
+	node_fs.default.writeFileSync(getPendingPath(), JSON.stringify(pending, null, 2), "utf-8");
+	logger_default.info("Saved offline report to local, total pending:", pending.length);
+}
+function loadPending() {
+	try {
+		if (node_fs.default.existsSync(getPendingPath())) return JSON.parse(node_fs.default.readFileSync(getPendingPath(), "utf-8"));
+	} catch {}
+	return [];
+}
+function clearPending() {
+	try {
+		node_fs.default.unlinkSync(getPendingPath());
+	} catch {}
+}
+async function uploadOne(payload) {
+	try {
+		await fetch(REPORT_URL, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(payload)
+		});
+		return true;
+	} catch {
+		return false;
+	}
+}
+async function flushPending() {
+	const pending = loadPending();
+	if (pending.length === 0) return true;
+	const failed = [];
+	for (const record of pending) if (await uploadOne(record)) logger_default.info("Flushed pending report:", record["公网IP"], record["上报时间"]);
+	else failed.push(record);
+	if (failed.length === 0) {
+		clearPending();
+		logger_default.info("All pending reports flushed");
+		return true;
+	}
+	node_fs.default.writeFileSync(getPendingPath(), JSON.stringify(failed, null, 2), "utf-8");
+	return false;
+}
+async function getIPInfo() {
+	const apis = [
+		async () => {
+			const d = (await fetch("https://qifu.baidu.com/opus/api/ip/local", { headers: { "Referer": "https://www.baidu.com" } }).then((r) => r.json()))?.data;
+			if (!d?.ip) throw new Error("empty");
+			return {
+				"公网IP": d.ip,
+				"国家": d.country || "",
+				"省份": d.province || "",
+				"城市": d.city || "",
+				"区县": d.district || d.area || "",
+				"详细地址": [
+					d.country,
+					d.province,
+					d.city,
+					d.district || d.area
+				].filter(Boolean).join(""),
+				"运营商": d.isp || ""
+			};
+		},
+		async () => {
+			const r = await fetch("http://whois.pconline.com.cn/ipJson.jsp").then((r) => r.arrayBuffer());
+			const text = new TextDecoder("gbk").decode(r);
+			const data = JSON.parse(text);
+			if (!data.ip) throw new Error("empty");
+			return {
+				"公网IP": data.ip,
+				"国家": "中国",
+				"省份": data.pro || "",
+				"城市": data.city || "",
+				"区县": data.region || "",
+				"详细地址": data.addr || "",
+				"运营商": data.addr?.split(" ")?.[1] || ""
+			};
+		},
+		async () => {
+			const r = await fetch("http://ip-api.com/json/?lang=zh-CN").then((r) => r.json());
+			if (!r.query) throw new Error("empty");
+			return {
+				"公网IP": r.query,
+				"国家": r.country,
+				"省份": r.regionName,
+				"城市": r.city,
+				"区县": "",
+				"详细地址": `${r.country}${r.regionName}${r.city}`,
+				"运营商": r.isp,
+				"纬度": String(r.lat ?? ""),
+				"经度": String(r.lon ?? "")
+			};
+		}
+	];
+	for (const api of apis) try {
+		return await api();
+	} catch {
+		continue;
+	}
+	return {
+		"公网IP": "",
+		"国家": "",
+		"省份": "",
+		"城市": "",
+		"区县": "",
+		"详细地址": "",
+		"运营商": ""
+	};
+}
+function getLocalIP() {
+	const nets = (0, node_os.networkInterfaces)();
+	for (const name of Object.keys(nets)) for (const net of nets[name]) if (net.family === "IPv4" && !net.internal) return net.address;
+	return "127.0.0.1";
+}
+async function reportIP() {
+	const localIP = getLocalIP();
+	const payload = {
+		"电脑名": (0, node_os.hostname)(),
+		"局域网IP": localIP,
+		"上报时间": (/* @__PURE__ */ new Date()).toISOString()
+	};
+	let ipInfo;
+	try {
+		ipInfo = await getIPInfo();
+	} catch {
+		ipInfo = {
+			"公网IP": "",
+			"国家": "",
+			"省份": "",
+			"城市": "",
+			"区县": "",
+			"详细地址": "",
+			"运营商": ""
+		};
+	}
+	const fullPayload = {
+		...payload,
+		...ipInfo
+	};
+	if (await uploadOne(fullPayload)) {
+		logger_default.info("IP reported:", ipInfo["公网IP"], ipInfo["省份"], ipInfo["城市"]);
+		flushPending();
+	} else {
+		logger_default.info("Network unavailable, saving report locally");
+		savePending(fullPayload);
+	}
+}
+function retryPending() {
+	if (loadPending().length > 0) flushPending();
+}
+//#endregion
+//#region electron/main/agent-state-machine.ts
+var logger$1 = {
+	info: () => {},
+	warn: () => {}
+};
+function setStateMachineLogger(log) {
+	logger$1 = log;
+}
+var STATE_PRIORITY = {
+	error: 4,
+	notification: 3,
+	working: 2,
+	thinking: 1,
+	idle: 0
+};
+var SESSION_STALE_MS = 600 * 1e3;
+var WORKING_STALE_MS = 300 * 1e3;
+var CLEANUP_INTERVAL_MS = 10 * 1e3;
+var DONE_DURATION_MS = 2e3;
+function createAgentStateMachine(options = {}) {
+	const isClaudeRunning = options.isClaudeRunning;
+	const sessions = /* @__PURE__ */ new Map();
+	let cleanupTimer = null;
+	let listeners = [];
+	let doneTimer = null;
+	let currentGlobalState = "idle";
+	function subscribe(listener) {
+		listeners.push(listener);
+		return () => {
+			listeners = listeners.filter((l) => l !== listener);
+		};
+	}
+	function notify() {
+		const state = resolveDisplayState();
+		const snapshot = Array.from(sessions.values());
+		if (state !== currentGlobalState) currentGlobalState = state;
+		for (const l of listeners) l(currentGlobalState, snapshot);
+	}
+	function updateSession(sessionId, state, event, opts = {}) {
+		if (doneTimer) {
+			clearTimeout(doneTimer);
+			doneTimer = null;
+		}
+		const existing = sessions.get(sessionId);
+		const session = {
+			sessionId,
+			agentId: opts.agentId || "claude-code",
+			state,
+			event,
+			updatedAt: Date.now(),
+			toolName: opts.toolName || existing?.toolName,
+			toolInput: opts.toolInput || existing?.toolInput,
+			contextUsage: opts.contextUsage || existing?.contextUsage,
+			model: opts.model || existing?.model
+		};
+		sessions.set(sessionId, session);
+		logger$1.info(`[StateMachine] updateSession: id=${sessionId}, state=${state}, event=${event}, total=${sessions.size}`);
+		if (state === "idle" && event === "Stop") doneTimer = setTimeout(() => {
+			doneTimer = null;
+			if (sessions.has(sessionId)) {
+				const s = sessions.get(sessionId);
+				s.state = "idle";
+				s.updatedAt = Date.now();
+			}
+			logger$1.info(`[StateMachine] doneTimer fired for ${sessionId}, total=${sessions.size}`);
+			notify();
+		}, DONE_DURATION_MS);
+		notify();
+	}
+	function dismissSession(sessionId) {
+		sessions.delete(sessionId);
+		notify();
+	}
+	function resolveDisplayState() {
+		let best = "idle";
+		for (const [, s] of sessions) if ((STATE_PRIORITY[s.state] ?? 0) > (STATE_PRIORITY[best] ?? 0)) best = s.state;
+		if (doneTimer && best === "idle") return "done";
+		return best;
+	}
+	function getCurrentState() {
+		return currentGlobalState;
+	}
+	function getSessions() {
+		const result = [];
+		for (const [, v] of sessions) result.push(v);
+		return result;
+	}
+	function cleanStaleSessions() {
+		const now = Date.now();
+		const claudeRunning = isClaudeRunning ? isClaudeRunning() : null;
+		let changed = false;
+		for (const [id, s] of sessions) {
+			const age = now - s.updatedAt;
+			if (s.state === "idle") {
+				if (age > SESSION_STALE_MS) {
+					sessions.delete(id);
+					logger$1.info(`[StateMachine] cleanStale: removed idle ${id} (age=${Math.round(age / 1e3)}s)`);
+					changed = true;
+				}
+			} else if (claudeRunning === false) {
+				if (age > WORKING_STALE_MS) {
+					s.state = "idle";
+					s.updatedAt = now;
+					logger$1.info(`[StateMachine] cleanStale: reset zombie ${id} to idle (age=${Math.round(age / 1e3)}s, no claude running)`);
+					changed = true;
+				}
+			} else if (claudeRunning === null) {
+				if (age > WORKING_STALE_MS) {
+					s.state = "idle";
+					s.updatedAt = now;
+					logger$1.info(`[StateMachine] cleanStale: reset ${id} to idle (age=${Math.round(age / 1e3)}s, no liveness check)`);
+					changed = true;
+				}
+			}
+		}
+		if (changed) notify();
+	}
+	function start() {
+		if (cleanupTimer) return;
+		cleanupTimer = setInterval(cleanStaleSessions, CLEANUP_INTERVAL_MS);
+	}
+	function stop() {
+		if (cleanupTimer) {
+			clearInterval(cleanupTimer);
+			cleanupTimer = null;
+		}
+		if (doneTimer) {
+			clearTimeout(doneTimer);
+			doneTimer = null;
+		}
+	}
+	return {
+		updateSession,
+		dismissSession,
+		resolveDisplayState,
+		getCurrentState,
+		getSessions,
+		subscribe,
+		cleanStaleSessions,
+		start,
+		stop
+	};
+}
+//#endregion
+//#region electron/main/permission-match.ts
+/** 递归稳定序列化入参：对象键按字典序排序，使同一入参的不同键序也能匹配；数组保序。 */
+function permissionContentSignature(v) {
+	if (v === null || v === void 0) return "null";
+	if (typeof v !== "object") return JSON.stringify(v);
+	if (Array.isArray(v)) return "[" + v.map(permissionContentSignature).join(",") + "]";
+	return "{" + Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + permissionContentSignature(v[k])).join(",") + "}";
+}
+/** 在待审卡里找应被「外部完成」关闭的那张，返回队列下标；无匹配返回 -1。
+*  匹配优先级：
+*    1) tool_use_id 精确（仅当卡片与完成事件都带 ID 时，如合成注入/未来桥接）；
+*    2) 内容签名——同 session + 同工具名 + 同入参签名判定为同一工具调用
+*       （toolName 与内容签名分开判等，不做字符串拼接，避免分隔符歧义/转义问题）；
+*    3) 惰性对账兜底——签名对不上时，若该 session 恰好只有一张同名权限卡，按名收起
+*       （完成事件本身已证明该 tool 的 gate settle，见函数体注释）。
+*  cards 按队列入列顺序，取最先匹配者：工具串行执行，先到的完成事件对应先入队的卡，
+*  避免同一会话重复相同调用时误关后面的卡。 */
+function findPermissionToResolve(cards, sessionId, evt) {
+	const toolUseId = evt?.tool_use_id || evt?.toolUseId || null;
+	const name = evt?.tool_name || evt?.toolName || null;
+	const inputSig = name != null && name !== "" ? permissionContentSignature(evt?.tool_input ?? evt?.toolInput ?? null) : null;
+	let nameOnlyIdx = -1;
+	let nameOnlyCount = 0;
+	for (let i = 0; i < cards.length; i++) {
+		const c = cards[i];
+		if (c.kind !== "permission") continue;
+		if (c.sessionId !== sessionId) continue;
+		if (toolUseId && c.toolUseId && c.toolUseId === toolUseId) return i;
+		if (name != null && c.toolName === name) {
+			if (inputSig != null && permissionContentSignature(c.toolInput ?? null) === inputSig) return i;
+			if (nameOnlyIdx === -1) nameOnlyIdx = i;
+			nameOnlyCount++;
+		}
+	}
+	if (nameOnlyCount === 1) return nameOnlyIdx;
+	return -1;
+}
+//#endregion
+//#region electron/main/agent-server.ts
+init_logger();
+var DEFAULT_PORT = 6e4;
+var MAX_PORT = 60019;
+var HEAD_TIMEOUT_MS = 12e4;
+var runtimeDir = null;
+function getRuntimeDir() {
+	if (runtimeDir) return runtimeDir;
+	runtimeDir = path.join(require("os").homedir(), ".erzhi-recording");
+	return runtimeDir;
+}
+function createAgentServer(stateMachine) {
+	let server = null;
+	let activePort = null;
+	let cardQueue = [];
+	let headTimer = null;
+	let onCardChange = null;
+	const COMPLETION_EVENTS = [
+		"PostToolUse",
+		"PostToolUseFailure",
+		"Stop",
+		"StopFailure",
+		"SessionEnd",
+		"ApiError"
+	];
+	const EXTERNAL_RESOLUTION_EVENTS = [
+		"PostToolUse",
+		"PostToolUseFailure",
+		"PermissionDenied"
+	];
+	const SESSION_END_EVENTS = [
+		"Stop",
+		"StopFailure",
+		"SessionEnd"
+	];
+	const MAX_BODY_BYTES = 1 * 1024 * 1024;
+	class BodyTooLargeError extends Error {
+		code = "PAYLOAD_TOO_LARGE";
+	}
+	function parseBody(req) {
+		return new Promise((resolve, reject) => {
+			let body = "";
+			req.on("data", (c) => {
+				body += c;
+				if (Buffer.byteLength(body) > MAX_BODY_BYTES) {
+					try {
+						req.destroy();
+					} catch {}
+					reject(new BodyTooLargeError("Body exceeds 1MB limit"));
+				}
+			});
+			req.on("end", () => {
+				try {
+					resolve(JSON.parse(body));
+				} catch {
+					reject(/* @__PURE__ */ new Error("Invalid JSON"));
+				}
+			});
+			req.on("error", reject);
+		});
+	}
+	function sendJson(res, status, data) {
+		res.writeHead(status, { "Content-Type": "application/json" });
+		res.end(JSON.stringify(data));
+	}
+	function tryRespond(res, body) {
+		try {
+			if (!res.headersSent && !res.destroyed && !res.writableEnded) {
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end(body);
+			}
+		} catch {}
+	}
+	function headCard() {
+		return cardQueue[0] ?? null;
+	}
+	function expireHead(reason) {
+		const head = headCard();
+		if (!head) return;
+		if (head.kind === "permission") head.reject(reason);
+		else if (head.answerable) head.reject(reason);
+		shiftHead();
+	}
+	function shiftHead() {
+		cardQueue.shift();
+		clearTimeout(headTimer);
+		headTimer = null;
+		startHeadTimer();
+		notifyCard();
+	}
+	function startHeadTimer() {
+		if (headTimer) clearTimeout(headTimer);
+		if (!cardQueue.length) {
+			headTimer = null;
+			return;
+		}
+		headTimer = setTimeout(() => {
+			headTimer = null;
+			expireHead("timeout");
+		}, HEAD_TIMEOUT_MS);
+	}
+	function notifyCard() {
+		if (onCardChange) onCardChange(headCard());
+	}
+	function removeQuestionsForSession(sessionId) {
+		const before = cardQueue.length;
+		const removed = [];
+		const filtered = cardQueue.filter((c) => {
+			if (c.kind === "question" && c.sessionId === sessionId) {
+				removed.push(c);
+				return false;
+			}
+			return true;
+		});
+		if (filtered.length === before) return;
+		cardQueue = filtered;
+		for (const c of removed) if (c.kind === "question" && c.answerable) c.reject("completed");
+		clearTimeout(headTimer);
+		headTimer = null;
+		startHeadTimer();
+		notifyCard();
+	}
+	function resolvePermissionByCompletion(sessionId, data) {
+		const idx = findPermissionToResolve(cardQueue, sessionId, data);
+		if (idx === -1) return;
+		const [card] = cardQueue.splice(idx, 1);
+		card.reject("resolved-in-cli");
+		clearTimeout(headTimer);
+		headTimer = null;
+		startHeadTimer();
+		notifyCard();
+		logger_default.info(`[AgentServer] permission resolved externally (CLI): session=${sessionId}, tool=${card.toolName}`);
+	}
+	function removePermissionsForSession(sessionId) {
+		const before = cardQueue.length;
+		const removed = [];
+		const filtered = cardQueue.filter((c) => {
+			if (c.kind === "permission" && c.sessionId === sessionId) {
+				removed.push(c);
+				return false;
+			}
+			return true;
+		});
+		if (filtered.length === before) return;
+		cardQueue = filtered;
+		for (const c of removed) c.reject("completed");
+		clearTimeout(headTimer);
+		headTimer = null;
+		startHeadTimer();
+		notifyCard();
+		logger_default.info(`[AgentServer] permissions cleared for ended session=${sessionId}, count=${removed.length}`);
+	}
+	function handleState(data, res) {
+		const sessionId = data.session_id || data.sessionId;
+		const state = data.state;
+		const event = data.event;
+		logger_default.info(`[AgentServer] /state received: session=${sessionId}, state=${state}, event=${event}, tool=${data.tool_name || data.toolName}`);
+		if (!sessionId || !state || !event) {
+			logger_default.warn(`[AgentServer] /state rejected: missing fields (sessionId=${sessionId}, state=${state}, event=${event})`);
+			sendJson(res, 400, { error: "Missing required fields: session_id, state, event" });
+			return;
+		}
+		stateMachine.updateSession(sessionId, state, event, {
+			agentId: data.agent_id || "claude-code",
+			toolName: data.tool_name || data.toolName,
+			toolInput: data.tool_input || data.toolInput,
+			contextUsage: data.context_usage || data.contextUsage,
+			model: data.model
+		});
+		if (COMPLETION_EVENTS.includes(event)) removeQuestionsForSession(sessionId);
+		if (SESSION_END_EVENTS.includes(event)) removePermissionsForSession(sessionId);
+		if (EXTERNAL_RESOLUTION_EVENTS.includes(event)) resolvePermissionByCompletion(sessionId, data);
+		logger_default.info(`[AgentServer] /state ok, total sessions=${stateMachine.getSessions().length}`);
+		sendJson(res, 200, {
+			ok: true,
+			app: "erzhi-recording"
+		});
+	}
+	function handlePermission(data, res) {
+		const toolName = data.tool_name || data.toolName || "unknown";
+		const toolInput = data.tool_input || data.toolInput || {};
+		const sessionId = data.session_id || data.sessionId || "unknown";
+		if (toolName === "AskUserQuestion") {
+			handleAskUserQuestionPermission(res, sessionId, toolInput);
+			return;
+		}
+		stateMachine.updateSession(sessionId, "notification", "PermissionRequest", {
+			toolName,
+			toolInput
+		});
+		const toolUseId = data.tool_use_id || data.toolUseId || null;
+		const item = {
+			kind: "permission",
+			sessionId,
+			toolName,
+			toolInput,
+			suggestions: data.permission_suggestions || null,
+			toolUseId,
+			resolve: () => {},
+			reject: () => {},
+			createdAt: Date.now()
+		};
+		new Promise((resolve, reject) => {
+			item.resolve = resolve;
+			item.reject = reject;
+		}).then((behavior) => {
+			stateMachine.updateSession(sessionId, "idle", "PermissionResolved");
+			const mappedBehavior = behavior === "always" ? "allow" : behavior;
+			const responseBody = JSON.stringify({ hookSpecificOutput: {
+				hookEventName: "PermissionRequest",
+				decision: { behavior: mappedBehavior }
+			} });
+			logger_default.info(`[AgentServer] /permission resolved: behavior=${behavior} -> ${mappedBehavior}`);
+			tryRespond(res, responseBody);
+		}).catch((reason) => {
+			stateMachine.updateSession(sessionId, "idle", "PermissionCancelled");
+			const responseBody = JSON.stringify({ hookSpecificOutput: {
+				hookEventName: "PermissionRequest",
+				decision: { behavior: "cancel" }
+			} });
+			logger_default.info(`[AgentServer] /permission cancelled: ${reason}`);
+			tryRespond(res, responseBody);
+		});
+		cardQueue.push(item);
+		if (cardQueue.length === 1) startHeadTimer();
+		notifyCard();
+		logger_default.info(`[AgentServer] /permission queued: session=${sessionId}, queue=${cardQueue.length}`);
+	}
+	function handleAskUserQuestionPermission(res, sessionId, toolInput) {
+		const questions = Array.isArray(toolInput && toolInput.questions) && toolInput.questions || null;
+		stateMachine.updateSession(sessionId, "notification", "AskUserQuestion", {
+			toolName: "AskUserQuestion",
+			toolInput
+		});
+		const item = {
+			kind: "question",
+			sessionId,
+			toolName: "AskUserQuestion",
+			toolInput,
+			questions,
+			answerable: true,
+			resolve: () => {},
+			reject: () => {},
+			createdAt: Date.now()
+		};
+		new Promise((resolve, reject) => {
+			item.resolve = resolve;
+			item.reject = reject;
+		}).then((answers) => {
+			stateMachine.updateSession(sessionId, "idle", "QuestionAnswered");
+			const responseBody = JSON.stringify({ hookSpecificOutput: {
+				hookEventName: "PermissionRequest",
+				decision: {
+					behavior: "allow",
+					updatedInput: {
+						questions,
+						answers
+					}
+				}
+			} });
+			logger_default.info(`[AgentServer] AskUserQuestion answered via /permission: session=${sessionId}`);
+			tryRespond(res, responseBody);
+		}).catch((reason) => {
+			stateMachine.updateSession(sessionId, "idle", "QuestionDenied");
+			const responseBody = JSON.stringify({ hookSpecificOutput: {
+				hookEventName: "PermissionRequest",
+				decision: { behavior: "deny" }
+			} });
+			logger_default.info(`[AgentServer] AskUserQuestion denied: reason=${reason}, session=${sessionId}`);
+			tryRespond(res, responseBody);
+		});
+		cardQueue.push(item);
+		if (cardQueue.length === 1) startHeadTimer();
+		notifyCard();
+		logger_default.info(`[AgentServer] AskUserQuestion (answerable) queued: session=${sessionId}, queue=${cardQueue.length}`);
+	}
+	function handleQuestion(data, res) {
+		const sessionId = data.session_id || data.sessionId || "unknown";
+		const toolName = data.tool_name || data.toolName || "AskUserQuestion";
+		const toolInput = data.tool_input || data.toolInput || {};
+		stateMachine.updateSession(sessionId, "notification", "AskUserQuestion", {
+			toolName,
+			toolInput
+		});
+		logger_default.info(`[AgentServer] /question notified (read-only card removed): session=${sessionId}`);
+		sendJson(res, 200, {
+			ok: true,
+			app: "erzhi-recording"
+		});
+	}
+	function handleHealth(res) {
+		const sc = stateMachine.getSessions().length;
+		sendJson(res, 200, {
+			ok: true,
+			app: "erzhi-recording",
+			port: activePort,
+			sessionCount: sc
+		});
+	}
+	function route(req, res) {
+		res.setHeader("Access-Control-Allow-Origin", "*");
+		logger_default.info(`[AgentServer] ${req.method} ${req.url}`);
+		if (req.method === "POST" && req.url === "/state") parseBody(req).then((d) => handleState(d, res)).catch((e) => {
+			logger_default.error("[AgentServer] parseBody error:", e);
+			sendJson(res, e?.code === "PAYLOAD_TOO_LARGE" ? 413 : 400, { error: e?.code === "PAYLOAD_TOO_LARGE" ? "Payload too large" : "Invalid JSON" });
+		});
+		else if (req.method === "POST" && req.url === "/permission") parseBody(req).then((d) => handlePermission(d, res)).catch((e) => {
+			logger_default.error("[AgentServer] parseBody error:", e);
+			sendJson(res, e?.code === "PAYLOAD_TOO_LARGE" ? 413 : 400, { error: e?.code === "PAYLOAD_TOO_LARGE" ? "Payload too large" : "Invalid JSON" });
+		});
+		else if (req.method === "POST" && req.url === "/question") parseBody(req).then((d) => handleQuestion(d, res)).catch((e) => {
+			logger_default.error("[AgentServer] parseBody error:", e);
+			sendJson(res, e?.code === "PAYLOAD_TOO_LARGE" ? 413 : 400, { error: e?.code === "PAYLOAD_TOO_LARGE" ? "Payload too large" : "Invalid JSON" });
+		});
+		else if (req.method === "GET" && req.url === "/health") handleHealth(res);
+		else sendJson(res, 404, { error: "Not found" });
+	}
+	function resolvePendingPermission(behavior) {
+		const head = headCard();
+		if (head && head.kind === "permission") {
+			head.resolve(behavior);
+			shiftHead();
+		}
+	}
+	function dismissQuestion() {
+		const head = headCard();
+		if (head && head.kind === "question") {
+			if (head.answerable) head.reject("dismissed");
+			shiftHead();
+		}
+	}
+	function submitQuestion(sessionId, answers) {
+		const head = headCard();
+		if (head && head.kind === "question" && head.answerable && head.sessionId === sessionId) {
+			head.resolve(answers);
+			shiftHead();
+			logger_default.info(`[AgentServer] submitQuestion accepted: session=${sessionId}`);
+		} else logger_default.warn(`[AgentServer] submitQuestion ignored: no matching answerable head for session=${sessionId}`);
+	}
+	function setOnCardChange(cb) {
+		onCardChange = cb;
+	}
+	function getSafeCurrentCard() {
+		const head = headCard();
+		if (!head) return null;
+		if (head.kind === "permission") return {
+			kind: "permission",
+			sessionId: head.sessionId,
+			toolName: head.toolName,
+			toolInput: head.toolInput,
+			suggestions: head.suggestions,
+			createdAt: head.createdAt
+		};
+		return {
+			kind: "question",
+			sessionId: head.sessionId,
+			toolName: head.toolName,
+			toolInput: head.toolInput,
+			questions: head.questions,
+			answerable: head.answerable,
+			createdAt: head.createdAt
+		};
+	}
+	function start() {
+		return new Promise((resolve) => {
+			let currentPort = DEFAULT_PORT;
+			let currentServer = null;
+			function tryListen() {
+				if (currentPort > MAX_PORT) {
+					logger_default.error(`Agent server: all ports ${DEFAULT_PORT}-${MAX_PORT} occupied`);
+					resolve(null);
+					return;
+				}
+				currentServer = http.createServer(route);
+				currentServer.on("error", (err) => {
+					if (err.code === "EADDRINUSE") {
+						currentPort++;
+						tryListen();
+					} else {
+						logger_default.error("Agent server error:", err.message);
+						resolve(null);
+					}
+				});
+				currentServer.listen(currentPort, "127.0.0.1", () => {
+					activePort = currentPort;
+					server = currentServer;
+					try {
+						const dir = getRuntimeDir();
+						fs.mkdirSync(dir, { recursive: true });
+						fs.writeFileSync(path.join(dir, "runtime.json"), JSON.stringify({
+							port: currentPort,
+							pid: process.pid
+						}), "utf8");
+					} catch {}
+					logger_default.info(`Agent server listening on 127.0.0.1:${currentPort}`);
+					resolve(currentPort);
+				});
+			}
+			tryListen();
+		});
+	}
+	function stop() {
+		for (const c of cardQueue) if (c.kind === "permission") c.reject("stopped");
+		cardQueue = [];
+		clearTimeout(headTimer);
+		headTimer = null;
+		if (onCardChange) onCardChange(null);
+		if (server) {
+			server.close();
+			server = null;
+		}
+		activePort = null;
+	}
+	function getPort() {
+		return activePort;
+	}
+	return {
+		start,
+		stop,
+		getPort,
+		getSafeCurrentCard,
+		resolvePendingPermission,
+		dismissQuestion,
+		submitQuestion,
+		setOnCardChange
+	};
+}
+//#endregion
+//#region electron/main/claude-hook-manager.ts
+init_logger();
+var CLAUDE_SETTINGS_PATH = path.join(os.homedir(), ".claude", "settings.json");
+var WATCH_INTERVAL_MS = 300 * 1e3;
+var MAX_REPAIR_RETRIES = 3;
+var HOOK_EVENTS = [
+	"SessionStart",
+	"SessionEnd",
+	"UserPromptSubmit",
+	"PreToolUse",
+	"PostToolUse",
+	"PostToolUseFailure",
+	"Stop",
+	"StopFailure",
+	"ApiError",
+	"Notification",
+	"PermissionRequest"
+];
+function createClaudeHookManager(agentPort) {
+	let watchTimer = null;
+	let repairFailures = 0;
+	let manualFixRequired = false;
+	function getHookScriptPath() {
+		try {
+			if (require("electron")?.app?.isPackaged) return path.join(process.resourcesPath, "clawd-hook.js");
+		} catch {}
+		return path.join(__dirname, "clawd-hook.js");
+	}
+	function getNodePath() {
+		try {
+			const { execSync } = require("child_process");
+			const nodePath = execSync("where node", { encoding: "utf8" }).trim().split("\n")[0];
+			if (nodePath) return nodePath;
+		} catch {}
+		return process.execPath.replace("electron.exe", "node.exe");
+	}
+	function readClaudeSettings() {
+		try {
+			const raw = fs.readFileSync(CLAUDE_SETTINGS_PATH, "utf8");
+			return JSON.parse(raw);
+		} catch {
+			return null;
+		}
+	}
+	function writeClaudeSettings(settings) {
+		try {
+			fs.writeFileSync(CLAUDE_SETTINGS_PATH, JSON.stringify(settings, null, 2), "utf8");
+			return true;
+		} catch (err) {
+			logger_default.error("Failed to write Claude settings:", err.message);
+			return false;
+		}
+	}
+	function buildHookCommand(eventName, scriptPath) {
+		return {
+			command: `& "${getNodePath()}" "${scriptPath}" ${eventName}`,
+			shell: "powershell"
+		};
+	}
+	function isOldFormat(settings) {
+		const hooks = settings.hooks;
+		if (!hooks || !Array.isArray(hooks)) return false;
+		return hooks.some((h) => h.name && h.events && Array.isArray(h.events));
+	}
+	function removeOldHooks(settings) {
+		if (!isOldFormat(settings)) return false;
+		settings.hooks = (settings.hooks || []).filter((h) => !h.name?.startsWith("erzhi-recording"));
+		return true;
+	}
+	function install() {
+		const settings = readClaudeSettings();
+		if (!settings) return {
+			added: false,
+			updated: false
+		};
+		const scriptPath = getHookScriptPath();
+		let hooks = settings.hooks || {};
+		removeOldHooks(settings);
+		agentPort();
+		if (HOOK_EVENTS.every((event) => {
+			return (hooks[event] || []).some((group) => group.hooks?.some((h) => {
+				if (event === "PermissionRequest") return h.type === "http" && h.url?.includes("/permission");
+				return h.type === "command" && h.command?.startsWith("&") && h.command?.includes("clawd-hook.js") && h.shell === "powershell";
+			}));
+		})) return {
+			added: false,
+			updated: false
+		};
+		for (const event of HOOK_EVENTS) {
+			let hook;
+			if (event === "PermissionRequest") hook = {
+				type: "http",
+				url: `http://127.0.0.1:${agentPort() || 6e4}/permission`,
+				timeout: 600
+			};
+			else {
+				const { command, shell } = buildHookCommand(event, scriptPath);
+				hook = {
+					type: "command",
+					command,
+					shell,
+					async: true,
+					timeout: 5
+				};
+			}
+			hooks[event] = [{
+				matcher: "",
+				hooks: [hook]
+			}];
+		}
+		settings.hooks = hooks;
+		writeClaudeSettings(settings);
+		return {
+			added: true,
+			updated: false
+		};
+	}
+	function uninstall() {
+		const settings = readClaudeSettings();
+		if (!settings) return { removed: false };
+		let removed = false;
+		if (isOldFormat(settings)) {
+			const before = settings.hooks.length;
+			settings.hooks = settings.hooks.filter((h) => !h.name?.startsWith("erzhi-recording"));
+			if (settings.hooks.length < before) removed = true;
+		}
+		const hooks = settings.hooks || {};
+		for (const event of HOOK_EVENTS) if (hooks[event]) {
+			const before = hooks[event].length;
+			hooks[event] = hooks[event].filter((group) => !group.hooks?.some((h) => h.command?.includes("clawd-hook.js")));
+			if (hooks[event].length === 0) delete hooks[event];
+			else if (hooks[event].length < before) removed = true;
+		}
+		settings.hooks = hooks;
+		writeClaudeSettings(settings);
+		return { removed };
+	}
+	function isInstalled() {
+		const settings = readClaudeSettings();
+		if (!settings) return false;
+		return ((settings.hooks || {})[HOOK_EVENTS[0]] || []).some((group) => group.hooks?.some((h) => h.command?.includes("clawd-hook.js")));
+	}
+	function checkHealth() {
+		const issues = [];
+		if (!readClaudeSettings()) {
+			issues.push("Claude settings file not found");
+			return {
+				healthy: false,
+				issues
+			};
+		}
+		if (!isInstalled()) {
+			issues.push("Hook entry missing");
+			return {
+				healthy: false,
+				issues
+			};
+		}
+		const scriptPath = getHookScriptPath();
+		if (!fs.existsSync(scriptPath)) {
+			issues.push("Hook script file missing");
+			return {
+				healthy: false,
+				issues
+			};
+		}
+		return {
+			healthy: issues.length === 0,
+			issues
+		};
+	}
+	function repair() {
+		if (manualFixRequired) return false;
+		if (repairFailures >= MAX_REPAIR_RETRIES) {
+			manualFixRequired = true;
+			return false;
+		}
+		const result = install();
+		if (result.added || result.updated) {
+			if (checkHealth().healthy) {
+				repairFailures = 0;
+				return true;
+			}
+		}
+		repairFailures++;
+		return false;
+	}
+	function performHealthCheck() {
+		const health = checkHealth();
+		if (!health.healthy) {
+			logger_default.warn("Claude hook health check failed:", health.issues.join(", "));
+			repair();
+		} else {
+			if (repairFailures > 0) repairFailures = 0;
+			if (manualFixRequired) manualFixRequired = false;
+		}
+	}
+	function startWatcher() {
+		if (watchTimer) return;
+		performHealthCheck();
+		watchTimer = setInterval(performHealthCheck, WATCH_INTERVAL_MS);
+		logger_default.info("Claude hook watcher started");
+	}
+	function stopWatcher() {
+		if (watchTimer) {
+			clearInterval(watchTimer);
+			watchTimer = null;
+		}
+	}
+	function getStatus() {
+		const health = checkHealth();
+		return {
+			installed: isInstalled(),
+			scriptExists: fs.existsSync(getHookScriptPath()),
+			claudeExists: readClaudeSettings() !== null,
+			healthy: health.healthy,
+			repairFailures,
+			manualFixRequired
+		};
+	}
+	return {
+		install,
+		uninstall,
+		isInstalled,
+		startWatcher,
+		stopWatcher,
+		getStatus,
+		checkHealth,
+		repair
+	};
+}
+//#endregion
+//#region electron/main/agent-tools/registry.ts
+var logger = {
+	info: () => {},
+	warn: () => {}
+};
+var POLL_INTERVAL_MS = 1e4;
+function createToolRegistry(adapters, pollMs = POLL_INTERVAL_MS) {
+	const statuses = /* @__PURE__ */ new Map();
+	for (const a of adapters) statuses.set(a.id, {
+		id: a.id,
+		nameKey: a.nameKey,
+		running: false,
+		approval: a.approval,
+		working: false,
+		sessions: [],
+		lastProbed: 0,
+		error: false
+	});
+	let timer = null;
+	function pollOnce() {
+		for (const a of adapters) {
+			const st = statuses.get(a.id);
+			try {
+				const running = a.probeRunning();
+				const sessions = a.fetchSessions();
+				st.running = running;
+				st.sessions = sessions;
+				st.working = running && sessions.some((s) => s.state !== "idle");
+				st.lastProbed = Date.now();
+				st.error = false;
+				logger.info(`[ToolRegistry] ${a.id} probed: running=${running}, sessions=${sessions.length}, working=${st.working}`);
+			} catch (e) {
+				st.error = true;
+				st.lastProbed = Date.now();
+				logger.warn(`[ToolRegistry] ${a.id} probe failed:`, e?.message ?? e);
+			}
+		}
+	}
+	function start() {
+		if (timer) return;
+		pollOnce();
+		timer = setInterval(pollOnce, pollMs);
+	}
+	function stop() {
+		if (timer) {
+			clearInterval(timer);
+			timer = null;
+		}
+	}
+	function getStatus() {
+		return Array.from(statuses.values());
+	}
+	return {
+		start,
+		stop,
+		pollOnce,
+		getStatus
+	};
+}
+//#endregion
+//#region electron/main/agent-tools/codex.ts
+var POLL_LIVENESS_MS = 3e4;
+var ACTIVE_WINDOW_MS = 300 * 1e3;
+var MAX_SESSIONS = 5;
+var runningCache = null;
+var runningCacheAt = 0;
+function sessionDir() {
+	return process.env.CODEX_HOME ?? (0, node_path.join)(node_os.default.homedir(), ".codex", "sessions");
+}
+function codexRunning() {
+	const now = Date.now();
+	if (runningCache !== null && now - runningCacheAt < POLL_LIVENESS_MS) return runningCache;
+	try {
+		runningCache = (0, child_process.execSync)("tasklist /NH /FI \"IMAGENAME eq codex.exe\"", {
+			encoding: "utf8",
+			timeout: 2e3
+		}).includes("codex.exe");
+	} catch {
+		runningCache = false;
+	}
+	runningCacheAt = now;
+	return runningCache;
+}
+/** 从会话 jsonl 首条 user 消息里提取简短标签（尽力而为，失败回落 session id） */
+function sessionLabel(file) {
+	try {
+		const first = node_fs.default.readFileSync(file, "utf8").split("\n").find((l) => l.trim());
+		if (!first) return "";
+		const content = JSON.parse(first)?.content;
+		return (Array.isArray(content) ? content.map((c) => typeof c === "string" ? c : c?.text || "").filter(Boolean).join(" ") : typeof content === "string" ? content : "").trim().slice(0, 40) || "";
+	} catch {
+		return "";
+	}
+}
+function createCodexAdapter() {
+	return {
+		id: "codex",
+		nameKey: "tools.codex",
+		approval: "none",
+		probeRunning: codexRunning,
+		fetchSessions() {
+			const dir = sessionDir();
+			let files;
+			try {
+				files = node_fs.default.readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
+			} catch {
+				return [];
+			}
+			const now = Date.now();
+			const recent = files.map((f) => ({
+				file: (0, node_path.join)(dir, f),
+				mtime: node_fs.default.statSync((0, node_path.join)(dir, f), { throwIfNoEntry: false })?.mtimeMs ?? 0
+			})).filter((e) => e.mtime > 0).sort((a, b) => b.mtime - a.mtime).slice(0, MAX_SESSIONS);
+			if (recent.length === 0) return [];
+			const running = codexRunning();
+			return recent.map((e) => {
+				const id = e.file.split(/[\\/]/).pop().replace(/\.jsonl$/, "");
+				const active = running && now - e.mtime < ACTIVE_WINDOW_MS;
+				return {
+					sessionId: `codex:${id}`,
+					agentId: "codex",
+					state: active ? "working" : "idle",
+					updatedAt: Math.round(e.mtime),
+					label: sessionLabel(e.file)
+				};
+			});
+		}
+	};
+}
+//#endregion
+//#region electron/main/agent-bridge.ts
+init_logger();
+var AGENT_SETTINGS_FILE = "agent-settings.json";
+var DEFAULT_AGENT_SETTINGS = { autoAllow: false };
+function agentSettingsFilePath() {
+	const { app } = require("electron");
+	return (0, node_path.join)(app.isPackaged ? app.getPath("userData") : (0, node_path.join)(__dirname, "..", ".."), AGENT_SETTINGS_FILE);
+}
+function loadAgentSettings() {
+	try {
+		const data = node_fs.default.readFileSync(agentSettingsFilePath(), "utf-8");
+		const parsed = JSON.parse(data);
+		return { autoAllow: typeof parsed.autoAllow === "boolean" ? parsed.autoAllow : DEFAULT_AGENT_SETTINGS.autoAllow };
+	} catch {}
+	return { ...DEFAULT_AGENT_SETTINGS };
+}
+function saveAgentSettings(settings) {
+	try {
+		node_fs.default.writeFileSync(agentSettingsFilePath(), JSON.stringify(settings), "utf-8");
+	} catch (e) {
+		logger_default.warn("[AgentBridge] save agent settings failed:", e?.message ?? e);
+	}
+}
+function createAgentBridge(config = {}) {
+	let claudeRunningCache = null;
+	let claudeRunningCacheAt = 0;
+	const CLAUDE_RUNNING_TTL = 3e4;
+	function checkClaudeRunning() {
+		const now = Date.now();
+		if (claudeRunningCache !== null && now - claudeRunningCacheAt < CLAUDE_RUNNING_TTL) return claudeRunningCache;
+		try {
+			const { execSync } = require("child_process");
+			claudeRunningCache = execSync("tasklist /NH /FI \"IMAGENAME eq claude.exe\"", {
+				encoding: "utf8",
+				timeout: 2e3
+			}).includes("claude.exe");
+		} catch {
+			claudeRunningCache = false;
+		}
+		claudeRunningCacheAt = now;
+		return claudeRunningCache;
+	}
+	const stateMachine = createAgentStateMachine({ isClaudeRunning: checkClaudeRunning });
+	const server = createAgentServer(stateMachine);
+	const hookManager = createClaudeHookManager(() => server.getPort());
+	const toolRegistry = createToolRegistry([createCodexAdapter()]);
+	let stateListener = null;
+	let cardListener = null;
+	let autoAllow = loadAgentSettings().autoAllow;
+	stateMachine.subscribe((state, sessions) => {
+		if (stateListener) stateListener(state, sessions);
+	});
+	server.setOnCardChange((card) => {
+		if (autoAllow && card && card.kind === "permission") {
+			logger_default.info(`[AgentBridge] auto-allow permission: tool=${card.toolName}`);
+			server.resolvePendingPermission("allow");
+			return;
+		}
+		if (cardListener) cardListener(card);
+	});
+	async function start() {
+		stateMachine.start();
+		toolRegistry.start();
+		if (await server.start() !== null) {
+			if (config.autoInstallHooks !== false) {
+				const result = hookManager.install();
+				if (result.added) logger_default.info("Claude Code hooks installed");
+				if (result.updated) logger_default.info("Claude Code hooks updated");
+			}
+			if (config.autoStartWatcher !== false && hookManager.isInstalled()) hookManager.startWatcher();
+		}
+	}
+	function stop() {
+		hookManager.stopWatcher();
+		toolRegistry.stop();
+		stateMachine.stop();
+		server.stop();
+	}
+	function getServer() {
+		return server;
+	}
+	function getStateMachine() {
+		return stateMachine;
+	}
+	function getHookManager() {
+		return hookManager;
+	}
+	function setStateListener(listener) {
+		stateListener = listener;
+	}
+	function setCardListener(listener) {
+		cardListener = listener;
+	}
+	function resolvePermission(behavior) {
+		server.resolvePendingPermission(behavior);
+	}
+	function dismissQuestion() {
+		server.dismissQuestion();
+	}
+	function submitQuestion(sessionId, answers) {
+		server.submitQuestion(sessionId, answers);
+	}
+	function installHooks() {
+		hookManager.install();
+	}
+	function uninstallHooks() {
+		hookManager.uninstall();
+	}
+	function setAutoAllow(enabled) {
+		autoAllow = enabled;
+		saveAgentSettings({ autoAllow });
+		logger_default.info(`[AgentBridge] autoAllow=${enabled} (persisted)`);
+	}
+	function getAutoAllow() {
+		return autoAllow;
+	}
+	function getStatus() {
+		const sessionsRaw = stateMachine.getSessions();
+		const realCount = sessionsRaw.length;
+		const displayState = stateMachine.getCurrentState();
+		const sessionIds = sessionsRaw.map((s) => s.sessionId).join(",");
+		logger_default.info(`[AgentBridge] getStatus: real_count=${realCount}, ids=[${sessionIds}], display=${displayState}`);
+		const sessionCount = stateMachine.getSessions().length;
+		const cRunning = checkClaudeRunning();
+		return {
+			serverRunning: server.getPort() !== null,
+			port: server.getPort(),
+			hookInstalled: hookManager.isInstalled(),
+			hookManagerStatus: hookManager.getStatus(),
+			displayState,
+			currentCard: server.getSafeCurrentCard(),
+			sessionCount,
+			claudeRunning: cRunning,
+			tools: [{
+				id: "claude-code",
+				nameKey: "tools.claudeCode",
+				running: cRunning,
+				approval: "hook",
+				working: displayState !== "idle",
+				sessions: sessionsRaw.map((s) => ({
+					sessionId: s.sessionId,
+					label: s.toolName || ""
+				})),
+				error: false,
+				lastProbed: 0
+			}, ...toolRegistry.getStatus()]
+		};
+	}
+	return {
+		start,
+		stop,
+		getServer,
+		getStateMachine,
+		getHookManager,
+		getStatus,
+		setStateListener,
+		setCardListener,
+		resolvePermission,
+		dismissQuestion,
+		submitQuestion,
+		installHooks,
+		uninstallHooks,
+		setAutoAllow,
+		getAutoAllow
+	};
+}
+//#endregion
+//#region electron/main/local-video-protocol.ts
+var SCHEME = "local-video";
+/** 必须在 app.ready 之前调用：注册 scheme 为 privileged（支持流式/Range/cookie）。 */
+function registerLocalVideoScheme() {
+	electron.protocol.registerSchemesAsPrivileged([{
+		scheme: SCHEME,
+		privileges: {
+			standard: true,
+			secure: true,
+			supportFetchAPI: true,
+			stream: true
+		}
+	}]);
+}
+/** 在 app.ready 之后调用：实现协议 handler，按 Range 返回文件流。 */
+function registerLocalVideoProtocol() {
+	electron.protocol.handle(SCHEME, (request) => {
+		const url = new URL(request.url);
+		let filePath = decodeURIComponent(url.pathname).replace(/^\//, "");
+		const range = request.headers.get("range");
+		let size = 0;
+		try {
+			size = (0, node_fs.statSync)(filePath).size;
+		} catch {
+			return new Response("File not found: " + filePath, { status: 404 });
+		}
+		const ext = (0, node_path.extname)(filePath).toLowerCase();
+		const mime = ext === ".mp4" ? "video/mp4" : ext === ".webm" ? "video/webm" : "application/octet-stream";
+		if (range) {
+			const m = /bytes=(\d*)-(\d*)/.exec(range);
+			const start = m && m[1] ? parseInt(m[1], 10) : 0;
+			const end = m && m[2] ? parseInt(m[2], 10) : size - 1;
+			const cappedEnd = Math.min(end, size - 1);
+			const stream = (0, node_fs.createReadStream)(filePath, {
+				start,
+				end: cappedEnd
+			});
+			return new Response(node_stream.Readable.toWeb(stream), {
+				status: 206,
+				headers: {
+					"Content-Range": `bytes ${start}-${cappedEnd}/${size}`,
+					"Accept-Ranges": "bytes",
+					"Content-Length": String(cappedEnd - start + 1),
+					"Content-Type": mime
+				}
+			});
+		}
+		const stream = (0, node_fs.createReadStream)(filePath);
+		return new Response(node_stream.Readable.toWeb(stream), {
+			status: 200,
+			headers: {
+				"Content-Length": String(size),
+				"Content-Type": mime,
+				"Accept-Ranges": "bytes"
+			}
+		});
+	});
+}
+//#endregion
+//#region electron/main/todo-reminders.ts
+/**
+* 返回「已到提醒时刻」的条目。
+* 判定口径：`reminder` 非空 && `reminder <= now`(ISO 字符串可直接字典序比较，皆 UTC) && `!reminderFired`。
+* 已被触发的（reminderFired=true）不再重复返回。
+* 纯函数：不改动入参，返回新数组。
+*/
+function computeDueReminders(items, now) {
+	const nowIso = new Date(now).toISOString();
+	return items.filter((it) => !!it.reminder && !it.reminderFired && !(it.type === "todo" && it.done) && it.reminder <= nowIso);
+}
+//#endregion
+//#region electron/main/todo-scheduler.ts
+init_logger();
+var CHECK_INTERVAL = 3e4;
+var timer = null;
+function checkReminders() {
+	const due = computeDueReminders(loadItems(), Date.now());
+	if (due.length === 0) return;
+	for (const it of due) {
+		const text = stripHtml(it.content).trim();
+		showTodoReminder(it.type === "memo" && stripHtml(it.title).trim() ? stripHtml(it.title).trim() : text.slice(0, 24), text.slice(0, 90));
+		markReminderFired(it.id);
+	}
+	if (!isTodoWindowVisible()) setTodoBadgeFlash(true);
+}
+function startTodoScheduler() {
+	if (timer) return;
+	checkReminders();
+	timer = setInterval(checkReminders, CHECK_INTERVAL);
+	logger_default.info("Todo reminder scheduler started");
+}
+function stopTodoScheduler() {
+	if (timer) {
+		clearInterval(timer);
+		timer = null;
+	}
+	logger_default.info("Todo reminder scheduler stopped");
+}
+//#endregion
+//#region electron/main/index.ts
+init_logger();
+init_i18n();
+registerLocalVideoScheme();
+var mainWindow = null;
+var aiWindow = null;
+var settingsWindow = null;
+var agentBridge = null;
+var retryPendingTimer = null;
+var VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
+function getIcon() {
+	const iconPath = electron.app.isPackaged ? (0, node_path.join)(process.resourcesPath, "logo.ico") : (0, node_path.join)(__dirname, "../../public/logo.ico");
+	return electron.nativeImage.createFromPath(iconPath);
+}
+function createWindow(preloadPath) {
+	mainWindow = new electron.BrowserWindow({
+		icon: getIcon(),
+		width: 550,
+		height: 420,
+		minWidth: 420,
+		minHeight: 340,
+		show: false,
+		skipTaskbar: false,
+		frame: false,
+		titleBarStyle: "hidden",
+		title: "二支录制",
+		backgroundColor: "#eaeaec",
+		webPreferences: {
+			preload: preloadPath,
+			contextIsolation: true,
+			nodeIntegration: false,
+			sandbox: false,
+			backgroundThrottling: false
+		}
+	});
+	if (VITE_DEV_SERVER_URL) mainWindow.loadURL(VITE_DEV_SERVER_URL);
+	else mainWindow.loadFile((0, node_path.join)(process.env.DIST, "index.html"));
+	mainWindow.on("close", (e) => {
+		if (!electron.app.isQuitting) {
+			e.preventDefault();
+			mainWindow?.webContents.send("app-main-window-close");
+			mainWindow?.hide();
+		}
+	});
+}
+electron.app.on("gpu-process-crashed", (_event, details) => {
+	logger_default.error("GPU process crashed:", JSON.stringify(details));
+});
+electron.app.whenReady().then(() => {
+	process.env.DIST = (0, node_path.join)(__dirname, "../../dist");
+	process.env.VITE_PUBLIC = electron.app.isPackaged ? process.env.DIST : (0, node_path.join)(__dirname, "../../public");
+	registerLocalVideoProtocol();
+	ensureLogPath();
+	logger_default.info("App starting...");
+	setRegistryLogger(logger_default);
+	setHwEncoderLogger(logger_default);
+	setStateMachineLogger(logger_default);
+	setI18nLocale(getBallSettings().locale);
+	const preloadPath = (0, node_path.join)(__dirname, "..", "preload", "index.cjs");
+	try {
+		electron.session.defaultSession.clearCache();
+	} catch (e) {
+		logger_default.warn("clearCache() failed:", e);
+	}
+	agentBridge = createAgentBridge({
+		autoInstallHooks: true,
+		autoStartWatcher: true
+	});
+	agentBridge.start().catch((err) => {
+		logger_default.error("Agent bridge start failed:", err?.message ?? err);
+	});
+	registerIpcHandlers(agentBridge);
+	createWindow(preloadPath);
+	(0, import_region_selector.setMainWindow)(mainWindow);
+	(0, import_tray.createTray)();
+	registerGlobalShortcuts(mainWindow);
+	showFloatingBallIfVisible();
+	reportIP();
+	registerTodoBadgeHandlers();
+	startTodoScheduler();
+	refreshTodoBadge();
+	syncStickyNotes();
+	try {
+		const ballSettings = getBallSettings();
+		electron.app.setLoginItemSettings({ openAtLogin: ballSettings.openAtLogin });
+	} catch (e) {
+		logger_default.error("Sync openAtLogin on startup failed:", e);
+	}
+	electron.ipcMain.handle("show-ai-window", () => {
+		showAiWindow();
+	});
+	electron.ipcMain.handle("show-settings-window", () => {
+		showSettingsWindow();
+	});
+	electron.ipcMain.handle("get-app-i18n", () => getAppI18nBundle());
+	electron.ipcMain.handle("show-main-window", () => {
+		if (mainWindow && !mainWindow.isDestroyed()) {
+			mainWindow.show();
+			mainWindow.focus();
+		}
+	});
+	process.on("clawd-show-record-window", () => {
+		if (mainWindow && !mainWindow.isDestroyed()) {
+			mainWindow.show();
+			mainWindow.focus();
+		}
+	});
+	process.on("clawd-show-ai-window", () => {
+		showAiWindow();
+	});
+	process.on("clawd-show-settings-window", () => {
+		showSettingsWindow();
+	});
+	process.on("clawd-show-todo-window", () => {
+		showTodoWindow();
+	});
+	retryPendingTimer = setInterval(retryPending, 3e4);
+	electron.app.on("activate", () => {
+		if (electron.BrowserWindow.getAllWindows().length === 0) createWindow(preloadPath);
+	});
+});
+electron.app.on("window-all-closed", () => {});
+electron.app.on("before-quit", () => {
+	electron.app.isQuitting = true;
+	for (const win of electron.BrowserWindow.getAllWindows()) if (!win.isDestroyed()) try {
+		win.webContents.send("app-before-quit");
+	} catch {}
+	(0, import_region_selector.hideRegionBorder)();
+	(0, import_region_selector.hideFloatingIsland)();
+	(0, import_region_selector.hideCameraPreview)();
+	hideFloatingBall();
+	agentBridge?.stop();
+	hideAiIsland();
+	killAllConversions();
+	stopTodoScheduler();
+	closeTodoWindow();
+	hideTodoReminder();
+	closeAllStickyNotes();
+	unregisterGlobalShortcuts();
+	(0, import_tray.destroyTray)();
+	if (retryPendingTimer) {
+		clearInterval(retryPendingTimer);
+		retryPendingTimer = null;
+	}
+	mainWindow = null;
+	aiWindow = null;
+	settingsWindow = null;
+});
+function showAiWindow() {
+	if (aiWindow && !aiWindow.isDestroyed()) {
+		aiWindow.show();
+		aiWindow.focus();
+		return;
+	}
+	const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
+	const preloadPath = (0, node_path.join)(__dirname, "..", "preload", "index.cjs");
+	aiWindow = new electron.BrowserWindow({
+		icon: getIcon(),
+		width: 480,
+		height: 540,
+		minWidth: 400,
+		minHeight: 400,
+		show: false,
+		skipTaskbar: false,
+		frame: false,
+		titleBarStyle: "hidden",
+		title: "AI 助手",
+		backgroundColor: "#eaeaec",
+		webPreferences: {
+			preload: preloadPath,
+			contextIsolation: true,
+			nodeIntegration: false,
+			sandbox: false
+		}
+	});
+	if (VITE_DEV_SERVER_URL) aiWindow.loadURL(`${VITE_DEV_SERVER_URL}#/ai?t=${Date.now()}`);
+	else aiWindow.loadFile((0, node_path.join)(process.env.DIST, "index.html"), { hash: "/ai" });
+	aiWindow.once("ready-to-show", () => {
+		aiWindow?.show();
+	});
+	aiWindow.on("closed", () => {
+		aiWindow = null;
+	});
+}
+function showSettingsWindow() {
+	if (settingsWindow && !settingsWindow.isDestroyed()) {
+		settingsWindow.show();
+		settingsWindow.focus();
+		return;
+	}
+	const preloadPath = (0, node_path.join)(__dirname, "..", "preload", "index.cjs");
+	settingsWindow = new electron.BrowserWindow({
+		icon: getIcon(),
+		width: 420,
+		height: 480,
+		minWidth: 380,
+		minHeight: 420,
+		show: false,
+		skipTaskbar: false,
+		frame: false,
+		titleBarStyle: "hidden",
+		title: "设置",
+		backgroundColor: "#eaeaec",
+		webPreferences: {
+			preload: preloadPath,
+			contextIsolation: true,
+			nodeIntegration: false,
+			sandbox: false
+		}
+	});
+	if (VITE_DEV_SERVER_URL) settingsWindow.loadURL(`${VITE_DEV_SERVER_URL}#/settings?t=${Date.now()}`);
+	else settingsWindow.loadFile((0, node_path.join)(process.env.DIST, "index.html"), { hash: "/settings" });
+	settingsWindow.once("ready-to-show", () => {
+		settingsWindow?.show();
+	});
+	settingsWindow.on("closed", () => {
+		settingsWindow = null;
+	});
+}
+//#endregion

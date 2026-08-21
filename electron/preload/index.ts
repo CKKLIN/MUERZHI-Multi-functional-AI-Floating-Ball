@@ -188,17 +188,13 @@ const electronAPI = {
   showAiWindow: () => ipcRenderer.invoke('show-ai-window'),
   showSettingsWindow: () => ipcRenderer.invoke('show-settings-window'),
   showMainWindow: () => ipcRenderer.invoke('show-main-window'),
-  showMusicWindow: () => ipcRenderer.invoke('show-music-window'),
-  closeMusicWindow: () => ipcRenderer.invoke('close-music-window'),
-  musicGetStatus: () => ipcRenderer.invoke('music-get-status'),
-  musicControl: (cmd: string) => ipcRenderer.invoke('music-control', cmd),
   getFloatingBallSettings: () => ipcRenderer.invoke('get-floating-ball-settings'),
   setFloatingBallSettings: (patch: Partial<{
     visible: boolean
     alwaysOnTop: boolean
     openAtLogin: boolean
     locale: 'zh' | 'en'
-    menuItems: Record<'record' | 'music' | 'ai' | 'todo' | 'settings', boolean>
+    menuItems: Record<'record' | 'ai' | 'todo' | 'settings', boolean>
   }>) =>
     ipcRenderer.invoke('set-floating-ball-settings', patch),
   resetFloatingBallPosition: () => ipcRenderer.invoke('reset-floating-ball-position'),

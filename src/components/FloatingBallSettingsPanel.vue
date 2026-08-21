@@ -11,14 +11,13 @@ const openAtLogin = ref(false)
 const locale = ref<AppLocale>('zh')
 const snapGutter = ref(0)
 const menuItems = ref<Record<BallMenuKey, boolean>>({
-  record: true, music: true, ai: true, todo: true, settings: true,
+  record: true, ai: true, todo: true, settings: true,
 })
 const loading = ref(true)
 
 /** 悬浮球菜单开关清单（key 与主进程 MENU_CATALOG / 设置 menuItems 一致）；label 走 i18n */
 const BALL_MENUS: { key: BallMenuKey; labelKey: string }[] = [
   { key: 'record', labelKey: 'ball.menu.record' },
-  { key: 'music', labelKey: 'ball.menu.music' },
   { key: 'ai', labelKey: 'ball.menu.ai' },
   { key: 'todo', labelKey: 'ball.menu.todo' },
   { key: 'settings', labelKey: 'ball.menu.settings' },
