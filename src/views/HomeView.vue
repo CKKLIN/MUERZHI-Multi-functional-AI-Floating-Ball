@@ -124,12 +124,51 @@ function handleResume() {
 
 async function handleStop() {
   window.electronAPI.hideRegionBorder()
-  recording.stop()
+  recording.stop() // 不 await：正常停止后立即释放摄像头/音频，转换(ffmpeg)在后台进行
   await audio.cleanup()
   previewMicTracks = []
   previewSysTracks = []
   stopCamera()
   window.electronAPI.showAiIsland()
+}
+
+// 释放主（录屏）窗口占用的全部资源：录制中先落盘停止，再清掉摄像头/音频/预览流/贴边取景框
+// 与悬浮岛。窗口关闭只是 hide（非 destroy），onUnmounted 不会触发，因此关窗口时必须显式走这里。
+let releasingRecording = false
+async function releaseRecordingResources() {
+  if (releasingRecording) return // 重入保护：转换还在途时又被关闭，不叠加第二段释放
+  releasingRecording = true
+  try {
+    if (store.canStop) {
+      // 正在录制：完整走停止流程（含落盘保存），复用 handleStop 的资源释放逻辑。
+      // 但这是"窗口被关闭"的停止，须抑制录制停止后自动重开主窗口（否则关掉的窗口又弹回来）
+      recording.setReopenOnStop(false)
+      // 显式 await 落盘：正常停止(fire-and-forget)后 handleRecordingStop 自己会读 elapsedSeconds；
+      // 但关闭路径随后要 resetState()，若 stop 未被 await，resetState 会抢先清零 elapsedSeconds，
+      // 而 handleRecordingStop 保存时长时读到 0 → 这次关闭的录制时长会被记成 0。
+      window.electronAPI.hideRegionBorder()
+      await recording.stop()
+      await audio.cleanup()
+      previewMicTracks = []
+      previewSysTracks = []
+      stopCamera()
+    } else {
+      // 未在录制：仅释放已开启的预览资源（摄像头/试音流）
+      await audio.cleanup()
+      previewMicTracks = []
+      previewSysTracks = []
+      stopCamera()
+    }
+    // 无论是否录制中，都关掉录制用 overlay（取景框/悬浮岛/摄像头预览）
+    window.electronAPI.hideCameraPreview()
+    window.electronAPI.hideRegionBorder()
+    window.electronAPI.hideFloatingIsland()
+    store.resetState()
+  } catch (err: any) {
+    console.warn('释放录屏窗口资源失败:', err?.message)
+  } finally {
+    releasingRecording = false
+  }
 }
 
 // 摄像头控制
@@ -363,6 +402,9 @@ const cleanupToolbar = window.electronAPI.onToolbarAction((action: string) => {
     } else {
       window.electronAPI.showWindow()
       store.resetState()
+      // 未开启录制就关闭悬浮岛：resetState 只清 isCameraEnabled 布尔，不会停掉渲染层
+      // 已acquired的 rendering.cameraStream 硬件流 —— 须显式 stopCamera()，否则摄像头不释放。
+      stopCamera()
       window.electronAPI.showAiIsland()
     }
   }
@@ -418,6 +460,13 @@ onMounted(() => {
     window.electronAPI.hideRegionBorder()
     window.electronAPI.hideFloatingBall()
   })
+
+  // 主（录屏）窗口关闭：释放所有与录屏窗口相关的资源。
+  // 窗口 hide 而非 destroy，vue onUnmounted 不会触发，故须在此显式释放。
+  const cleanupMainWindowClose = window.electronAPI.onMainWindowClose(() => {
+    releaseRecordingResources()
+  })
+  onUnmounted(() => cleanupMainWindowClose())
 
   // 显示系统级悬浮球
   window.electronAPI.showFloatingBall()

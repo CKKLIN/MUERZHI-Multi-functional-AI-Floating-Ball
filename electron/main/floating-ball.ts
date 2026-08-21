@@ -258,6 +258,8 @@ export function showFloatingBall() {
 
   floatingBallWindow.once('ready-to-show', () => {
     floatingBallWindow?.show()
+    // 恢复位置靠边时重建吸附态（水滴贴合），避免"重启后球还靠边但失去吸附形"
+    restoreSnapIfNeeded()
     // 预创建 SVG 菜单内容，让首次展开时 ensureMenu() 为空操作，避免首次 DOM 创建导致布局延迟闪烁
     if (floatingBallWindow && !floatingBallWindow.isDestroyed()) {
       floatingBallWindow.webContents.executeJavaScript('ensureMenu()').catch(() => {})
@@ -276,10 +278,6 @@ export function showFloatingBall() {
   // 因此展开态拖拽也不会污染 ballPos，收起后不会跳回旧位置。
   floatingBallWindow.on('move', () => {
     if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
-    // 吸附期（动画中或已吸附为水滴小窗）：窗口尺寸被 shrink，触发的 move 会用 44×58 反推
-    // 出错误的 ballPos，污染贴边位置与持久化 —— 跳过，吸附位置在动画终态统一写回。
-    // 拖动会先 clearSnap() 置空两者，后续 move 恢复正常 66 反推。
-    if (snapTimer || snappedSide) return
     const [wx, wy] = floatingBallWindow.getPosition()
     const [ww, wh] = floatingBallWindow.getSize()
     ballPos = {
@@ -328,10 +326,10 @@ let collapseTimer: NodeJS.Timeout | null = null
 
 async function expandBall() {
   if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
-  // 吸附态点击水滴展开：先清吸附（移除 body.snap-* → #ball/.core 恢复 66，否则 snap 样式
-  // 会把载体钉在 44×58，240 展开的 SVG 菜单解析在错误尺寸上）。水滴位置由 ballPos 保留，
-  // 展开以它为中心向外。
-  clearSnap()
+  // 展开是"普通圆球 + 圆环菜单"，吸附(水滴)只属于收起态。展开前仅清除水滴*视觉*(移除
+  // body.snap-* 让菜单正常开花)，但保留内存里的 snappedSide——展开并未改变贴边位置，
+  // 收起时按已保存的边直接恢复水滴，避免位置重判偶发失效。
+  clearSnapVisualOnly()
   // 取消未完成的收起收尾（快速连点场景：展开要覆盖尚在合拢的动画，避免中途缩窗/清 DOM 抖动）
   if (collapseTimer) {
     clearTimeout(collapseTimer)
@@ -413,7 +411,37 @@ async function collapseBall() {
     // 不再做二次 setBounds 修正（那是快速切换下偏移累计的根源）。
     // 66px 态的 move 事件会读到实际落点并刷新 ballPos，作为下次展开/收起的准确锚点。
     floatingBallWindow.setOpacity(1)
+    // 收起后恢复吸附态的核心：优先用展开时保留的 snappedSide（展开只清了视觉、未动位置），
+    // 直接把球钉回对应屏幕边缘且重发水滴视觉——不靠位置重判（DWM/缩放微调会让坐标偶发偏离，
+    // 导致位置重判不命中而失效成圆球）。snappedSide 为 null（本就没吸附/已拖动脱离）才回退到位置重判。
+    restoreSnapIfNeeded()
   }, 920) // 大于"动画时长(0.5s)+最大错落延迟(0.4s)"，确保最后一片也合拢完再清 DOM
+}
+
+/** 立即收起成 66 报纸球（非动画版收起）：从 240 展开态同帧缩成 66，用于"展开态起拖/贴屏"。
+ *  与 collapseBall 的 920ms 动画收起不同，这里不播花开/合拢、立即缩窗并清 DOM，
+ *  以免拖动锚点/贴屏判定用 240 几何造成错乱。若正在动画收起则取消其收尾定时器。 */
+function collapseToBallImmediate() {
+  if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
+  isBallExpanded = false
+  // 锚定 66 球左上角（权威锚点），而非临时位置
+  let bx: number, by: number
+  if (ballPos) {
+    bx = ballPos.x; by = ballPos.y
+  } else {
+    const [x, y] = floatingBallWindow.getPosition()
+    bx = Math.round(x + RING_SIZE / 2 - BALL_SIZE / 2)
+    by = Math.round(y + RING_SIZE / 2 - BALL_SIZE / 2)
+  }
+  try {
+    floatingBallWindow.webContents.executeJavaScript(
+      `document.body.classList.remove('expanded'); document.body.classList.remove('no-anim'); isExpanded=false; var s=document.getElementById('ringSvg'); if(s){while(s.firstChild){s.removeChild(s.firstChild)}} menuCreated=false; void 0;`
+    ).catch(() => {})
+  } catch {}
+  if (collapseTimer) { clearTimeout(collapseTimer); collapseTimer = null }
+  floatingBallWindow.setOpacity(0)
+  setBallBounds({ x: bx, y: by, width: BALL_SIZE, height: BALL_SIZE })
+  floatingBallWindow.setOpacity(1)
 }
 
 // 转发操作到主窗口
@@ -558,10 +586,22 @@ body.expanded .arc-label{
 /* 中心按钮 */
 #trigger{
   position:absolute;z-index:10;
+  left:5px;top:5px;                /* 显式居中(66窗内 56 居中) ⇒ 吸附时 left/top 可参与插值 */
   width:56px;height:56px;border-radius:50%;border:none;
-  background:#eceef3;
+  background:linear-gradient(90deg, #f2f4f8, #dfe3ea);  /* 浅渐变基底：与吸附侧渐变可插值，色相丝滑过渡 */
   cursor:pointer;
   display:flex;align-items:center;justify-content:center;
+  /* 吸附过渡：几何(位置/尺寸/圆角)+色彩+光影 同一过渡 ⇒ 拖向边缘时球体被'磁吸'牵引拉伸、
+     间隙渐消、最终弧面贴墙的丝滑变形(对比此前 DOM 一换即跳变)。 */
+  transition:
+    left .5s cubic-bezier(.34,1.3,.64,1),
+    top .5s cubic-bezier(.34,1.3,.64,1),
+    width .5s cubic-bezier(.34,1.3,.64,1),
+    height .5s cubic-bezier(.34,1.3,.64,1),
+    border-radius .5s ease,
+    background .6s ease,
+    box-shadow .6s ease,
+    transform .2s ease;
 }
 #trigger:hover{transform:scale(1.08)}
 .logo-img{
@@ -569,50 +609,63 @@ body.expanded .arc-label{
   border-radius:50%;
   object-fit:cover;
   pointer-events:none;
+  /* 吸附时 logo 随之缩小，同步过渡避免骤变 */
+  transition:width .5s ease, height .5s ease, border-radius .5s ease;
 }
 #trigger:active{transform:scale(0.95)}
 /* 水滴吸附（G5）：吸附后从 66px 圆球收缩成更小的半透明水滴。
-   关键 = 左右/外侧保留外圆角（圆润水滴感），贴边那面贴近屏幕边缘（略留 2px 防 Windows
-   DWM 裁切），整体变小、半透明、不太显眼。窗口仍保持 66px 透明窗（不 shrink），
-   只把 trigger 绝对定位到对应边缘并收小，避免牵动 setBounds/拖动/环形菜单几何。
-   每边独立：贴哪边就把 trigger 推到那边，贴边侧无外延半径（flat），外侧两角 15px 圆角。 */
-/* ─ 吸附于垂直边（左/右）：竖向水滴胶囊。
-   贴边那侧用大圆角圆润地"鼓出"到屏幕边缘（绝非直角），外侧两端全圆。─ */
+   关键 = 贴边那侧 29px 大圆角圆润地"鼓出"到屏幕边缘（水滴粘结感，绝非直角），
+   外侧两端全圆，整体变小、半透明、不太显眼。窗口仍保持 66px 透明窗（不 shrink），
+   只把 trigger 绝对定位到对应边缘，避免牵动 setBounds/拖动/环形菜单几何。
+   每边独立：贴哪边就把 trigger 推到那边，贴边侧大圆角鼓出，外侧两角全圆。 */
+/* ─ 吸附于垂直边（左/右）：竖向水滴胶囊，贴边那侧 29px 圆头直接抵住屏幕边沿(0)，
+   外侧两端 999 全圆。窗口仍保持 66px，仅把 trigger 推到对应边缘，胶囊圆头抵到屏幕边缘。 ─ */
 body.snap-left #trigger{
-  position:absolute; width:44px; height:58px; left:0; top:0;
-  border-radius:29px 999px 999px 29px; /* 贴边(左)端 29px≈半高圆润鼓出，外(右)端全圆 */
-  background:rgba(236,238,243,0.72); opacity:0.88;
-  box-shadow:0 3px 9px rgba(0,0,0,0.15);
+  position:absolute;
+  width:44px; height:58px;          /* 竖向胶囊，贴屏幕左缘 */
+  left:0; top:4px;
+  border-radius:29px 999px 999px 29px; /* 贴边(左)两端 29px 圆头抵缘，右缘两端全圆 */
+  background:linear-gradient(90deg, rgba(244,248,255,0.96) 0%, rgba(230,233,242,0.92) 100%);
+  opacity:1;
+  /* 方向光影：左=贴边侧阴影变浅(贴近屏幕)，右=屏内保留悬浮高光 */
+  box-shadow:-3px 0 8px rgba(0,0,0,0.10), 3px 0 6px rgba(0,0,0,0.05), inset 1px 0 5px rgba(255,255,255,0.5);
 }
 body.snap-right #trigger{
-  position:absolute; width:44px; height:58px; right:0; top:0;
-  border-radius:999px 29px 29px 999px; /* 镜像：外(左)全圆，贴边(右)端 29px 鼓出 */
-  background:rgba(236,238,243,0.72); opacity:0.88;
-  box-shadow:0 3px 9px rgba(0,0,0,0.15);
+  position:absolute;
+  width:44px; height:58px;
+  left:22px; top:4px;               /* ← 22=66-44，显式左定位，盖掉 base 的 left:5px，右缘贴窗右缘无空隙 */
+  border-radius:999px 29px 29px 999px; /* 镜像:贴边(右)两端 29px 圆头抵缘,左缘两端全圆 */
+  background:linear-gradient(270deg, rgba(244,248,255,0.96) 0%, rgba(230,233,242,0.92) 100%);
+  opacity:1;
+  /* 右=贴边阴影变浅，左=屏内侧保留高光 */
+  box-shadow:3px 0 8px rgba(0,0,0,0.10), -3px 0 6px rgba(0,0,0,0.05), inset -1px 0 5px rgba(255,255,255,0.5);
 }
-/* ─ 吸附水平边：横向水滴胶囊，贴边侧大圆角鼓出，外侧两端全圆 ─ */
+/* ─ 吸附水平边:横向水滴胶囊,贴边侧圆头抵缘,外侧两端全圆 ─ */
 body.snap-top #trigger{
-  position:absolute; width:58px; height:44px; left:0; top:0;
-  border-radius:29px 29px 999px 999px; /* 贴边(上)两端 29px 鼓出，外(下)端全圆 */
-  background:rgba(236,238,243,0.72); opacity:0.88;
-  box-shadow:0 3px 9px rgba(0,0,0,0.15);
+  position:absolute;
+  width:58px; height:44px;
+  left:4px; top:0;
+  border-radius:29px 29px 999px 999px; /* 贴边(上)两圆头抵缘,下缘两端全圆 */
+  background:linear-gradient(180deg, rgba(244,248,255,0.96) 0%, rgba(230,233,242,0.92) 100%);
+  opacity:1;
+  /* 上=贴边阴影变浅，下=屏内侧保留高光 */
+  box-shadow:0 -3px 8px rgba(0,0,0,0.10), 0 3px 6px rgba(0,0,0,0.05), inset 0 1px 5px rgba(255,255,255,0.5);
 }
 body.snap-bottom #trigger{
-  position:absolute; width:58px; height:44px; left:0; bottom:0;
-  border-radius:999px 999px 29px 29px; /* 贴边(下)两端 29px 鼓出，外(上)端全圆 */
-  background:rgba(236,238,243,0.72); opacity:0.88;
-  box-shadow:0 3px 9px rgba(0,0,0,0.15);
+  position:absolute;
+  width:58px; height:44px;
+  left:4px; top:22px;               /* ← 22=66-44，显式顶定位，盖掉 base 的 top:5px，下缘贴窗缘无空隙 */
+  border-radius:999px 999px 29px 29px; /* 贴边(下)两圆头抵缘,上缘两端全圆 */
+  background:linear-gradient(0deg, rgba(244,248,255,0.96) 0%, rgba(230,233,242,0.92) 100%);
+  opacity:1;
+  /* 下=贴边阴影变浅，上=屏内侧保留高光 */
+  box-shadow:0 3px 8px rgba(0,0,0,0.10), 0 -3px 6px rgba(0,0,0,0.05), inset 0 -1px 5px rgba(255,255,255,0.5);
 }
-/* 吸附＝窗口物理 shrink：同步把 #ball 与 .core 缩到水滴尺寸，trigger fill 小窗无透明缝隙 */
-body.snap-left #ball, body.snap-left .core, body.snap-right #ball, body.snap-right .core{ width:44px; height:58px; }
-body.snap-top #ball, body.snap-top .core, body.snap-bottom #ball, body.snap-bottom .core{ width:58px; height:44px; }
-/* 吸附时 logo 缩小、气泡让位（水滴小窗无处放气泡） */
+/* 吸附时 logo 随之缩小、降低存在感 */
 body.snap-left .logo-img, body.snap-right .logo-img,
 body.snap-top .logo-img, body.snap-bottom .logo-img{
   width:26px; height:26px; border-radius:13px; object-fit:cover;
 }
-body.snap-left #ballBadge, body.snap-right #ballBadge,
-body.snap-top #ballBadge, body.snap-bottom #ballBadge{ display:none; }
 body.snap-bottom #trigger:hover, body.snap-top #trigger:hover,
 body.snap-left #trigger:hover, body.snap-right #trigger:hover{ transform:none; }
 
@@ -640,6 +693,13 @@ body.snap-left #trigger:hover, body.snap-right #trigger:hover{ transform:none; }
   50%{opacity:0.35;transform:scale(0.8)}
 }
 body.expanded #ballBadge{display:none} /* 展开态让出花瓣，避免遮挡菜单 */
+
+/* ─ 吸附时待办气泡贴住水滴外侧上角(远离贴边那一侧)── base 的 top:0/right:0 在贴左/贴下时
+   会脱离移位后的水滴，需随吸附方向把气泡挪到水滴的外侧上角。 ─ */
+body.snap-left #ballBadge{ top:2px; right:20px; }   /* 水滴贴左缘(左0..44)，气泡贴其外侧(右)上角 */
+body.snap-right #ballBadge{ top:2px; right:0; }     /* 水滴贴右缘，气泡贴其外侧(右)上角=窗外右上 */
+body.snap-top #ballBadge{ top:0; right:6px; }       /* 水滴贴顶缘，气泡贴其外侧(下/右)角 */
+body.snap-bottom #ballBadge{ top:24px; right:4px; } /* 水滴贴下缘(下/右缩)，气泡贴其外侧(上)角逐上 */
 
 </style>
 </head>
@@ -843,6 +903,9 @@ trigger.addEventListener('pointermove', function(e){
   if(!dragging){
     if(Math.abs(e.screenX - dsX) <= 4 && Math.abs(e.screenY - dsY) <= 4) return
     dragging = true
+    // 真正开始拖动（位移超过阈值）才脱离吸附——区别于 pointerdown 时仅点击/展开菜单。
+    // 若在 drag-start 里清吸附，点击 trigger 展开菜单也会被误清成普通圆球。
+    ipcRenderer.send('floating-ball-drag-clear', e.screenX, e.screenY)
   }
   ipcRenderer.send('floating-ball-move', e.screenX, e.screenY)
 })
@@ -896,14 +959,63 @@ document.addEventListener('click',function(e){
 
 // === 屏幕边缘水滴吸附（G5） ===
 // 松手靠近屏幕某边（阈值内）→ 弹性过渡贴到该边，视觉呈"水滴粘在边缘"的圆润贴合
-//（渲染层按吸附边把对应两角收平为直角，形成粘边半圆）。拖动即脱离（drag-start 清理）。
+//（渲染层按吸附边切换 body.snap-* class 触发水滴/圆角贴合）。拖动即脱离（drag-start 清理）。
+// 吸附是内存态：位置持久化但吸附标记不回存。show 恢复位置后若判定贴边，须重建吸附态（见 restoreSnapIfNeeded）。
 let snappedSide: 'top' | 'bottom' | 'left' | 'right' | null = null
 let snapTimer: ReturnType<typeof setInterval> | null = null
 
-/** 通知渲染层悬浮球吸附边（null = 未吸附），由内联 script 切换 body.snap-* class 触发圆角贴合。 */
+/** 通知渲染层悬浮球吸附边（null = 未吸附），由内联 script 切换 body.snap-* class 触发水滴形状。 */
 function sendSnapVisual(side: 'top' | 'bottom' | 'left' | 'right' | null) {
   if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
   try { floatingBallWindow.webContents.send('ball-snap', side) } catch {}
+}
+
+/** 检测窗口当前左上角 (x,y) 尺寸 (w,h) 是否贴在所属显示器某边缘（吸附阈值内）。
+ * 与吸附判定复用同一套几何 ⇒ 吸附落点与恢复判定一致。角上只判最近边，返回该边或 null。 */
+function detectEdgeSnap(x: number, y: number, w: number, h: number): 'top' | 'bottom' | 'left' | 'right' | null {
+  const b = screen.getDisplayMatching({ x, y, width: w, height: h }).bounds
+  const gutter = getBallSettings().snapGutter
+  const SNAP = 40
+  const dl = Math.abs(x - (b.x + gutter))
+  const dr = Math.abs((b.x + b.width - gutter) - (x + w))
+  const dt = Math.abs(y - (b.y + gutter))
+  const db = Math.abs((b.y + b.height - gutter) - (y + h))
+  let best: 'left' | 'right' | 'top' | 'bottom' | null = null
+  let bestD = Number.MAX_VALUE
+  if (dl < SNAP && dl < bestD) { bestD = dl; best = 'left' }
+  if (dr < SNAP && dr < bestD) { bestD = dr; best = 'right' }
+  if (dt < SNAP && dt < bestD) { bestD = dt; best = 'top' }
+  if (db < SNAP && db < bestD) { bestD = db; best = 'bottom' }
+  return best
+}
+
+/** 恢复吸附态：show 启动、收起、重置后调用。优先用内存里保存的 snappedSide（展开只清了视觉、
+ *  未动位置）把球直接钉回对应屏幕边缘并重发水滴视觉；无保存边时才回退到位置重判。
+ *  窗口已在终点、无需动画。目标坐标复用 drag-end 的贴边几何。 */
+function snapTargetFor(side: 'top' | 'bottom' | 'left' | 'right', x: number, y: number, w: number, h: number): { x: number; y: number } {
+  const b = screen.getDisplayMatching({ x, y, width: w, height: h }).bounds
+  const gutter = getBallSettings().snapGutter
+  if (side === 'left') return { x: b.x + gutter, y }
+  if (side === 'right') return { x: b.x + b.width - gutter - w, y }
+  if (side === 'top') return { x, y: b.y + gutter }
+  return { x, y: b.y + b.height - gutter - h }
+}
+
+function restoreSnapIfNeeded() {
+  if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
+  const [x, y] = floatingBallWindow.getPosition()
+  const [w, h] = floatingBallWindow.getSize()
+  let side = snappedSide
+  if (!side) side = detectEdgeSnap(x, y, w, h)
+  if (side) {
+    // 有明确吸附边：把窗口钉回该边精确位置（避免坐标微调导致偶发失效），再重发水滴视觉
+    const t = snapTargetFor(side, x, y, w, h)
+    setBallBounds({ x: t.x, y: t.y, width: BALL_SIZE, height: BALL_SIZE })
+    if (ballPos) { ballPos = { x: t.x, y: t.y }; saveBallPosition(ballPos) }
+    snappedSide = side
+    sendSnapVisual(side)
+    log.info('Floating ball snap restored (edge):', [t.x, t.y], side)
+  }
 }
 
 /** 弹性 out 缓动：末尾轻微过冲回弹，模拟水滴/弹簧贴边手感（参考 easeOutBack 微调）。 */
@@ -914,22 +1026,14 @@ function elasticOut(t: number): number {
   return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1
 }
 
-/** 水滴吸附的目标窗口尺寸（与 CSS body.snap-* 里的中 — #ball/.core 尺寸一致）：
- *  垂直边（左/右）→ 竖向水滴 44×58；水平边（上/下）→ 横向水滴 58×44 */
-function snapTargetSize(side: 'top' | 'bottom' | 'left' | 'right'): { w: number; h: number } {
-  return (side === 'left' || side === 'right') ? { w: 44, h: 58 } : { w: 58, h: 44 }
-}
-
-/** 从当前 (x,y) 弹性动画把窗口 shrink 成水滴小窗并贴到目标边。
- *  关键：窗口尺寸一并从 66×66 插值缩到目标水滴尺寸——尺寸变化必然触发透明合成重绘，
- *  水滴形状因此可靠可见（此前纯改 trigger 图形，透明窗不重绘，用户看不到）。
- *  防御：起点/终点任一非有限直接放弃吸附；坏值绝不打死高频 setBounds 主进程。 */
+/** 从当前 (x,y) 弹性动画贴到目标边；落稳后读回修正 DWM 1px 偏移、记录吸附边并持久化位置。
+ *  防御：起点/目标任一处出现非有限数，直接放弃吸附（不启动高频 setBounds 动画），
+ *  避免竞态坏值把主进程打死（参考 a8d8389 的 NaN 防御 + setBallBounds 兜底）。 */
 function animateSnapToEdge(x: number, y: number, to: { x: number; y: number }, side: 'top' | 'bottom' | 'left' | 'right') {
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(to.x) || !Number.isFinite(to.y)) {
     log.warn('Floating ball snap skipped (non-finite input):', { x, y, to })
     return
   }
-  const { w: targetW, h: targetH } = snapTargetSize(side)
   if (snapTimer) { clearInterval(snapTimer); snapTimer = null }
   const DUR = 420
   const start = Date.now()
@@ -942,18 +1046,16 @@ function animateSnapToEdge(x: number, y: number, to: { x: number; y: number }, s
     const e = elasticOut(t)
     const nx = Math.round(x + (to.x - x) * e)
     const ny = Math.round(y + (to.y - y) * e)
-    const nw = Math.round(BALL_SIZE + (targetW - BALL_SIZE) * e)
-    const nh = Math.round(BALL_SIZE + (targetH - BALL_SIZE) * e)
-    setBallBounds({ x: nx, y: ny, width: nw, height: nh })
+    setBallBounds({ x: nx, y: ny, width: BALL_SIZE, height: BALL_SIZE })
     if (t >= 1) {
       if (snapTimer) { clearInterval(snapTimer); snapTimer = null }
-      // 落稳：精确贴到水滴尺寸 + 位置
-      setBallBounds({ x: to.x, y: to.y, width: targetW, height: targetH })
+      // 落稳后读回修正 DWM 1px 偏移（同 drag-move 手法；setBallBounds 内部有防御+吞错）
+      const [ax, ay] = floatingBallWindow.getPosition()
+      if (ax !== to.x || ay !== to.y) setBallBounds({ x: to.x, y: to.y, width: BALL_SIZE, height: BALL_SIZE })
       snappedSide = side
       sendSnapVisual(side)
-      ballPos = { x: to.x, y: to.y }
-      saveBallPosition(ballPos)
-      log.info('Floating ball snapped (elastic teardrop) to edge:', [to.x, to.y], side, `${targetW}x${targetH}`)
+      if (ballPos) { ballPos = { x: to.x, y: to.y }; saveBallPosition(ballPos) }
+      log.info('Floating ball snapped (elastic) to edge:', [to.x, to.y], side)
     }
   }
   snapTimer = setInterval(step, 16)
@@ -966,6 +1068,14 @@ function clearSnap() {
     snappedSide = null
     sendSnapVisual(null)
   }
+}
+
+/** 仅清除吸附*视觉*（渲染层移除 body.snap-* 让菜单正常开花），但保留内存里的 snappedSide。
+ *  展开菜单需要球变回普通圆球以显示 240 圆环，但展开并未改变贴边位置——保留吸附边，
+ *  收起时即可按已保存的边恢复水滴，避免依赖易被 DWM/缩放微调打偏的"位置重判"（否则偶发失效变圆球）。 */
+function clearSnapVisualOnly() {
+  if (snapTimer) { clearInterval(snapTimer); snapTimer = null }
+  if (snappedSide) sendSnapVisual(null)
 }
 
 // === IPC 处理器注册 ===
@@ -1000,23 +1110,25 @@ export function registerFloatingBallHandlers() {
 
   ipcMain.on('floating-ball-drag-start', (_event: any, sx: number, sy: number) => {
     if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
-    // 开始拖动即脱离吸附：清吸附动画与圆角贴合态，后续 move 全程纯跟手
-    clearSnap()
+    // 仅记录拖拽锚点。吸附脱离不在 drag-start 做——pointerdown(点击/展开菜单)也会触发本事件，
+    // 若在此清吸附会把"点击开菜单"误清成普通圆球；脱离改由 drag 真正开始时(floating-ball-drag-clear)触发。
     const [wx, wy] = floatingBallWindow.getPosition()
     const [ww, wh] = floatingBallWindow.getSize()
-    if (ww !== BALL_SIZE || wh !== BALL_SIZE) {
-      // 吸附成水滴小窗（44×58/58×44）后起拖：先恢复 66px 常规球（保持窗口中心），
-      // 再以恢复后位置为拖拽基准——水滴应随拖动立刻还原成常规模样。
-      const cx = Math.round(wx + ww / 2)
-      const cy = Math.round(wy + wh / 2)
-      setBallBounds({ x: cx - BALL_SIZE / 2, y: cy - BALL_SIZE / 2, width: BALL_SIZE, height: BALL_SIZE })
-      const [nx, ny] = floatingBallWindow.getPosition()
-      dragOrigin = { winX: nx, winY: ny, scrX: sx, scrY: sy }
-      dragSize = { w: BALL_SIZE, h: BALL_SIZE }
-    } else {
-      dragOrigin = { winX: wx, winY: wy, scrX: sx, scrY: sy }
-      dragSize = { w: ww, h: wh }
-    }
+    dragOrigin = { winX: wx, winY: wy, scrX: sx, scrY: sy }
+    dragSize = { w: ww, h: wh }
+  })
+
+  // 真正开始拖动（位移 > 阈值）才脱离吸附；只记录锚点的 pointerdown 不触发。
+  // 若从展开态起拖，先立即收起成 66 球并重设锚点，避免以 240 窗口几何拖动/贴屏错乱。
+  ipcMain.on('floating-ball-drag-clear', (_event: any, sx: number, sy: number) => {
+    if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
+    if (isBallExpanded) collapseToBallImmediate()
+    clearSnap()
+    if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
+    const [wx, wy] = floatingBallWindow.getPosition()
+    const [ww, wh] = floatingBallWindow.getSize()
+    dragOrigin = { winX: wx, winY: wy, scrX: sx, scrY: sy }
+    dragSize = { w: ww, h: wh }
   })
 
   ipcMain.on('floating-ball-move', (_event: any, sx: number, sy: number) => {

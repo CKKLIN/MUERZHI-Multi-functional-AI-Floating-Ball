@@ -74,6 +74,9 @@ function createWindow(preloadPath: string) {
   mainWindow.on('close', (e) => {
     if (!(app as any).isQuitting) {
       e.preventDefault()
+      // 录屏窗口关闭（非退出）：通知渲染层释放全部录屏资源（录制中先落盘停止）。
+      // 窗口只 hide 不销毁，故 vue onUnmounted 不会触发，必须显式通知。
+      mainWindow?.webContents.send('app-main-window-close')
       mainWindow?.hide()
     }
   })

@@ -8,7 +8,7 @@ import { showBalloon } from './tray'
 import { showAiIsland, hideAiIsland, registerAiIslandHandlers } from './ai-island'
 import { registerMusicHandlers } from './music-window'
 import {
-  loadItems, createTodo, updateTodo, deleteTodo, toggleTodoDone,
+  loadItems, createTodo, updateTodo, deleteTodo, toggleTodoDone, completeTodo,
   loadTodoSettings, updateTodoSettings, togglePin,
 } from './todo-store'
 import type { TodoItem, TodoInput } from './todo-store'
@@ -289,6 +289,9 @@ export function registerIpcHandlers(agentBridge?: AgentBridge) {
   ipcMain.handle('close-window', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (win) {
+      // 通知渲染层释放录屏窗口全部资源（录制中先落盘停止、再释放摄像头/音频/预览/overlay）。
+      // 只对主录制窗口有效：HomeView 订阅了 app-main-window-close，其他窗口不订阅、无副作用。
+      win.webContents.send('app-main-window-close')
       win.hide()
     }
   })
@@ -484,15 +487,21 @@ export function registerTodoIpcHandlers(): void {
     showTodoWindow()
   })
 
-  // 贴屏便签：点击打开并定位 / ✕ 取消贴屏
+  // 贴屏便签：点击打开并定位 / ✕ 关闭
   ipcMain.on('todo-sticky-open', (_event, id: string) => {
     focusTodoItem(id)
   })
   ipcMain.on('todo-sticky-unpin', (_event, id: string) => {
-    togglePin(id)
+    // ✕ 关闭便签：待办 = 完成并摘下；备忘无完成态，仅摘下
+    const current = loadItems().find(x => x.id === id)
+    if (current && current.type === 'todo') {
+      completeTodo(id)
+    } else {
+      togglePin(id)
+    }
     syncStickyNotes()
     refreshTodoBadge()
-    // 主进程侧改了 pinned，需把新数据推给已打开的待办窗口，让它及时刷新列表的贴屏按钮状态
+    // 主进程侧改了 pinned/done，需把新数据推给已打开的待办窗口，让它及时刷新列表的贴屏按钮状态
     broadcastTodoUpdate(loadItems())
   })
 

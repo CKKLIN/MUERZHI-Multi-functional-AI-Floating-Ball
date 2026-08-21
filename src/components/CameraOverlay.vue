@@ -78,7 +78,6 @@ onUnmounted(() => {
   position: absolute;
   border-radius: 8px;
   overflow: hidden;
-  border: 2px solid rgba(255, 255, 255, 0.3);
   z-index: 10;
   box-shadow: var(--shadow);
   cursor: move;

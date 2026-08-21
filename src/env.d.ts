@@ -111,6 +111,7 @@ export interface ElectronAPI {
   onGlobalShortcut: (callback: (action: string) => void) => () => void
   onMainProcessMessage: (callback: (message: string) => void) => () => void
   onBeforeQuit: (callback: () => void) => () => void
+  onMainWindowClose: (callback: () => void) => () => void
 
   // Shell
   openFileLocation: (filePath: string) => Promise<void>
@@ -141,6 +142,8 @@ export interface ElectronAPI {
   showRegionBorder: (region: { x: number; y: number; width: number; height: number }, audioState?: { micEnabled: boolean; sysEnabled: boolean }) => Promise<void>
   hideRegionBorder: () => Promise<void>
   hideBorderOnly: () => Promise<void>
+  hideCameraPreview: () => Promise<void>
+  toggleCameraPreview: (show: boolean, cameraDeviceId?: string) => Promise<void>
   showFloatingIsland: (audioState?: { micEnabled: boolean; sysEnabled: boolean }, targetDisplayId?: number) => Promise<void>
   hideFloatingIsland: () => Promise<void>
   setIslandState: (state: 'idle' | 'recording' | 'paused', elapsedSeconds?: number) => Promise<void>
