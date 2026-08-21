@@ -59,14 +59,13 @@ function setBallBounds(b: { x: number; y: number; width: number; height: number 
 const BALL_SETTINGS_FILE = 'floating-ball-settings.json'
 
 /** 悬浮球环形菜单项 key——与页面内 ITEMS 的 action 对应；设为 false 则不显示该花瓣 */
-export type BallMenuKey = 'record' | 'music' | 'ai' | 'todo' | 'settings'
+export type BallMenuKey = 'record' | 'ai' | 'todo' | 'settings'
 
 /** 环形菜单目录（key 与 FloatingBallSettings.menuItems 对应），构建 HTML 时按可见性过滤。
  *  labelKey 指向 i18n 词条（ball.menu.<key>），构建时按当前语言解析——不能在此评估 label，
  *  模块加载发生在 setI18nLocale(启动) 之前，这里求值会拿到旧语言 */
 const MENU_CATALOG: { key: BallMenuKey; labelKey: string; icon: string; action: string }[] = [
   { key: 'record', labelKey: 'ball.menu.record', icon: '●', action: 'record' },
-  { key: 'music', labelKey: 'ball.menu.music', icon: '♪', action: 'music' },
   { key: 'ai', labelKey: 'ball.menu.ai', icon: '✦', action: 'ai' },
   { key: 'todo', labelKey: 'ball.menu.todo', icon: '☑', action: 'todo' },
   { key: 'settings', labelKey: 'ball.menu.settings', icon: '⚙', action: 'settings' },
@@ -87,7 +86,7 @@ export interface FloatingBallSettings {
 }
 
 const DEFAULT_MENU_ITEMS: Record<BallMenuKey, boolean> = {
-  record: true, music: true, ai: true, todo: true, settings: true,
+  record: true, ai: true, todo: true, settings: true,
 }
 
 const DEFAULT_SETTINGS: FloatingBallSettings = {
@@ -323,6 +322,11 @@ export function hideFloatingBall() {
 let isBallExpanded = false
 /** 待定的收起收尾定时器：快速连点时，新的 expand 应取消它，避免中途缩窗/清 DOM 造成抖动 */
 let collapseTimer: NodeJS.Timeout | null = null
+/** 展开前冻结的 66 球左上角锚点：收起/立即收起用它定位。
+ *  展开期间 move 事件会用 240 窗口 + 系统缩放抖动反推出一个 ±1px 的 ballPos，
+ *  若收起直接读 ballPos 收缩，会沿贴边方向漂移（restoreSnapIfNeeded 只修正贴边轴）。
+ *  展开只清了视觉未动位置，收起应回到展开前的真实锚点，故冻结之。 */
+let collapseAnchor: { x: number; y: number } | null = null
 
 async function expandBall() {
   if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
@@ -338,6 +342,9 @@ async function expandBall() {
   const [x, y] = floatingBallWindow.getPosition() // 兜底；ballPos 通常已由 66px 态的 move 维护
   const bx = ballPos ? ballPos.x : x
   const by = ballPos ? ballPos.y : y
+  // 冻结展开前的 66 球锚点（此刻窗口仍是 66 态，ballPos 未被 240 几何/缩放抖动污染）：
+  // 收起时据此回缩，绝不用展开期间被 move 反推抖动的 ballPos，否则贴边时沿边缘漂移。
+  collapseAnchor = { x: bx, y: by }
   const cx = Math.round(bx + BALL_SIZE / 2)
   const cy = Math.round(by + BALL_SIZE / 2)
   log.info('[Ball] expand at', [x, y], 'center', [cx, cy])
@@ -375,14 +382,18 @@ async function expandBall() {
 async function collapseBall() {
   isBallExpanded = false
   if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
-  // 锚定 ballPos（66px 球左上角，权威锚点），而非临时 getPosition/尺寸——快速展开收起时不累计偏移。
-  // 若尚未有锚点，从当前 240px 窗口中心反推球体左上角。
-  if (!ballPos) {
-    const [x, y] = floatingBallWindow.getPosition()
-    ballPos = { x: Math.round(x + RING_SIZE / 2 - BALL_SIZE / 2), y: Math.round(y + RING_SIZE / 2 - BALL_SIZE / 2) }
+  // 锚定"展开前冻结的 66 球左上角"，而非临时 getPosition/尺寸——快速展开收起时不累计偏移。
+  // 关键：不读实时 ballPos——展开期间 move 会用 240 窗口 + 缩放抖动反推出 ±1px 污染值，
+  // 否则收起落点沿贴边方向漂移。优先用 collapseAnchor，缺失时才兜底回退到 ballPos/反推。
+  if (!collapseAnchor) {
+    if (!ballPos) {
+      const [x, y] = floatingBallWindow.getPosition()
+      ballPos = { x: Math.round(x + RING_SIZE / 2 - BALL_SIZE / 2), y: Math.round(y + RING_SIZE / 2 - BALL_SIZE / 2) }
+    }
+    collapseAnchor = { x: ballPos.x, y: ballPos.y }
   }
-  const bx = ballPos.x
-  const by = ballPos.y
+  const bx = collapseAnchor.x
+  const by = collapseAnchor.y
   log.info('[Ball] collapse at', [bx, by])
   // 收起要像"合拢"：保持窗口可见，先移除 expanded class 让花瓣按 CSS 动画收到 scale(0)，
   // 动画收尾（清 DOM + 缩回 66px）经 collapseTimer 延迟执行，可被下一次 expand 取消——
@@ -424,9 +435,12 @@ async function collapseBall() {
 function collapseToBallImmediate() {
   if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
   isBallExpanded = false
-  // 锚定 66 球左上角（权威锚点），而非临时位置
+  // 锚定 66 球左上角（权威锚点），而非临时位置。优先用展开前冻结的 collapseAnchor
+  //（展开期间 move 反推的 ballPos 会被缩放抖动污染，立即收起若用它定位会沿贴边方向漂移）。
   let bx: number, by: number
-  if (ballPos) {
+  if (collapseAnchor) {
+    bx = collapseAnchor.x; by = collapseAnchor.y
+  } else if (ballPos) {
     bx = ballPos.x; by = ballPos.y
   } else {
     const [x, y] = floatingBallWindow.getPosition()
@@ -453,8 +467,6 @@ function forwardAction(action: string) {
     process.emit('clawd-show-ai-window' as any)
   } else if (action === 'todo') {
     process.emit('clawd-show-todo-window' as any)
-  } else if (action === 'music') {
-    process.emit('clawd-show-music-window' as any)
   } else if (action === 'settings') {
     process.emit('clawd-show-settings-window' as any)
   } else {

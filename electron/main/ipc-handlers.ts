@@ -6,7 +6,6 @@ import { selectRegion, registerRegionSelectorHandlers } from './region-selector'
 import { registerFloatingBallHandlers } from './floating-ball'
 import { showBalloon } from './tray'
 import { showAiIsland, hideAiIsland, registerAiIslandHandlers } from './ai-island'
-import { registerMusicHandlers } from './music-window'
 import {
   loadItems, createTodo, updateTodo, deleteTodo, toggleTodoDone, completeTodo,
   loadTodoSettings, updateTodoSettings, togglePin,
@@ -29,7 +28,6 @@ export function registerIpcHandlers(agentBridge?: AgentBridge) {
   registerRegionSelectorHandlers()
   registerFloatingBallHandlers()
   registerAiIslandHandlers()
-  registerMusicHandlers()
   ipcMain.handle('show-ai-island', () => { showAiIsland() })
   ipcMain.handle('hide-ai-island', () => { hideAiIsland() })
   ipcMain.handle('select-region', async () => {
