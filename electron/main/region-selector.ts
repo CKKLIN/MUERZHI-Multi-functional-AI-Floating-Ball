@@ -195,6 +195,10 @@ function showCameraPreview(area: { x: number; y: number; width: number; height: 
 
 function hideCameraPreview() {
   if (cameraPreviewWindow && !cameraPreviewWindow.isDestroyed()) {
+    // 先通知预览页释放摄像头资源（getTracks().forEach(t=>t.stop())），再销毁窗口。
+    // 否则只 close() 会留下 getUserMedia 的硬件会话：悬浮岛/按钮/退出任何关闭预览的路径
+    // 都会漏释摄像头（此前 stopCameraPreviewStream 存在却从未被调用，属死代码）。
+    stopCameraPreviewStream()
     cameraPreviewWindow.close()
     cameraPreviewWindow = null
   }

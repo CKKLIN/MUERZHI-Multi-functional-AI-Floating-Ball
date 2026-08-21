@@ -142,6 +142,12 @@ function patchItem<T extends Record<string, unknown>>(id: string, patch: T): Tod
   return items
 }
 
+/** 完成态默认不再贴屏：任意让 done 变 true 的改动都顺带取消贴屏（勾选完成/编辑改完成）。
+ *  备忘（type==='memo'）不支持完成态，不处理。 */
+function ensureDoneUnpins(it: TodoItem): void {
+  if (it.type === 'todo' && it.done) it.pinned = false
+}
+
 /** 更新一条，返回更新后的全量 items。若提醒时间被改动，重置已触发标志，让新提醒能再次到期触发。 */
 export function updateTodo(id: string, patch: Partial<Omit<TodoItem, 'id' | 'createdAt'>>): TodoItem[] {
   const items = loadItems()
@@ -152,6 +158,7 @@ export function updateTodo(id: string, patch: Partial<Omit<TodoItem, 'id' | 'cre
     it.reminderFired = false
   }
   Object.assign(it, patch, { updatedAt: Date.now() })
+  ensureDoneUnpins(it)
   saveItems(items)
   return items
 }
@@ -171,8 +178,22 @@ export function toggleTodoDone(id: string): TodoItem[] {
   if (it.type === 'todo') {
     it.done = !it.done
     it.updatedAt = Date.now()
+    // 勾选完成 → 取消贴屏：已完成的待办无须再常驻屏幕
+    ensureDoneUnpins(it)
     saveItems(items)
   }
+  return items
+}
+
+/** 完成一条待办并取消贴屏（便签板 ✕ = 完成 + 摘下）。备忘不支持完成态；todo 才处理。 */
+export function completeTodo(id: string): TodoItem[] {
+  const items = loadItems()
+  const it = items.find(x => x.id === id)
+  if (!it || it.type !== 'todo') return items
+  it.done = true
+  it.pinned = false
+  it.updatedAt = Date.now()
+  saveItems(items)
   return items
 }
 
@@ -186,11 +207,14 @@ export function togglePin(id: string, initial?: { x: number; y: number }): TodoI
   const items = loadItems()
   const it = items.find(x => x.id === id)
   if (!it) return items
-  it.pinned = !it.pinned
-  if (it.pinned && initial) {
+  const nowPinned = !it.pinned
+  it.pinned = nowPinned
+  if (nowPinned && initial) {
     it.pinX = Math.round(initial.x)
     it.pinY = Math.round(initial.y)
   }
+  // 贴已有的完成待办 → 自动取消完成态（便签常驻屏幕时需回到"进行中"）
+  if (nowPinned && it.type === 'todo' && it.done) it.done = false
   it.updatedAt = Date.now()
   saveItems(items)
   return items

@@ -228,6 +228,8 @@ export function useRecording() {
   async function startCapture(sourceId: string, region?: Region, audioTracks?: MediaStreamTrack[], multiScreenSources?: { sourceId: string; bounds: { x: number; y: number; width: number; height: number } }[]) {
     if (isStarting) return
     isStarting = true
+    // 新一轮录制开始：恢复"停止后自动重开主窗口"默认行为（上一轮若因窗口关闭被置 false）
+    reopenOnStop = true
     try {
       const needsCanvas = store.isDrawingEnabled || !!multiScreenSources
       useDirectMp4 = false
@@ -427,6 +429,10 @@ export function useRecording() {
   }
 
   let cleanupProgressListener: (() => void) | null = null
+  // 录制停止后是否自动重开主窗口（正常工具栏停止=true；录屏窗口被关闭释放时=false，防止重开）
+  let reopenOnStop = true
+  // 供主窗口释放路径关闭"停止后自动重开"，避免窗口被用户关掉后又弹回来
+  function setReopenOnStop(v: boolean) { reopenOnStop = v }
 
   async function handleRecordingStop() {
     store.setState('converting')
@@ -434,7 +440,9 @@ export function useRecording() {
 
     // 恢复窗口并通知托盘
     window.electronAPI.notifyConversionStart()
-    setTimeout(() => window.electronAPI.showWindow(), 50)
+    // 正常工具栏停止后短暂自动重开主窗口以显示结果。但录屏窗口被用户关闭时
+    // （releaseRecordingResources 置 reopenOnStop=false）不应重开，否则关掉的窗口又弹回来。
+    if (reopenOnStop) setTimeout(() => window.electronAPI.showWindow(), 50)
 
     try {
       const now = new Date()
@@ -757,6 +765,7 @@ export function useRecording() {
     cameraPosition,
     setDrawAnnotations,
     setCameraPosition,
+    setReopenOnStop,
     startCapture,
     pause,
     resume,

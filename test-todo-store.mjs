@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTodoDataDir, setTodoLogger, loadItems, saveItems,
-         createTodo, updateTodo, deleteTodo, toggleTodoDone,
+         createTodo, updateTodo, deleteTodo, toggleTodoDone, completeTodo,
          markReminderFired, incompleteTodoCount, togglePin, savePinPosition } from './electron/main/todo-store.ts'
 
 let fails = 0
@@ -160,6 +160,78 @@ setup()
   createTodo({ type: 'memo', content: '备忘录', priority: 'low', reminder: null, done: false })
   const items = loadItems()
   eq(incompleteTodoCount(items), 1, '仅统计未完成的 todo，忽略 done 与 memo')
+}
+teardown()
+
+// --- 完成态自动取消贴屏：toggleTodoDone ---
+setup()
+{
+  const [t] = createTodo({ type: 'todo', content: '贴屏待办', priority: 'medium', reminder: null, done: false })
+  togglePin(t.id, { x: 10, y: 10 })
+  eq(loadItems()[0].pinned, true, '造一个已贴屏待办')
+  const done = toggleTodoDone(t.id)
+  eq(done[0].done, true, 'toggleTodoDone 置 completed')
+  eq(done[0].pinned, false, '勾选完成 → 取消贴屏')
+  // 取消完成态不恢复贴屏（不自动贴回）
+  const undone = toggleTodoDone(t.id)
+  eq(undone[0].done, false, '再切回未完成')
+  eq(undone[0].pinned, false, '取消完成不自动贴回')
+}
+teardown()
+
+// --- 完成态自动取消贴屏：编辑器保存（updateTodo 带 done） ---
+setup()
+{
+  const [t] = createTodo({ type: 'todo', content: '编辑态贴屏', priority: 'medium', reminder: null, done: false })
+  togglePin(t.id, { x: 20, y: 20 })
+  const saved = updateTodo(t.id, { done: true })
+  eq(saved[0].done, true, 'updateTodo 改 done=true')
+  eq(saved[0].pinned, false, '编辑保存完成 → 取消贴屏')
+  // memo 改 done 无影响（memo 不支持完成态）
+  const [m] = createTodo({ type: 'memo', content: '备忘贴屏', priority: 'low', reminder: null, done: false })
+  togglePin(m.id, { x: 30, y: 30 })
+  const mDone = updateTodo(m.id, { done: true })
+  eq(mDone[0].pinned, true, 'memo 贴屏不受 updateTodo(done) 影响')
+}
+teardown()
+
+// --- completeTodo：便签板 ✕（完成 + 摘下） ---
+setup()
+{
+  const [t] = createTodo({ type: 'todo', content: '板 ✕', priority: 'high', reminder: null, done: false })
+  togglePin(t.id, { x: 40, y: 40 })
+  const finished = completeTodo(t.id)
+  eq(finished[0].done, true, 'completeTodo 置 done=true')
+  eq(finished[0].pinned, false, 'completeTodo 取消贴屏')
+  // 备忘：completeTodo 不改（保持原样）→ 由调用方另行摘下
+  const [m] = createTodo({ type: 'memo', content: '备忘 ✗', priority: 'low', reminder: null, done: false })
+  togglePin(m.id, { x: 50, y: 50 })
+  const mResult = completeTodo(m.id)
+  eq(mResult.find(x => x.id === m.id).done, false, 'memo completeTodo 不改完成态')
+  const mAfter = loadItems().find(x => x.id === m.id)
+  eq(mAfter.pinned, true, 'memo completeTodo 不置 done，保持保留待调用方摘下')
+  // 不存在 id 静默返回
+  eq(completeTodo('nope').length, 2, 'completeTodo 对不存在 id 返回原数组')
+}
+teardown()
+
+// --- 贴已完成待办：自动取消未完成 ---
+setup()
+{
+  const [t] = createTodo({ type: 'todo', content: '已完成待办', priority: 'medium', reminder: null, done: true })
+  ok(t.done === true, '造一个已完成待办')
+  const pinned = togglePin(t.id, { x: 100, y: 100 })
+  eq(pinned[0].pinned, true, '贴屏后 pinned=true')
+  eq(pinned[0].done, false, '贴已完成待办 → 自动取消未完成')
+  // 取消贴屏不恢复完成态
+  const unpinned = togglePin(t.id)
+  eq(unpinned[0].pinned, false, '再点取消贴屏')
+  eq(unpinned[0].done, false, '取消贴屏不改完成态')
+  // 备忘录不受影响（无完成态）
+  const [m] = createTodo({ type: 'memo', content: '备忘', priority: 'low', reminder: null, done: false })
+  const mPinned = togglePin(m.id, { x: 50, y: 50 })
+  eq(mPinned[0].pinned, true, 'memo 贴屏')
+  eq(mPinned[0].done, false, 'memo 贴屏不影响 done')
 }
 teardown()
 

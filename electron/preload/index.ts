@@ -79,6 +79,11 @@ const electronAPI = {
     ipcRenderer.on('app-before-quit', handler)
     return () => ipcRenderer.removeListener('app-before-quit', handler)
   },
+  onMainWindowClose: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('app-main-window-close', handler)
+    return () => ipcRenderer.removeListener('app-main-window-close', handler)
+  },
 
   // Shell
   openFileLocation: (filePath: string) => ipcRenderer.invoke('open-file-location', filePath),
