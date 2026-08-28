@@ -44,7 +44,7 @@ function readRuntimePort() {
   }
 }
 
-function postToClawd(path, payload, port) {
+function postToClawd(path, payload, port, timeoutMs) {
   return new Promise((resolve) => {
     const data = JSON.stringify(payload);
     hookLog(`POST ${port}${path} payload=${data.substring(0, 200)}`);
@@ -52,7 +52,9 @@ function postToClawd(path, payload, port) {
       hostname: "127.0.0.1", port, path,
       method: "POST",
       headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) },
-      timeout: 5000,
+      // 默认 5s；PermissionRequest 走挂起审批（服务端卡片等待决策）时传更大 timeout（130s，
+      // 覆盖服务端 HEAD_TIMEOUT_MS 120s），避免客户端过早 abort 写空响应。其余事件 5s 足够。
+      timeout: timeoutMs || 5000,
     }, (res) => {
       let body = "";
       res.on("data", (c) => { body += c; });
@@ -129,6 +131,8 @@ async function main() {
   hookLog(`EVENT: name=${eventName}, session=${sessionId}, state=${state}, tool=${toolName}, port=${port}`);
 
   if (eventName === "PermissionRequest") {
+    // 挂起式审批：postToClawd 传大 timeout（覆盖服务端 HEAD_TIMEOUT_MS 120s），
+    // 避免客户端 5s 提前 abort 写空响应。卡片最终由悬浮岛决策 / 服务端超时兜底。
     const result = await postToClawd("/permission", {
       tool_name: toolName,
       tool_input: toolInput,
@@ -137,7 +141,7 @@ async function main() {
       permission_suggestions: event.permission_suggestions || null,
       source_pid: process.ppid,
       cwd: process.cwd(),
-    }, port);
+    }, port, 130000);
     if (result && result.body) {
       process.stdout.write(result.body + "\n");
     } else {

@@ -16,6 +16,47 @@ let aiIslandUserMoved = false
 /** 透明空白区鼠标穿透状态：true 时 setIgnoreMouseEvents，让窗口右侧多余透明区不拦截下方点击 */
 let aiIslandMouseIgnored = false
 
+// === AI 岛点击穿透的几何判定（轮询光标） ===
+// 依赖 forwarded mousemove 修正穿透态并不可靠：Windows 的 setIgnoreMouseEvents(true,{forward:true})
+// 对 mousemove 的转发是尽力而为且会丢帧，一旦"鼠标悬在透明区却仍被当成在内容上"（例如卡片收起、
+// 岛缩小后光标未动，或一次 move 被吞），窗口会一直保持可交互，把下方应用的点击吃成"没反应"。
+// 改为以全局光标位置 + 内容矩形做几何判定：主进程轮询 screen.getCursorScreenPoint()，光标在
+// .island 可见内容矩形内 → 可交互，否则 → 穿透。不依赖事件转发，因此不会卡在错误状态。
+let aiIslandContentScreen: { x: number; y: number; width: number; height: number } | null = null
+let aiIslandPollTimer: ReturnType<typeof setInterval> | null = null
+
+/** 把当前岛的内容矩形（屏幕坐标，x/y/width/height）落到模块状态，并立即按光标位置对一次穿透态 */
+function updateAiIslandContentScreen(x: number, y: number, contentWidth: number, height: number) {
+  aiIslandContentScreen = { x, y, width: contentWidth, height }
+  pollAiIslandPassThrough()
+}
+
+/** 几何判定：光标在内容矩形内 → 可交互（不忽略）；否则 → 穿透（忽略 + forward，让下方应用可点）。
+ *  contentWidth 不含右侧 +20 透明缓冲，故光标落在该透明区时按"不在内容上"穿透。恒 coalesce。 */
+function pollAiIslandPassThrough() {
+  if (!aiIsland || aiIsland.isDestroyed() || !aiIslandContentScreen) return
+  const cp = screen.getCursorScreenPoint()
+  const c = aiIslandContentScreen
+  const inside =
+    cp.x >= c.x && cp.x <= c.x + c.width && cp.y >= c.y && cp.y <= c.y + c.height
+  const ignore = !inside
+  if (ignore !== aiIslandMouseIgnored) {
+    aiIslandMouseIgnored = ignore
+    aiIsland.setIgnoreMouseEvents(ignore, { forward: true })
+  }
+}
+
+function startAiIslandMousePolling() {
+  stopAiIslandMousePolling()
+  aiIslandPollTimer = setInterval(pollAiIslandPassThrough, 120)
+}
+function stopAiIslandMousePolling() {
+  if (aiIslandPollTimer) {
+    clearInterval(aiIslandPollTimer)
+    aiIslandPollTimer = null
+  }
+}
+
 // === AI 岛设置（横条态等；主进程文件为真相源，渲染层经 IPC get/set） ===
 const AI_ISLAND_SETTINGS_FILE = 'ai-island-settings.json'
 
@@ -578,12 +619,19 @@ export function showAiIsland() {
   // 最小高放低到 12，兼容横条态（贴边细横条 ~16px）；普通态空闲横条 ~40px / 卡片更高，均不会被最小高卡住
   aiIsland.setMinimumSize(100, 12)
   aiIsland.setAlwaysOnTop(true, 'screen-saver')
+  // 初始内容矩形：创建时的占位 (w,h)；首帧 resizeIsland 会用真实内容尺寸覆盖
+  updateAiIslandContentScreen(x, y, w, h)
+  aiIsland.on('closed', () => {
+    stopAiIslandMousePolling()
+  })
+  startAiIslandMousePolling()
   aiIsland.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildAiIslandHtml())}`)
   log.info('AI island shown')
 }
 
 export function hideAiIsland() {
   if (aiIsland && !aiIsland.isDestroyed()) {
+    stopAiIslandMousePolling()
     aiIsland.close()
     aiIsland = null
     log.info('AI island hidden')
@@ -617,7 +665,7 @@ export function registerAiIslandHandlers() {
     // 传来 NaN/undefined 宽高，直接参与 totalW 会让 setBounds 抛 "conversion failure"
     if (!Number.isFinite(contentWidth)) return
     const totalW = contentWidth + 20
-    const h = Number.isFinite(contentHeight) ? contentHeight : 44
+    const h: number = typeof contentHeight === 'number' && Number.isFinite(contentHeight) ? contentHeight : 44
     // 兜底：传播后的 totalW/h 若异常（理论上不会，但防御不到位仍会抛 conversion failure），直接丢弃
     if (!Number.isFinite(totalW) || !Number.isFinite(h)) return
     if (getAiIslandSettings().flat) {
@@ -629,11 +677,15 @@ export function registerAiIslandHandlers() {
       const newX = Math.round(b.x + (b.width - contentWidth) / 2)
       if (!Number.isFinite(newX)) return
       aiIsland.setBounds({ x: newX, y: b.y, width: contentWidth, height: h })
+      // 几何变化后立即刷新内容矩形（横条态 width=contentWidth，窗口与横条同大、无右侧透明缓冲）
+      updateAiIslandContentScreen(newX, b.y, contentWidth, h)
     } else if (aiIslandUserMoved) {
       // 用户拖过（非横条态）：保留当前位置，只按内容调整宽高，避免被拉回居中/顶部
       const [x, y] = aiIsland.getPosition()
       if (!Number.isFinite(x) || !Number.isFinite(y)) return
       aiIsland.setBounds({ x, y, width: totalW, height: h })
+      // 非横条态窗口宽 = 内容宽 + 20 右侧透明缓冲，故内容矩形取 x..x+contentWidth
+      updateAiIslandContentScreen(x, y, contentWidth, h)
     } else {
       // 未拖过：水平居中 + 顶部（初始定位行为），留 4px 间隙
       const bounds = screen.getPrimaryDisplay().bounds
@@ -641,6 +693,7 @@ export function registerAiIslandHandlers() {
       const newY = bounds.y + 4
       if (!Number.isFinite(newX) || !Number.isFinite(newY)) return
       aiIsland.setBounds({ x: newX, y: newY, width: totalW, height: h })
+      updateAiIslandContentScreen(newX, newY, contentWidth, h)
     }
   })
 
@@ -662,6 +715,9 @@ export function registerAiIslandHandlers() {
     if (!Number.isFinite(nx)) return
     const [w, h] = aiIsland.getSize()
     aiIsland.setBounds({ x: nx, y: aiDragOrigin.winY, width: w, height: h })
+    // 拖动后同步内容矩形：非横条态窗口宽含右侧 +20，内容宽 = w - 20
+    const contentW = getAiIslandSettings().flat ? w : w - 20
+    updateAiIslandContentScreen(nx, aiDragOrigin.winY, contentW, h)
   })
 
   ipcMain.on('ai-island-drag-end', () => {

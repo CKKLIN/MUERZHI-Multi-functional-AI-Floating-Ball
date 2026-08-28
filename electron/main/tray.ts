@@ -30,7 +30,7 @@ function createTray() {
   if (tray && !tray.isDestroyed()) return
   tray = new Tray(getTrayIcon())
 
-  tray.setToolTip('二支录制')
+  tray.setToolTip('MUERZHI')
 
   const contextMenu = Menu.buildFromTemplate([
     {
