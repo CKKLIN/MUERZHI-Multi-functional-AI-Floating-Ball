@@ -304,7 +304,6 @@ const zh: Record<string, string> = {
 
   // === 多工具（G4 适配器） ===
   'tools.claudeCode': 'Claude Code',
-  'tools.codex': 'Codex',
   'tools.approvalNone': '仅展示状态，不支持审批',
   'tools.notRunning': '未运行',
   'tools.toolSessions': '{n} 个会话',
@@ -605,7 +604,6 @@ const en: Record<string, string> = {
 
   // === multi-tool (G4 adapters) ===
   'tools.claudeCode': 'Claude Code',
-  'tools.codex': 'Codex',
   'tools.approvalNone': 'Status only, no approval',
   'tools.notRunning': 'Not running',
   'tools.toolSessions': '{n} sessions',

@@ -226,16 +226,6 @@ export type AgentCardPayload =
   | ({ kind: 'permission' } & AgentPermissionPayload)
   | { kind: 'question'; sessionId: string; toolName: string; toolInput: any; questions: any[] | null; answerable: boolean }
 
-export interface AgentToolStatus {
-  id: string
-  nameKey: string
-  running: boolean
-  approval: 'hook' | 'none'
-  working: boolean
-  sessions: { sessionId: string; label?: string }[]
-  error: boolean
-}
-
 export interface AgentBridgeStatus {
   serverRunning: boolean
   port: number | null
@@ -244,7 +234,6 @@ export interface AgentBridgeStatus {
   currentCard: AgentCardPayload | null
   sessionCount: number
   claudeRunning: boolean
-  tools: AgentToolStatus[]
 }
 
 declare global {
