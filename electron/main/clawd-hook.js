@@ -178,6 +178,8 @@ async function main() {
     tool_use_id: toolUseId,
     model: event.model || null,
     context_usage: event.context_usage || event.contextUsage || null,
+    // 用户消息原文（仅 UserPromptSubmit 事件携带）：主进程取会话的首条 prompt 当标题
+    prompt: event.prompt || null,
   };
 
   await postToClawd("/state", payload, port);

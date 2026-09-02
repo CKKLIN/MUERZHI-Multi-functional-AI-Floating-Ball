@@ -9,6 +9,9 @@ const claudeIntegrated = ref(false)
 const bridgeStatus = ref<AgentBridgeStatus | null>(null)
 const loading = ref(true)
 const autoAllow = ref(false)
+// 选择性自动审批：当前活跃会话（来自实时状态更新） + 已勾选会话 id 集合（来自主进程持久化）
+const sessions = ref<any[]>([])
+const autoAllowSessions = ref<string[]>([])
 const islandFlat = ref(false)
 // 初始岛flat值是否已从主进程读回：读回前禁用 toggle，避免 onMounted 迟到的 get 覆盖乐观 set 的竞态
 const islandFlatLoaded = ref(false)
@@ -48,6 +51,31 @@ async function toggleAutoAllow() {
   }
 }
 
+// 勾选/取消某会话的自动审批：乐观翻转 → 主进程落盘 → 成功用返回值刷新集合，失败回滚
+async function toggleAutoAllowSession(sessionId: string) {
+  const enabled = !autoAllowSessions.value.includes(sessionId)
+  autoAllowSessions.value = enabled
+    ? [...autoAllowSessions.value, sessionId]
+    : autoAllowSessions.value.filter((id) => id !== sessionId)
+  try {
+    autoAllowSessions.value = await window.electronAPI.agentSetAutoAllowSession(sessionId, enabled)
+  } catch (e) {
+    console.error('[AiSettingsPanel] setAutoAllowSession error:', e)
+    autoAllowSessions.value = enabled
+      ? autoAllowSessions.value.filter((id) => id !== sessionId)
+      : [...autoAllowSessions.value, sessionId]
+  }
+}
+
+// 会话展示标签：优先标题（首条用户消息），无标题（如老会话/应用重启后未再发 prompt）退回 模型·工具·短id
+function sessionLabel(s: any): string {
+  if (typeof s.title === 'string' && s.title) return s.title
+  const model = typeof s.model === 'string' && s.model ? s.model : 'Claude'
+  const tool = typeof s.toolName === 'string' && s.toolName ? ` · ${s.toolName}` : ''
+  const short = typeof s.sessionId === 'string' ? s.sessionId.slice(0, 8) : ''
+  return `${model}${tool} · ${short}`
+}
+
 async function toggleIslandFlat() {
   if (!islandFlatLoaded.value) return // 初始值尚未读回，先不响应，避免与初始 get 竞态
   islandFlat.value = !islandFlat.value
@@ -61,6 +89,7 @@ async function toggleIslandFlat() {
 
 // 实时状态更新
 function onAgentStateUpdate(data: { state: string; sessions: any[] }) {
+  sessions.value = data.sessions ?? []
   if (bridgeStatus.value) {
     bridgeStatus.value = {
       ...bridgeStatus.value,
@@ -92,6 +121,10 @@ onMounted(async () => {
   // 读取自动允许设置
   try {
     autoAllow.value = await window.electronAPI.agentGetAutoAllow()
+  } catch {}
+  // 读取选择性自动审批的会话集合
+  try {
+    autoAllowSessions.value = await window.electronAPI.agentGetAutoAllowSessions()
   } catch {}
   // 读取 AI 岛外观设置（横条态）
   try {
@@ -169,6 +202,25 @@ onUnmounted(() => {
               <span class="toggle-knob"></span>
             </button>
           </div>
+
+          <!-- 选择性自动审批（按会话）：全局全部审批打开时逐会话无意义，隐藏 -->
+          <template v-if="!autoAllow">
+            <div class="session-title">{{ t('ai.autoAllowSessionTitle') }}</div>
+            <div class="session-desc">{{ t('ai.autoAllowSessionDesc') }}</div>
+            <div v-if="sessions.length === 0" class="session-empty">{{ t('ai.noActiveSession') }}</div>
+            <div v-for="s in sessions" :key="s.sessionId" class="setting-row session-row">
+              <div class="row-text">
+                <div class="row-label session-label">{{ sessionLabel(s) }}</div>
+              </div>
+              <button
+                class="toggle-btn"
+                :class="{ on: autoAllowSessions.includes(s.sessionId) }"
+                @click="toggleAutoAllowSession(s.sessionId)"
+              >
+                <span class="toggle-knob"></span>
+              </button>
+            </div>
+          </template>
         </div>
       </div>
 
@@ -297,5 +349,36 @@ onUnmounted(() => {
   background: currentColor;
 }
 .status-server.on .server-dot { box-shadow: 0 0 6px #34d399; }
+
+/* 选择性自动审批（按会话）块 */
+.session-title {
+  margin-top: 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.session-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+.session-empty {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-accent-bg);
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.session-row .session-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  /* 标题可能较长：单行省略，不撑爆行 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 </style>

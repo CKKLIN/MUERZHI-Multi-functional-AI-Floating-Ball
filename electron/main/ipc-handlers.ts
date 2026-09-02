@@ -418,6 +418,8 @@ export function registerIpcHandlers(agentBridge?: AgentBridge) {
     ipcMain.handle('agent-submit-question', (_event, sessionId: string, answers: Record<string, unknown>) => agentBridge?.submitQuestion(sessionId, answers))
     ipcMain.handle('agent-set-auto-allow', (_event, enabled: boolean) => agentBridge?.setAutoAllow(enabled))
     ipcMain.handle('agent-get-auto-allow', () => agentBridge?.getAutoAllow() ?? false)
+    ipcMain.handle('agent-get-auto-allow-sessions', () => agentBridge?.getAutoAllowSessions() ?? [])
+    ipcMain.handle('agent-set-auto-allow-session', (_event, sessionId: string, enabled: boolean) => agentBridge?.setAutoAllowSession(sessionId, enabled) ?? [])
   }
 
   // === 待办便签 IPC ===

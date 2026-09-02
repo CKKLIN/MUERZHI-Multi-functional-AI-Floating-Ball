@@ -12,7 +12,7 @@ import { hideAiIsland } from './ai-island'
 import { setRegistryLogger, killAllConversions } from './conversion-registry'
 import { setHwEncoderLogger } from './hw-encoder'
 import { setStateMachineLogger } from './agent-state-machine'
-import { setI18nLocale, getAppI18nBundle } from './i18n'
+import { t, setI18nLocale, getAppI18nBundle } from './i18n'
 import { registerLocalVideoScheme, registerLocalVideoProtocol } from './local-video-protocol'
 import { showTodoWindow, closeTodoWindow } from './todo-window'
 import { hideTodoReminder } from './todo-reminder-window'
@@ -21,6 +21,24 @@ import { registerTodoBadgeHandlers, refreshTodoBadge } from './todo-badge'
 import { startTodoScheduler, stopTodoScheduler } from './todo-scheduler'
 
 declare const __dirname: string
+
+// === 单实例锁（必须在 app.ready 前请求） ===
+// 重复双击 exe/快捷方式时：拿不到锁的实例直接退出，已有实例收到 second-instance 拉起设置窗口
+// （与托盘点击同行为）。不加锁的后果：双悬浮球/双托盘、全局快捷键注册冲突、userData
+// （悬浮球位置/待办/设置 last-write-wins）互相覆盖、Agent 端口递增占用导致 hooks 只连上后启动的实例。
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+ensureLogPath()
+if (!gotSingleInstanceLock) {
+  // 注意：此处早于 app.ready，只调 app.quit() 可能被随后的 ready 事件 + whenReady 窗口创建抵消
+  // （Electron 已知行为，实测三实例全部完整启动）。此刻未初始化任何窗口/服务器，直接退进程无副作用。
+  log.warn('Another MUERZHI instance is already running, exiting.')
+  process.exit(0)
+} else {
+  log.info('Single instance lock acquired')
+  app.on('second-instance', () => {
+    showSettingsWindow()
+  })
+}
 
 // 必须在 app.ready 前注册 scheme 为 privileged
 registerLocalVideoScheme()
@@ -63,6 +81,10 @@ function createWindow(preloadPath: string) {
       backgroundThrottling: false,
     },
   })
+
+  // 页面 <title>（index.html 的“二支录制”）在加载完成后会覆盖 BrowserWindow 的 title，
+  // 导致任务栏预览里所有窗口都显示同名——阻止页面标题接管，固定为本窗口自己的标题
+  mainWindow.on('page-title-updated', (e) => e.preventDefault())
 
   if (VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(VITE_DEV_SERVER_URL)
@@ -241,7 +263,7 @@ function showAiWindow() {
     skipTaskbar: false, // 从菜单打开的 AI 助手窗口需在任务栏有图标，便于切换
     frame: false,
     titleBarStyle: 'hidden',
-    title: 'AI 助手',
+    title: t('ai.title'),
     backgroundColor: '#eaeaec',
     webPreferences: {
       preload: preloadPath,
@@ -250,6 +272,8 @@ function showAiWindow() {
       sandbox: false,
     },
   })
+  // 同主窗口：阻止 index.html 的 <title> 覆盖窗口标题（任务栏预览各自显示自己的名字）
+  aiWindow.on('page-title-updated', (e) => e.preventDefault())
   if (VITE_DEV_SERVER_URL) {
     aiWindow.loadURL(`${VITE_DEV_SERVER_URL}#/ai?t=${Date.now()}`)
   } else {
@@ -280,7 +304,7 @@ function showSettingsWindow() {
     skipTaskbar: false, // 从菜单打开的设置窗口需在任务栏有图标，便于切换
     frame: false,
     titleBarStyle: 'hidden',
-    title: '设置',
+    title: t('settings.title'),
     backgroundColor: '#eaeaec',
     webPreferences: {
       preload: preloadPath,
@@ -289,6 +313,8 @@ function showSettingsWindow() {
       sandbox: false,
     },
   })
+  // 同主窗口：阻止 index.html 的 <title> 覆盖窗口标题（任务栏预览各自显示自己的名字）
+  settingsWindow.on('page-title-updated', (e) => e.preventDefault())
   if (VITE_DEV_SERVER_URL) {
     settingsWindow.loadURL(`${VITE_DEV_SERVER_URL}#/settings?t=${Date.now()}`)
   } else {

@@ -26,6 +26,12 @@ dist-ssr
 # Build output
 release/
 
+# 裁剪版 ffmpeg 构建中间产物（脚本与最终 ffmpeg.exe 入库，源码/构建树/测试媒体不入）
+vendor/ffmpeg/src/
+vendor/ffmpeg/build/
+vendor/ffmpeg/install/
+vendor/ffmpeg/test/
+
 src/log
 
 .claude

@@ -5,6 +5,7 @@
 import { createAgentStateMachine } from "./agent-state-machine"
 import { createAgentServer, type CardItem, type SafeCard } from "./agent-server"
 import { createClaudeHookManager, type HookManagerStatus } from "./claude-hook-manager"
+import { getClaudeSessionTitle } from "./session-title"
 import nodeFs from "node:fs"
 import { join } from "node:path"
 import log from "./logger"
@@ -47,18 +48,22 @@ export interface AgentBridge {
   uninstallHooks: () => void
   setAutoAllow: (enabled: boolean) => void
   getAutoAllow: () => boolean
+  getAutoAllowSessions: () => string[]
+  setAutoAllowSession: (sessionId: string, enabled: boolean) => string[]
 }
 
 // === 自动允许/同意设置持久化 ===
 // 独立小 JSON（agent-settings.json），不与其他设置文件混用。写入端与读取端做对称白名单校验：
-// 非布尔 autoAllow 一律丢弃，避免把非法类型持久化进文件（否则重启后校验失败会静默回退默认值）。
+// 非布尔 autoAllow、非字符串数组元素一律丢弃，避免把非法类型持久化进文件（否则重启后校验失败会静默回退默认值）。
 const AGENT_SETTINGS_FILE = 'agent-settings.json'
 
 interface AgentSettings {
   autoAllow: boolean
+  /** 选择性自动审批：只对这些会话（sessionId）自动放行权限；为空数组则无按会话的自动审批 */
+  autoAllowSessions: string[]
 }
 
-const DEFAULT_AGENT_SETTINGS: AgentSettings = { autoAllow: false }
+const DEFAULT_AGENT_SETTINGS: AgentSettings = { autoAllow: false, autoAllowSessions: [] }
 
 function agentSettingsFilePath(): string {
   // 懒加载 electron：保持本文件在纯 Node 下可 import（与 conversion-registry / hw-encoder 同约定）。
@@ -74,6 +79,9 @@ function loadAgentSettings(): AgentSettings {
     const parsed = JSON.parse(data)
     return {
       autoAllow: typeof parsed.autoAllow === 'boolean' ? parsed.autoAllow : DEFAULT_AGENT_SETTINGS.autoAllow,
+      autoAllowSessions: Array.isArray(parsed.autoAllowSessions)
+        ? parsed.autoAllowSessions.filter((s: unknown): s is string => typeof s === 'string' && s.length > 0)
+        : DEFAULT_AGENT_SETTINGS.autoAllowSessions,
     }
   } catch {}
   return { ...DEFAULT_AGENT_SETTINGS }
@@ -119,20 +127,40 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
 
   let stateListener: ((state: DisplayState, sessions: AgentSession[]) => void) | null = null
   let cardListener: ((card: CardItem | null) => void) | null = null
-  // 自动同意开关持久化到 agent-settings.json（主进程 JSON 为真相源），启动时读回、切换时落盘。
+  // 自动审批开关持久化到 agent-settings.json（主进程 JSON 为真相源），启动时读回、切换时落盘。
   // 与 ai-island-settings.json 同模式：独立小 JSON + 白名单校验，避免把非法类型写进文件。
-  let autoAllow = loadAgentSettings().autoAllow
+  // autoAllow 全局放行所有权限；autoAllowSessions 只放行指名会话的权限（见 setOnCardChange）。
+  const persistedSettings = loadAgentSettings()
+  let autoAllow = persistedSettings.autoAllow
+  let autoAllowSessions = persistedSettings.autoAllowSessions
+
+  // 把两份设置一起落盘，避免只存其一导致另一份静默丢失
+  function persistSettings() {
+    saveAgentSettings({ autoAllow, autoAllowSessions })
+  }
 
   stateMachine.subscribe((state, sessions) => {
-    if (stateListener) stateListener(state, sessions)
+    if (!stateListener) return
+    // 标题增强：优先用 Claude Code 会话列表里的官方标题（~/.claude/sessions/<pid>.json 的 name，
+    // 见 session-title.ts），读不到（老版本 / 目录缺失）退回状态机里首条 prompt 派生的标题。
+    // 内部带 5s 扫描缓存，广播高频时不会频繁读盘。
+    const enriched = sessions.map((s) => {
+      const name = getClaudeSessionTitle(s.sessionId)
+      return name && name !== s.title ? { ...s, title: name } : s
+    })
+    stateListener(state, enriched)
   })
 
   server.setOnCardChange((card) => {
-    // 自动允许模式：权限卡一旦成队首就放行，直接跳过悬浮岛（自动允许只作用于权限，不影响提问）
-    if (autoAllow && card && card.kind === "permission") {
-      log.info(`[AgentBridge] auto-allow permission: tool=${card.toolName}`)
-      server.resolvePendingPermission("allow")
-      return
+    // 自动允许模式：权限卡一旦成队首就放行，直接跳过悬浮岛（自动允许只作用于权限，不影响提问）。
+    // 放行条件 = 全局 autoAllow，或该卡所属会话被加入了 autoAllowSessions（选择性按会话审批）。
+    if (card && card.kind === "permission") {
+      const selective = autoAllowSessions.includes(card.sessionId)
+      if (autoAllow || selective) {
+        log.info(`[AgentBridge] auto-allow permission: tool=${card.toolName}, session=${card.sessionId}, global=${autoAllow}, selective=${selective}`)
+        server.resolvePendingPermission("allow")
+        return
+      }
     }
     if (cardListener) cardListener(card)
   })
@@ -185,8 +213,23 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
 
   function installHooks() { hookManager.install() }
   function uninstallHooks() { hookManager.uninstall() }
-  function setAutoAllow(enabled: boolean) { autoAllow = enabled; saveAgentSettings({ autoAllow }); log.info(`[AgentBridge] autoAllow=${enabled} (persisted)`) }
+  function setAutoAllow(enabled: boolean) { autoAllow = enabled; persistSettings(); log.info(`[AgentBridge] autoAllow=${enabled} (persisted)`) }
   function getAutoAllow() { return autoAllow }
+
+  function getAutoAllowSessions(): string[] {
+    return [...autoAllowSessions]
+  }
+
+  // 把某会话加入/移出"选择性自动审批"集合，落盘并返回新集合
+  function setAutoAllowSession(sessionId: string, enabled: boolean): string[] {
+    const set = new Set(autoAllowSessions)
+    if (enabled) set.add(sessionId)
+    else set.delete(sessionId)
+    autoAllowSessions = Array.from(set)
+    persistSettings()
+    log.info(`[AgentBridge] setAutoAllowSession: session=${sessionId}, enabled=${enabled}, count=${autoAllowSessions.length} (persisted)`)
+    return [...autoAllowSessions]
+  }
 
   function getStatus(): AgentBridgeStatus {
     const sessionsRaw = stateMachine.getSessions()
@@ -212,6 +255,6 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
     start, stop, getServer, getStateMachine, getHookManager, getStatus,
     setStateListener, setCardListener,
     resolvePermission, dismissQuestion, submitQuestion, installHooks, uninstallHooks,
-    setAutoAllow, getAutoAllow,
+    setAutoAllow, getAutoAllow, getAutoAllowSessions, setAutoAllowSession,
   }
 }

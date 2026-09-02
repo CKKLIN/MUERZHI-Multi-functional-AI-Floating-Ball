@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概览
 
-**MUERZHI万能AI 悬浮球** —— 基于 Electron 28 + Vue 3 + Pinia + vue-router 的 Windows 桌面录屏 + AI 悬浮球工具。录制在渲染层用 `getDisplayMedia`/`MediaRecorder` 完成采集，后处理（转码/裁剪/合并/GIF）在主进程用 `fluent-ffmpeg` 完成。`ffmpeg.exe` 作为 `extraResource` 随安装包分发。
+**MUERZHI万能AI 悬浮球** —— 基于 Electron 28 + Vue 3 + Pinia + vue-router 的 Windows 桌面录屏 + AI 悬浮球工具。录制在渲染层用 `getDisplayMedia`/`MediaRecorder` 完成采集，后处理（转码/裁剪/合并/GIF）在主进程用 `fluent-ffmpeg` 完成。`ffmpeg.exe` 作为 `extraResource` 随安装包分发——用的是**仓库内置的裁剪版静态构建**（`vendor/ffmpeg/ffmpeg.exe`，8MB，仅含应用实际用到的编解码/滤镜；重建脚本 `vendor/ffmpeg/build-minimal.sh`，需 MSYS2 MinGW64 环境）。
 
 一个核心子系统（"AI 岛" / 悬浮球）是与 Claude Code CLI 的集成：安装 Claude Code hooks、启动本地 HTTP 服务器，在悬浮覆盖窗口里展示 agent 状态与权限审批。悬浮球本身是应用的入口形态与品牌核心。
 
@@ -63,7 +63,7 @@ node --experimental-strip-types test-hw-probe.mjs              # 冒烟：对真
 
 ### FFmpeg / 硬件编码（`electron/main/ffmpeg.ts`、`hw-encoder.ts`）
 
-- `hw-encoder.ts` 探测一次 `ffmpeg -encoders`（进程内缓存），按 `h264_nvenc` > `h264_qsv` > `h264_amf` > `libx264` 选编码器。**re-encode 路径先试硬编器，失败回退 `libx264`**（裁剪、带裁剪转码、多屏合并都这么做）。remux 路径（`-c copy`）不编码，不受影响。
+- `hw-encoder.ts` 探测一次 `ffmpeg -encoders`（进程内缓存），按 `h264_nvenc` > `h264_qsv` > `h264_amf` > `libx264` 选编码器（裁剪版 ffmpeg 未编入 amf——AMF 头文件下载受限，AMD 用户落到 libx264）。**re-encode 路径先试硬编器，失败回退 `libx264`**（裁剪、带裁剪转码、多屏合并都这么做）。remux 路径（`-c copy`）不编码，不受影响。注意：多屏合并的 filtergraph 里 `color` 背景是无限源，最后一个 overlay **必须带 `shortest=1`**，否则整条链无限编码（曾被此卡死）。
 - `conversion-registry.ts` 按 id 跟踪每个在途 ffmpeg 子进程。每个 `fluent-ffmpeg` command 和 `execFile` 调用都注册一个 `kill` 函数，完成时注销。`before-quit` 调 `killAllConversions()` 防止 `ffmpeg.exe` 成为孤儿进程退出后仍占 CPU。**任何新加的 ffmpeg 调用都必须 `registerConversion`/`unregisterConvers​ion`。**
 - 多屏合并对每个输入**串行** remux，且**任一失败即短路**（清临时文件、返回错误）——不要改成并行；并行 remux 曾是"合并吃满所有核然后静默全丢"的根因。
 

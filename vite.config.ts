@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import electron from 'vite-plugin-electron'
 import renderer from 'vite-plugin-electron-renderer'
-import { copyFileSync, mkdirSync, existsSync, statSync } from 'node:fs'
+import { copyFileSync, mkdirSync } from 'node:fs'
 
 // ELECTRON_RUN_AS_NODE=1 会让 Electron 以普通 Node.js 模式运行，导致所有 Electron API 不可用
 if (process.env.ELECTRON_RUN_AS_NODE === '1') {
@@ -19,14 +19,6 @@ function copyHtmlFiles() {
   try { copyFileSync('electron/main/question-card-utils.js', 'dist-electron/main/question-card-utils.js') } catch {}
 }
 
-function srcHtmlNewer() {
-  try {
-    const distStat = statSync('dist-electron/main/camera-preview.html')
-    const srcStat = statSync('electron/camera-preview.html')
-    return srcStat.mtimeMs > distStat.mtimeMs
-  } catch { return true }
-}
-
 export default defineConfig({
   plugins: [
     vue(),
@@ -40,7 +32,7 @@ export default defineConfig({
               output: {
                 entryFileNames: '[name].cjs',
               },
-              external: ['fluent-ffmpeg', '@ffmpeg-installer/ffmpeg'],
+              external: ['fluent-ffmpeg'],
             },
           },
         },

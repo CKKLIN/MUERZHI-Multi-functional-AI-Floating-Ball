@@ -170,6 +170,8 @@ export interface ElectronAPI {
   agentSubmitQuestion: (sessionId: string, answers: Record<string, unknown>) => Promise<void>
   agentSetAutoAllow: (enabled: boolean) => Promise<void>
   agentGetAutoAllow: () => Promise<boolean>
+  agentGetAutoAllowSessions: () => Promise<string[]>
+  agentSetAutoAllowSession: (sessionId: string, enabled: boolean) => Promise<string[]>
   onAgentStateUpdate: (callback: (data: AgentStatePayload) => void) => () => void
   onAgentPermissionRequest: (callback: (data: AgentPermissionPayload) => void) => () => void
   showAiWindow: () => Promise<void>
@@ -208,6 +210,7 @@ export interface AgentStatePayload {
     sessionId: string
     agentId: string
     state: string
+    title?: string
     toolName?: string
     contextUsage?: { used: number; limit: number }
     model?: string
