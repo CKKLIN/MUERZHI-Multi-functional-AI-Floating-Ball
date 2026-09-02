@@ -48,6 +48,8 @@ export function showTodoWindow(): void {
       sandbox: false,
     },
   })
+  // 阻止 index.html 的 <title>（“二支录制”）覆盖窗口标题，任务栏预览显示“待办便签”
+  todoWindow.on('page-title-updated', (e) => e.preventDefault())
   todoWindow.setAlwaysOnTop(loadTodoSettings().windowAlwaysOnTop, 'normal')
   if (VITE_DEV_SERVER_URL) {
     todoWindow.loadURL(`${VITE_DEV_SERVER_URL}#/todo?t=${Date.now()}`)

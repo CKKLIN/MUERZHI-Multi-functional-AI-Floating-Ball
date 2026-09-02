@@ -43,8 +43,6 @@ const zh: Record<string, string> = {
   'settings.ball.alwaysOnTopDesc': '关闭后悬浮球可被其他窗口遮挡',
   'settings.ball.resetPos': '重置位置',
   'settings.ball.resetPosDesc': '把悬浮球移回屏幕中心',
-  'settings.ball.snapGutter': '贴边留白',
-  'settings.ball.snapGutterDesc': '贴边吸附时距屏幕边缘的像素留白（0 = 全贴合）',
   'settings.group.menu': '悬浮球菜单',
   'settings.group.system': '系统',
   'settings.group.language': '语言',
@@ -182,8 +180,11 @@ const zh: Record<string, string> = {
   'ai.hooksDesc': '钩子脚本状态',
   'ai.groupPermission': '权限',
   'ai.autoAllowTitle': '自动允许所有权限',
+  'ai.autoAllowSessionTitle': '选择性自动审批（按会话）',
+  'ai.autoAllowSessionDesc': '仅对勾选的会话自动放行权限，其余仍弹审批卡',
+  'ai.noActiveSession': '暂无活动会话',
   'ai.groupIsland': '悬浮岛外观',
-  'ai.flat': '横条态（更扁的细横条）',
+  'ai.flat': '横条态',
   'ai.flatDesc': '把悬浮岛默认状态条压成更扁的细横条，省屏幕空间',
 
   // === 待办便签 ===
@@ -343,8 +344,6 @@ const en: Record<string, string> = {
   'settings.ball.alwaysOnTopDesc': 'When off, other windows may cover the ball',
   'settings.ball.resetPos': 'Reset Position',
   'settings.ball.resetPosDesc': 'Move the ball back to the center of the screen',
-  'settings.ball.snapGutter': 'Edge gutter',
-  'settings.ball.snapGutterDesc': 'Pixel gutter from the screen edge when snapped (0 = flush)',
   'settings.group.menu': 'Ball Menu',
   'settings.group.system': 'System',
   'settings.group.language': 'Language',
@@ -385,8 +384,11 @@ const en: Record<string, string> = {
   'ai.hooksDesc': 'Hook script status',
   'ai.groupPermission': 'Permissions',
   'ai.autoAllowTitle': 'Auto-allow all permissions',
+  'ai.autoAllowSessionTitle': 'Selective auto-approve (by session)',
+  'ai.autoAllowSessionDesc': 'Auto-allow only for checked sessions; others still show approval cards',
+  'ai.noActiveSession': 'No active sessions',
   'ai.groupIsland': 'AI Island Look',
-  'ai.flat': 'Flat bar (slimmer)',
+  'ai.flat': 'Flat bar',
   'ai.flatDesc': 'Compress the island status bar into a slimmer flat bar to save screen space',
 
   // === AI island (inline HTML) ===

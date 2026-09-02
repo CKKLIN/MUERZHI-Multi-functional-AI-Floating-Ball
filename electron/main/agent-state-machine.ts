@@ -17,6 +17,8 @@ export interface AgentSession {
   state: AgentLogicalState
   event: string | null
   updatedAt: number
+  /** 会话标题 = 该会话首条用户 prompt（截断压平）。先到先得、之后不覆盖——标题要稳定可辨认 */
+  title?: string
   toolName?: string
   toolInput?: any
   contextUsage?: { used: number; limit: number; percent?: number }
@@ -39,6 +41,17 @@ const SESSION_STALE_MS = 10 * 60 * 1000
 const WORKING_STALE_MS = 5 * 60 * 1000
 const CLEANUP_INTERVAL_MS = 10 * 1000
 const DONE_DURATION_MS = 2000
+
+// 会话标题截断上限：够在一行内辨认会话，又不至于把设置面板撑爆
+const TITLE_MAX_LEN = 60
+
+// 标题清洗：压平所有空白（prompt 可能多行/带粘贴长文）、trim、超长截断加省略号
+function normalizeTitle(prompt: unknown): string | undefined {
+  if (typeof prompt !== "string") return undefined
+  const flat = prompt.replace(/\s+/g, " ").trim()
+  if (!flat) return undefined
+  return flat.length > TITLE_MAX_LEN ? flat.slice(0, TITLE_MAX_LEN - 1) + "…" : flat
+}
 
 export type StateListener = (displayState: DisplayState, sessions: AgentSession[]) => void
 
@@ -82,6 +95,7 @@ export function createAgentStateMachine(options: AgentStateMachineOptions = {}) 
       toolInput?: any
       contextUsage?: { used: number; limit: number }
       model?: string
+      prompt?: string | null
     } = {}
   ) {
     if (doneTimer) { clearTimeout(doneTimer); doneTimer = null }
@@ -93,6 +107,8 @@ export function createAgentStateMachine(options: AgentStateMachineOptions = {}) 
       state,
       event,
       updatedAt: Date.now(),
+      // 标题先到先得：已有标题不覆盖（prompt 缺失/为空时 normalizeTitle 返回 undefined，不冲掉旧值）
+      title: existing?.title || normalizeTitle(opts.prompt),
       toolName: opts.toolName || existing?.toolName,
       toolInput: opts.toolInput || existing?.toolInput,
       contextUsage: opts.contextUsage || existing?.contextUsage,

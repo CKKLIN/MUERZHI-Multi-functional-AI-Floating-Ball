@@ -142,8 +142,13 @@ const electronAPI = {
 
   // Media devices
   getMediaDevices: () => {
-    if (!navigator.mediaDevices?.enumerateDevices) return Promise.resolve([])
-    return navigator.mediaDevices.enumerateDevices().then(
+    // preload 的 TS 环境（tsconfig.node.json）无完整 DOM lib：Navigator 上没有 mediaDevices 类型，
+    // 整条链路是 any——用结构化 cast 声明实际用到的形状，避开 noImplicitAny 的 TS7006
+    const md = (navigator as unknown as {
+      mediaDevices?: { enumerateDevices?: () => Promise<Array<{ deviceId: string; kind: string; label: string }>> }
+    }).mediaDevices
+    if (!md?.enumerateDevices) return Promise.resolve([])
+    return md.enumerateDevices().then(
       devices => devices.map(d => ({
         deviceId: d.deviceId,
         kind: d.kind,
@@ -175,6 +180,8 @@ const electronAPI = {
   agentSubmitQuestion: (sessionId: string, answers: Record<string, unknown>) => ipcRenderer.invoke('agent-submit-question', sessionId, answers),
   agentSetAutoAllow: (enabled: boolean) => ipcRenderer.invoke('agent-set-auto-allow', enabled),
   agentGetAutoAllow: () => ipcRenderer.invoke('agent-get-auto-allow'),
+  agentGetAutoAllowSessions: () => ipcRenderer.invoke('agent-get-auto-allow-sessions'),
+  agentSetAutoAllowSession: (sessionId: string, enabled: boolean) => ipcRenderer.invoke('agent-set-auto-allow-session', sessionId, enabled),
   onAgentStateUpdate: (callback: (data: any) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
     ipcRenderer.on('agent-state-update', handler)

@@ -1,5 +1,4 @@
 import ffmpeg from 'fluent-ffmpeg'
-import ffmpegPath from '@ffmpeg-installer/ffmpeg'
 import { app } from 'electron'
 import os from 'node:os'
 import path from 'node:path'
@@ -8,9 +7,12 @@ import log from './logger'
 import { registerConversion, unregisterConversion } from './conversion-registry'
 import { getH264Encoder, buildEncodeOptions } from './hw-encoder'
 
+// 只在 dev 态解析 vendor 里的裁剪版 ffmpeg.exe（打包态走 extraResource 的 resources/ffmpeg.exe）。
+// 裁剪版见 vendor/ffmpeg/build-minimal.sh；不能 import '@ffmpeg-installer/ffmpeg'：它的 index.js
+// 顶层会校验 exe 是否存在，找不到直接 throw 字符串——若保持顶层 import，打包应用一启动就崩。
 const ffmpegBinPath = app.isPackaged
   ? path.join(process.resourcesPath, 'ffmpeg.exe')
-  : ffmpegPath.path
+  : path.join(__dirname, '..', '..', 'vendor', 'ffmpeg', 'ffmpeg.exe')
 ffmpeg.setFfmpegPath(ffmpegBinPath)
 
 export interface ConversionProgress {
@@ -268,7 +270,12 @@ export function mergeMultiScreen(
       const scaledLabel = `[s${i}]`
       const outLabel = i === inputs.length - 1 ? '[out]' : `[tmp${i}]`
       filters.push(`[${i}:v]scale=${sw}:${sh},setsar=1${scaledLabel}`)
-      filters.push(`${prevLabel}${scaledLabel}overlay=${dx}:${dy}${outLabel}`)
+      // 最后一个 overlay 必须带 shortest=1：背景 color 源是无限的，没有终止条件整个 filtergraph
+      // 会无限编码（实测 3 秒输入跑到 40 分钟还在出帧，多屏合并功能因此始终潜伏卡死）。
+      // shortest=1 让链条在"最短输入"（=真实视频，经 repeatlast 后即最长的那路）结束时收束，
+      // 短屏一侧由 overlay 的 repeatlast 补最后帧，符合"画布补黑"的合并语义。
+      const shortestOpt = i === inputs.length - 1 ? ':shortest=1' : ''
+      filters.push(`${prevLabel}${scaledLabel}overlay=${dx}:${dy}${shortestOpt}${outLabel}`)
       prevLabel = outLabel
     }
     filters.push('[out]format=yuv420p')
@@ -360,7 +367,9 @@ export function convertToGif(
   onProgress?: (progress: ConversionProgress) => void
 ): Promise<{ success: boolean; outputPath: string; error?: string }> {
   const { execFile } = require('node:child_process')
-  const ffmpegBin = ffmpegPath.path
+  // 用模块级 ffmpegBinPath（打包=resources，dev=node_modules）。此前引用已删除的
+  // @ffmpeg-installer 默认导出（ffmpegPath.path），打包后调 GIF 转换直接 ReferenceError。
+  const ffmpegBin = ffmpegBinPath
   const width = options?.width ?? 480
   const fps = options?.fps ?? 10
   const palettePath = path.join(os.tmpdir(), `gif_palette_${Date.now()}.png`)

@@ -247,6 +247,8 @@ export function createAgentServer(stateMachine: ReturnType<typeof createAgentSta
       toolInput: data.tool_input || data.toolInput,
       contextUsage: data.context_usage || data.contextUsage,
       model: data.model,
+      // 用户消息原文（UserPromptSubmit 携带）：状态机取首条作会话标题
+      prompt: data.prompt,
     })
 
     // AskUserQuestion 答完/会话结束会触发完成事件 → 从队列收起尚未提交或悬挂的提问卡
