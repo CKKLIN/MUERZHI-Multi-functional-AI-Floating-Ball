@@ -1926,13 +1926,13 @@ var init_logger = __esmMin((() => {
 //#region electron/main/conversion-registry.ts
 init_logger();
 var tasks = /* @__PURE__ */ new Map();
-var logger$3 = {
+var logger$4 = {
 	info: () => {},
 	warn: () => {}
 };
 /** 注入日志实现（生产环境在 main 进程入口调用，传入 electron-log 实例）。 */
 function setRegistryLogger(log) {
-	logger$3 = log;
+	logger$4 = log;
 }
 /** 注册一个在途转换任务，返回 id。任务结束后应调用 unregister(id)。 */
 function registerConversion(kill) {
@@ -1952,11 +1952,11 @@ function unregisterConversion(id) {
 function killAllConversions() {
 	const count = tasks.size;
 	if (count === 0) return 0;
-	logger$3.info(`Killing ${count} in-flight conversion(s) on quit`);
+	logger$4.info(`Killing ${count} in-flight conversion(s) on quit`);
 	for (const task of tasks.values()) try {
 		task.kill();
 	} catch (err) {
-		logger$3.warn(`Conversion kill failed for ${task.id}:`, err?.message ?? err);
+		logger$4.warn(`Conversion kill failed for ${task.id}:`, err?.message ?? err);
 	}
 	tasks.clear();
 	return count;
@@ -1971,13 +1971,13 @@ var PRIORITY = [
 ];
 var cached = null;
 var probing = null;
-var logger$2 = {
+var logger$3 = {
 	info: () => {},
 	warn: () => {}
 };
 /** 注入日志实现（生产环境在 main 进程入口调用，传入 electron-log 实例）。 */
 function setHwEncoderLogger(log) {
-	logger$2 = log;
+	logger$3 = log;
 }
 /** 从 ffmpeg -encoders 输出里解析出可用的 h264 硬编器，按优先级返回第一个。
 *  纯函数，便于单测（注入 encoders 文本）。无可用硬编器时返回 'libx264'。 */
@@ -1997,11 +1997,11 @@ function getH264Encoder(ffmpegBin) {
 				maxBuffer: 2 * 1024 * 1024
 			});
 			const enc = pickHwEncoder(stdout);
-			logger$2.info(`H.264 encoder selected: ${enc}`);
+			logger$3.info(`H.264 encoder selected: ${enc}`);
 			cached = enc;
 			return enc;
 		} catch (err) {
-			logger$2.warn("HW encoder probe failed, falling back to libx264:", err?.message ?? err);
+			logger$3.warn("HW encoder probe failed, falling back to libx264:", err?.message ?? err);
 			cached = "libx264";
 			return "libx264";
 		} finally {
@@ -2493,6 +2493,15 @@ var init_i18n = __esmMin((() => {
 		"ball.menu.ai": "AI助手",
 		"ball.menu.todo": "待办便签",
 		"ball.menu.settings": "设置",
+		"ball.cooling.title": "散热模式",
+		"ball.cooling.fanOn": "风扇已全速",
+		"ball.cooling.powerOnly": "功耗散热中",
+		"ball.cooling.monitoring": "温度监测中",
+		"ball.cooling.tempUnknown": "温度未知",
+		"ball.cooling.disk": "磁盘",
+		"ball.cooling.mem": "内存",
+		"ball.cooling.done": "散热完成 {before}°C → {after}°C",
+		"ball.cooling.doneNoTemp": "散热完成",
 		"settings.group.ball": "悬浮球",
 		"settings.ball.show": "显示悬浮球",
 		"settings.ball.showDesc": "关闭后悬浮球隐藏，可从托盘「显示设置窗口」重新打开",
@@ -2762,6 +2771,15 @@ var init_i18n = __esmMin((() => {
 		"ball.menu.ai": "AI",
 		"ball.menu.todo": "Notes",
 		"ball.menu.settings": "Settings",
+		"ball.cooling.title": "Cooling",
+		"ball.cooling.fanOn": "Fans at full speed",
+		"ball.cooling.powerOnly": "Power-limited cooling",
+		"ball.cooling.monitoring": "Monitoring temps",
+		"ball.cooling.tempUnknown": "Temp unknown",
+		"ball.cooling.disk": "Disk",
+		"ball.cooling.mem": "RAM",
+		"ball.cooling.done": "Cooling done {before}°C → {after}°C",
+		"ball.cooling.doneNoTemp": "Cooling finished",
 		"settings.group.ball": "Floating Ball",
 		"settings.ball.show": "Show Floating Ball",
 		"settings.ball.showDesc": "Hidden ball can be reopened from the tray menu “Show Settings Window”",
@@ -4613,6 +4631,990 @@ function registerAiIslandHandlers() {
 	});
 }
 //#endregion
+//#region electron/main/cooling.ts
+var logger$2 = {
+	info: () => {},
+	warn: () => {},
+	error: () => {}
+};
+function setCoolingLogger(l) {
+	logger$2 = l;
+}
+function msg(e) {
+	return e?.message ?? String(e);
+}
+var dataDirOverride$1 = null;
+function dataDir$1() {
+	if (dataDirOverride$1) return dataDirOverride$1;
+	try {
+		const { app } = require("electron");
+		return app.getPath("userData");
+	} catch {
+		return null;
+	}
+}
+var runnerOverride = null;
+/** 散热时长可注入（单测缩短到几百 ms；生产恒 10s）。 */
+var durationOverrideMs = null;
+function durationMs() {
+	return durationOverrideMs ?? COOLING_DURATION_MS;
+}
+function realRunPowercfg(args, timeoutMs = 4e3) {
+	return new Promise((resolve, reject) => {
+		(0, node_child_process.execFile)("powercfg", args, {
+			timeout: timeoutMs,
+			windowsHide: true,
+			encoding: "utf8"
+		}, (err, stdout) => {
+			if (err) reject(err);
+			else resolve(stdout);
+		});
+	});
+}
+/** 把脚本编码为 -EncodedCommand 参数（base64 UTF-16LE）。为什么不用 -Command：
+*  Node execFile 会把参数里的 `"` 转义成 `\"` 传命令行，PS 5.1 对 `\"` 的解析有坑
+*  （"字符串缺少终止符"）——含 Add-Type C# 引号的复杂载荷必须走 EncodedCommand。 */
+function toEncodedCommand(script) {
+	return Buffer.from(script, "utf16le").toString("base64");
+}
+function realRunPowerShell(script, timeoutMs = 4e3) {
+	return new Promise((resolve, reject) => {
+		(0, node_child_process.execFile)("powershell.exe", [
+			"-NoProfile",
+			"-NonInteractive",
+			"-EncodedCommand",
+			toEncodedCommand(script)
+		], {
+			timeout: timeoutMs,
+			windowsHide: true,
+			encoding: "utf8"
+		}, (err, stdout) => {
+			if (err) reject(err);
+			else resolve(stdout);
+		});
+	});
+}
+var runners = {
+	runPowercfg: (a, t) => runnerOverride?.runPowercfg ? runnerOverride.runPowercfg(a, t) : realRunPowercfg(a, t),
+	runPowerShell: (s, t) => runnerOverride?.runPowerShell ? runnerOverride.runPowerShell(s, t) : realRunPowerShell(s, t)
+};
+/** 解析 powercfg /q <guid> SUB_PROCESSOR PROCTHROTTLEMAX 输出中的当前 AC/DC 值。
+*  关键：标签行随系统语言本地化（中文 Windows 是"当前交流/直流电源设置索引"，不是英文），
+*  不能只按英文匹配。分两级：
+*  ① 中/英关键词（覆盖绝大多数用户）；② 按位置兜底——/q 输出结构固定，末两行带 0x 尾值
+*  的行恒为 AC、DC（"可能的设置单位"行为 %，不带 hex）。GUID 与十六进制均为 ASCII，
+*  其余本地化文案即使乱码也不影响（utf8 解码 GBK 只坏中文段）。 */
+function parseThrottleMax(stdout) {
+	const acKw = stdout.match(/(?:AC|交流)[^\r\n]*?(0x[0-9a-fA-F]+)\s*$/im);
+	if (acKw) {
+		const dcKw = stdout.match(/(?:DC|直流)[^\r\n]*?(0x[0-9a-fA-F]+)\s*$/im);
+		return {
+			ac: parseInt(acKw[1], 16),
+			dc: dcKw ? parseInt(dcKw[1], 16) : null
+		};
+	}
+	const vals = [];
+	for (const line of stdout.split(/\r?\n/)) {
+		const m = line.trim().match(/(0x[0-9a-fA-F]+)$/);
+		if (m) vals.push(parseInt(m[1], 16));
+	}
+	if (vals.length < 2) return null;
+	return {
+		ac: vals[vals.length - 2],
+		dc: vals[vals.length - 1]
+	};
+}
+/** ACPI CurrentTemperature 单位 0.1K → ℃，保留 1 位小数。超出物理合理范围（<0 / >120℃）
+*  视为无效读数——热区空闲/未就绪时常吐 ~2732（≈0℃）之类的占位值。 */
+function kelvinToCelsius(rawTenthsKelvin) {
+	if (!Number.isFinite(rawTenthsKelvin) || rawTenthsKelvin <= 0) return null;
+	const c = rawTenthsKelvin / 10 - 273.15;
+	if (c < 0 || c > 120) return null;
+	return Math.round(c * 10) / 10;
+}
+/** 温度命令输出（每行一个 0.1K 整数，可能多个热区）取最大有效值；全无效 → null。 */
+function pickMaxZoneTemp(stdout) {
+	let best = null;
+	for (const line of stdout.split(/\r?\n/)) {
+		const m = line.trim().match(/^(\d+)$/);
+		if (!m) continue;
+		const c = kelvinToCelsius(parseInt(m[1], 10));
+		if (c !== null && (best === null || c > best)) best = c;
+	}
+	return best;
+}
+/** 一次 PowerShell 采齐四项：CPU 平均负载、物理内存占用、磁盘活动时间%（_Total）、
+*  GPU 利用率（有 nvidia-smi 才有值，否则空串）。CIM formatted data 免采样等待。 */
+var USAGE_POLL_PS = "$ErrorActionPreference='Stop';$cpu=[int]((Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average);$os=Get-CimInstance Win32_OperatingSystem;$mem=[int]((1-$os.FreePhysicalMemory/$os.TotalVisibleMemorySize)*100);$disk=(Get-CimInstance Win32_PerfFormattedData_PerfDisk_PhysicalDisk | Where-Object {$_.Name -eq '_Total'} | Select-Object -First 1).PercentDiskTime;$smi=Join-Path $env:windir 'System32\\nvidia-smi.exe';$gpu='';if(Test-Path $smi){$gpu=(& $smi --query-gpu=utilization.gpu --format=csv,noheader,nounits | Select-Object -First 1)};Write-Output \"CPU=$cpu;MEM=$mem;DISK=$disk;GPU=$gpu\"";
+/** 解析 USAGE_POLL_PS 的输出行。GPU 空串 = 无 nvidia-smi → null；磁盘 >100 钳到 100
+*  （PercentDiskTime 多盘聚合可能超百）。整体不匹配 → null。 */
+function parseUsageLine(stdout) {
+	const m = stdout.match(/CPU=(\d+);MEM=(\d+);DISK=(\d+);GPU=(\d*)/);
+	if (!m) return null;
+	return {
+		cpu: parseInt(m[1], 10),
+		mem: parseInt(m[2], 10),
+		disk: Math.min(100, parseInt(m[3], 10)),
+		gpu: m[4] === "" ? null : parseInt(m[4], 10)
+	};
+}
+/** Win32_PerfFormattedData_Counters_ThermalZoneInformation 的 Temperature 专用解析。
+*  文档单位是 0.1K，但各机型实现混乱（实测有 340 这类值——340×0.1K=34K 显然荒谬，
+*  只能是 340K≈67℃ 或 340×0.1℃=34℃）。按可信度阶梯逐级解释，取第一个物理合理的：
+*  ① 0.1K（文档单位，值 ≥2732 才可能）② 摄氏度 ③ 开尔文。
+*  单位猜错的代价可接受：前后两次读数用同一把尺，温差趋势仍然如实。 */
+function pickMaxPerfCounterTemp(stdout) {
+	let best = null;
+	for (const line of stdout.split(/\r?\n/)) {
+		const m = line.trim().match(/^(\d+)$/);
+		if (!m) continue;
+		const v = parseInt(m[1], 10);
+		let c = kelvinToCelsius(v);
+		if (c === null && v >= 0 && v <= 120) c = v;
+		if (c === null && v >= 273 && v <= 393) c = Math.round((v - 273.15) * 10) / 10;
+		if (c !== null && (best === null || c > best)) best = c;
+	}
+	return best;
+}
+/** 从 powercfg /getactivescheme 输出提取活动 scheme GUID（统一小写便于比较）。 */
+function parseActiveScheme(stdout) {
+	const m = stdout.match(/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/);
+	return m ? m[1].toLowerCase() : null;
+}
+/** 散热期 CPU 最大频率百分比。50% 温和够用（发热大致减半），风扇自然随之回落；
+*  若想更激进降温可调低，但代价是散热期间系统明显卡顿。 */
+var COOLING_THROTTLE_PCT = 50;
+/** 散热总时长。悬浮球的花瓣旋转动画时长与此对齐（CSS 变量由 setCoolingVisual 传入）。 */
+var COOLING_DURATION_MS = 2e4;
+var powerState = null;
+/** 启用功耗杠杆。成功 = 已把活动 scheme 的 PROCTHROTTLEMAX 降到 COOLING_THROTTLE_PCT。
+*  任一步失败都返回 false（跳过该杠杆），主流程不中断。 */
+async function applyPowerLever(token) {
+	try {
+		const guid = parseActiveScheme(await runners.runPowercfg(["/getactivescheme"]));
+		if (!guid) {
+			logger$2.warn("[Cooling] active scheme GUID not parsed, skip power lever");
+			return false;
+		}
+		const orig = parseThrottleMax(await runners.runPowercfg([
+			"/q",
+			guid,
+			"SUB_PROCESSOR",
+			"PROCTHROTTLEMAX"
+		]));
+		if (!orig) {
+			logger$2.warn("[Cooling] PROCTHROTTLEMAX query unparsed, skip power lever");
+			return false;
+		}
+		const pct = String(COOLING_THROTTLE_PCT);
+		await runners.runPowercfg([
+			"/setacvalueindex",
+			guid,
+			"SUB_PROCESSOR",
+			"PROCTHROTTLEMAX",
+			pct
+		]);
+		try {
+			await runners.runPowercfg([
+				"/setdcvalueindex",
+				guid,
+				"SUB_PROCESSOR",
+				"PROCTHROTTLEMAX",
+				pct
+			]);
+		} catch (e) {
+			logger$2.warn("[Cooling] setdcvalueindex failed (desktop without battery?):", msg(e));
+		}
+		await runners.runPowercfg(["/setactive", guid]);
+		if (token !== restoreToken || phase !== "active") {
+			await restorePowerLeverInternal({
+				schemeGuid: guid,
+				acOrig: orig.ac,
+				dcOrig: orig.dc
+			});
+			return false;
+		}
+		powerState = {
+			schemeGuid: guid,
+			acOrig: orig.ac,
+			dcOrig: orig.dc
+		};
+		writeStateFile();
+		logger$2.info(`[Cooling] power lever ON: ${guid} PROCTHROTTLEMAX -> ${COOLING_THROTTLE_PCT}% (was AC=${orig.ac}, DC=${orig.dc})`);
+		return true;
+	} catch (e) {
+		logger$2.warn("[Cooling] power lever unavailable:", msg(e));
+		return false;
+	}
+}
+/** 恢复功耗：写回原值；仅当记录的 scheme 仍是活动 scheme 时才 /setactive 刷新生效。
+*  为什么不无条件 /setactive：散热期间用户可能切了电源计划，强切回去是二次打扰；
+*  非活动 scheme 写值本身即持久化，等它再次激活时自然生效。 */
+async function restorePowerLeverInternal(st) {
+	try {
+		await runners.runPowercfg([
+			"/setacvalueindex",
+			st.schemeGuid,
+			"SUB_PROCESSOR",
+			"PROCTHROTTLEMAX",
+			String(st.acOrig)
+		]);
+		if (st.dcOrig !== null) try {
+			await runners.runPowercfg([
+				"/setdcvalueindex",
+				st.schemeGuid,
+				"SUB_PROCESSOR",
+				"PROCTHROTTLEMAX",
+				String(st.dcOrig)
+			]);
+		} catch {}
+		if (parseActiveScheme(await runners.runPowercfg(["/getactivescheme"])) === st.schemeGuid) await runners.runPowercfg(["/setactive", st.schemeGuid]);
+		logger$2.info("[Cooling] power lever restored");
+	} catch (e) {
+		logger$2.error("[Cooling] power restore FAILED (check manually: powercfg /q SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX):", msg(e));
+	}
+}
+async function restorePowerLever() {
+	const st = powerState;
+	powerState = null;
+	if (st) await restorePowerLeverInternal(st);
+}
+/** before-quit 用的同步尽力恢复：退出路径不能 await，execFileSync 短超时逐条执行。
+*  每条独立 try——最坏拖慢退出几秒，好过留下 50% 频率上限的残留。 */
+function restorePowerLeverSync(st) {
+	const opts = {
+		timeout: 3e3,
+		windowsHide: true,
+		stdio: "ignore"
+	};
+	try {
+		(0, node_child_process.execFileSync)("powercfg", [
+			"/setacvalueindex",
+			st.schemeGuid,
+			"SUB_PROCESSOR",
+			"PROCTHROTTLEMAX",
+			String(st.acOrig)
+		], opts);
+	} catch (e) {
+		logger$2.warn("[Cooling] sync AC restore failed:", msg(e));
+	}
+	if (st.dcOrig !== null) try {
+		(0, node_child_process.execFileSync)("powercfg", [
+			"/setdcvalueindex",
+			st.schemeGuid,
+			"SUB_PROCESSOR",
+			"PROCTHROTTLEMAX",
+			String(st.dcOrig)
+		], opts);
+	} catch {}
+	try {
+		if (parseActiveScheme((0, node_child_process.execFileSync)("powercfg", ["/getactivescheme"], {
+			timeout: 3e3,
+			windowsHide: true,
+			encoding: "utf8"
+		})) === st.schemeGuid) (0, node_child_process.execFileSync)("powercfg", ["/setactive", st.schemeGuid], opts);
+		logger$2.info("[Cooling] power lever restored (sync, quit path)");
+	} catch {}
+}
+/** 联想 Legion 智能风扇：root/wmi LENOVO_GAMEZONE_DATA 的 Get/SetSmartFanMode。
+*  类名/方法名可信度高（社区 Legion 工具广泛使用）；mode 数值语义随机型有出入，
+*  2（野兽/性能）为最常见映射。用读回验证保证"确实生效"才认账，否则自动回滚。 */
+var LENOVO_CLASS = "LENOVO_GAMEZONE_DATA";
+var LENOVO_FULL_MODE = 2;
+var UNIWILL_ECRAM_FAN_CTL = 1873;
+var UNIWILL_FAN_BOOST_BITS = 64;
+var UNIWILL_PROBE_PS = `\$ErrorActionPreference='Stop';Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class UWC{[DllImport("kernel32",SetLastError=true,CharSet=CharSet.Ansi)]public static extern IntPtr CreateFile(string n,uint a,uint s,IntPtr sa,uint d,uint f,IntPtr t);[DllImport("kernel32",SetLastError=true)]public static extern bool DeviceIoControl(IntPtr h,uint c,byte[] i,uint n,byte[] o,uint osz,out uint r,IntPtr ov);}';;\$h=[UWC]::CreateFile('\\\\.\\ACPIDriver',[uint32]3221225472,[uint32]3,[IntPtr]::Zero,[uint32]3,[uint32]0,[IntPtr]::Zero);if(\$h -eq [IntPtr](-1) -or \$h -eq [IntPtr]::Zero){throw 'no UWACPIDriver device'};function UwR(\$reg){\$o=New-Object byte[] 4;\$n=[uint32]0;[void][UWC]::DeviceIoControl(\$h,[uint32]'0x9C40A488',[BitConverter]::GetBytes([int]\$reg),4,\$o,4,[ref]\$n,[IntPtr]::Zero);return [BitConverter]::ToInt32(\$o,0)};function UwW(\$reg,\$val){\$b=New-Object byte[] 8;[BitConverter]::GetBytes([int]\$reg).CopyTo(\$b,0);[BitConverter]::GetBytes([int]\$val).CopyTo(\$b,4);\$o=New-Object byte[] 4;\$n=[uint32]0;return [UWC]::DeviceIoControl(\$h,[uint32]'0x9C40A48C',\$b,8,\$o,4,[ref]\$n,[IntPtr]::Zero)};$v=UwR ${UNIWILL_ECRAM_FAN_CTL};$d=UwR 0x75B;if($v -lt 0 -or $v -gt 255 -or $d -lt 0 -or $d -gt 255){throw 'bad ECRAM reading'};Write-Output 'OK'`;
+var UNIWILL_APPLY_PS = `\$ErrorActionPreference='Stop';Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class UWC{[DllImport("kernel32",SetLastError=true,CharSet=CharSet.Ansi)]public static extern IntPtr CreateFile(string n,uint a,uint s,IntPtr sa,uint d,uint f,IntPtr t);[DllImport("kernel32",SetLastError=true)]public static extern bool DeviceIoControl(IntPtr h,uint c,byte[] i,uint n,byte[] o,uint osz,out uint r,IntPtr ov);}';;\$h=[UWC]::CreateFile('\\\\.\\ACPIDriver',[uint32]3221225472,[uint32]3,[IntPtr]::Zero,[uint32]3,[uint32]0,[IntPtr]::Zero);if(\$h -eq [IntPtr](-1) -or \$h -eq [IntPtr]::Zero){throw 'no UWACPIDriver device'};function UwR(\$reg){\$o=New-Object byte[] 4;\$n=[uint32]0;[void][UWC]::DeviceIoControl(\$h,[uint32]'0x9C40A488',[BitConverter]::GetBytes([int]\$reg),4,\$o,4,[ref]\$n,[IntPtr]::Zero);return [BitConverter]::ToInt32(\$o,0)};function UwW(\$reg,\$val){\$b=New-Object byte[] 8;[BitConverter]::GetBytes([int]\$reg).CopyTo(\$b,0);[BitConverter]::GetBytes([int]\$val).CopyTo(\$b,4);\$o=New-Object byte[] 4;\$n=[uint32]0;return [UWC]::DeviceIoControl(\$h,[uint32]'0x9C40A48C',\$b,8,\$o,4,[ref]\$n,[IntPtr]::Zero)};$orig=UwR ${UNIWILL_ECRAM_FAN_CTL};$boosted=$orig -bor ${UNIWILL_FAN_BOOST_BITS};[void](UwW ${UNIWILL_ECRAM_FAN_CTL} $boosted);$chk=UwR ${UNIWILL_ECRAM_FAN_CTL};Write-Output "ORIG=$orig;BOOSTED=$boosted;NOW=$chk"`;
+function uniwillRestorePs(orig) {
+	return `\$ErrorActionPreference='Stop';Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class UWC{[DllImport("kernel32",SetLastError=true,CharSet=CharSet.Ansi)]public static extern IntPtr CreateFile(string n,uint a,uint s,IntPtr sa,uint d,uint f,IntPtr t);[DllImport("kernel32",SetLastError=true)]public static extern bool DeviceIoControl(IntPtr h,uint c,byte[] i,uint n,byte[] o,uint osz,out uint r,IntPtr ov);}';;\$h=[UWC]::CreateFile('\\\\.\\ACPIDriver',[uint32]3221225472,[uint32]3,[IntPtr]::Zero,[uint32]3,[uint32]0,[IntPtr]::Zero);if(\$h -eq [IntPtr](-1) -or \$h -eq [IntPtr]::Zero){throw 'no UWACPIDriver device'};function UwR(\$reg){\$o=New-Object byte[] 4;\$n=[uint32]0;[void][UWC]::DeviceIoControl(\$h,[uint32]'0x9C40A488',[BitConverter]::GetBytes([int]\$reg),4,\$o,4,[ref]\$n,[IntPtr]::Zero);return [BitConverter]::ToInt32(\$o,0)};function UwW(\$reg,\$val){\$b=New-Object byte[] 8;[BitConverter]::GetBytes([int]\$reg).CopyTo(\$b,0);[BitConverter]::GetBytes([int]\$val).CopyTo(\$b,4);\$o=New-Object byte[] 4;\$n=[uint32]0;return [UWC]::DeviceIoControl(\$h,[uint32]'0x9C40A48C',\$b,8,\$o,4,[ref]\$n,[IntPtr]::Zero)};[void](UwW ${UNIWILL_ECRAM_FAN_CTL} ${orig});$chk=UwR ${UNIWILL_ECRAM_FAN_CTL};Write-Output "NOW=$chk"`;
+}
+var ASUS_CLASS = "AsusACPI";
+var capability = null;
+var CAPABILITY_FILE = "cooling-capability.json";
+var CAPABILITY_TTL_MS = 168 * 3600 * 1e3;
+/** 探测厂商风扇控制能力。探测冷启动可达数秒，结果落盘缓存 7 天
+*  （驱动安装状态变化的周期远大于此）。 */
+async function probeVendors() {
+	const res = {
+		uniwill: false,
+		lenovo: false,
+		asus: false,
+		probedAt: Date.now()
+	};
+	try {
+		const out = await runners.runPowerShell(UNIWILL_PROBE_PS, 8e3);
+		res.uniwill = /OK/.test(out);
+	} catch {
+		res.uniwill = false;
+	}
+	try {
+		const out = await runners.runPowerShell(`$ErrorActionPreference='Stop'; $c=Get-CimClass -Namespace root/wmi -ClassName ${LENOVO_CLASS}; ($c.CimClassMethods | ForEach-Object { $_.Name }) -join ','`, 8e3);
+		res.lenovo = /GetSmartFanMode/i.test(out) && /SetSmartFanMode/i.test(out);
+	} catch {
+		res.lenovo = false;
+	}
+	try {
+		const out = await runners.runPowerShell(`$ErrorActionPreference='Stop'; Get-CimClass -Namespace root/wmi -ClassName ${ASUS_CLASS} | Out-Null; 'ok'`, 8e3);
+		res.asus = /ok/.test(out);
+	} catch {
+		res.asus = false;
+	}
+	logger$2.info(`[Cooling] vendor probe: uniwill=${res.uniwill} lenovo=${res.lenovo} asus=${res.asus}`);
+	writeCapabilityFile(res);
+	return res;
+}
+async function ensureCapability() {
+	if (capability && Date.now() - capability.probedAt < CAPABILITY_TTL_MS) return capability;
+	const cached = readCapabilityFile();
+	if (cached && Date.now() - cached.probedAt < CAPABILITY_TTL_MS) {
+		capability = cached;
+		return cached;
+	}
+	capability = await probeVendors();
+	return capability;
+}
+function writeCapabilityFile(res) {
+	const dir = dataDir$1();
+	if (!dir) return;
+	try {
+		node_fs.writeFileSync((0, node_path.join)(dir, CAPABILITY_FILE), JSON.stringify(res), "utf-8");
+	} catch {}
+}
+function readCapabilityFile() {
+	const dir = dataDir$1();
+	if (!dir) return null;
+	try {
+		const parsed = JSON.parse(node_fs.readFileSync((0, node_path.join)(dir, CAPABILITY_FILE), "utf-8"));
+		if (typeof parsed?.probedAt === "number" && typeof parsed?.uniwill === "boolean" && typeof parsed?.lenovo === "boolean" && typeof parsed?.asus === "boolean") return parsed;
+	} catch {}
+	return null;
+}
+var fanState = null;
+/** 读回验证后启用风扇杠杆。一次 PowerShell 完成"读原值 → 置位 → 读回"，
+*  输出 ORIG/NOW 由 Node 侧裁决——把签名不确定性压缩到"要么生效要么放弃"，不留半态。 */
+async function applyVendorLever(token) {
+	const cap = await ensureCapability();
+	if (cap.uniwill) try {
+		const out = await runners.runPowerShell(UNIWILL_APPLY_PS, 8e3);
+		const m = out.match(/ORIG=(\d+);BOOSTED=(\d+);NOW=(\d+)/);
+		if (!m) throw new Error("unparsed output: " + out.trim());
+		const origMode = parseInt(m[1], 10);
+		const boosted = parseInt(m[2], 10);
+		const nowMode = parseInt(m[3], 10);
+		if (nowMode !== boosted) {
+			await runners.runPowerShell(uniwillRestorePs(origMode), 6e3);
+			throw new Error(`readback mismatch (now=${nowMode}, want ${boosted})`);
+		}
+		if (token !== restoreToken || phase !== "active") {
+			await runners.runPowerShell(uniwillRestorePs(origMode), 6e3);
+			return false;
+		}
+		fanState = {
+			vendor: "uniwill",
+			origMode
+		};
+		writeStateFile();
+		logger$2.info(`[Cooling] uniwill ECRAM 0x751: ${origMode} -> ${boosted} (fan boost)`);
+		return true;
+	} catch (e) {
+		logger$2.warn("[Cooling] uniwill fan lever failed:", msg(e));
+	}
+	if (cap.lenovo) try {
+		const script = [
+			`$ErrorActionPreference='Stop'`,
+			`$obj = Get-CimInstance -Namespace root/wmi -ClassName ${LENOVO_CLASS} | Select-Object -First 1`,
+			`$o = Invoke-CimMethod -InputObject $obj -MethodName GetSmartFanMode`,
+			`$origVal = [int]$(if ($null -ne $o.Data) { $o.Data } else { $o.mode })`,
+			`Invoke-CimMethod -InputObject $obj -MethodName SetSmartFanMode -Arguments @{ mode = ${LENOVO_FULL_MODE} } | Out-Null`,
+			`$n = Invoke-CimMethod -InputObject $obj -MethodName GetSmartFanMode`,
+			`$nowVal = [int]$(if ($null -ne $n.Data) { $n.Data } else { $n.mode })`,
+			`Write-Output "ORIG=$origVal;NOW=$nowVal"`
+		].join("; ");
+		const out = await runners.runPowerShell(script, 6e3);
+		const m = out.match(/ORIG=(-?\d+);NOW=(-?\d+)/);
+		if (!m) throw new Error("unparsed output: " + out.trim());
+		const origMode = parseInt(m[1], 10);
+		const nowMode = parseInt(m[2], 10);
+		if (nowMode !== LENOVO_FULL_MODE) {
+			await restoreFanMode(LENOVO_CLASS, origMode);
+			throw new Error(`readback mismatch (now=${nowMode}, want ${LENOVO_FULL_MODE})`);
+		}
+		if (token !== restoreToken || phase !== "active") {
+			await restoreFanMode(LENOVO_CLASS, origMode);
+			return false;
+		}
+		fanState = {
+			vendor: "lenovo",
+			origMode
+		};
+		writeStateFile();
+		logger$2.info(`[Cooling] lenovo fan mode ${origMode} -> ${LENOVO_FULL_MODE}`);
+		return true;
+	} catch (e) {
+		logger$2.warn("[Cooling] lenovo fan lever failed:", msg(e));
+	}
+	if (cap.asus && true) logger$2.info("[Cooling] asus AsusACPI class present; lever disabled until on-device verification");
+	return false;
+}
+async function restoreFanMode(className, origMode) {
+	try {
+		await runners.runPowerShell(`$ErrorActionPreference='Stop'; $obj = Get-CimInstance -Namespace root/wmi -ClassName ${className} | Select-Object -First 1; Invoke-CimMethod -InputObject $obj -MethodName SetSmartFanMode -Arguments @{ mode = ${origMode} } | Out-Null`, 6e3);
+		logger$2.info(`[Cooling] ${className} fan mode restored to ${origMode}`);
+	} catch (e) {
+		logger$2.error("[Cooling] fan restore FAILED — fan mode may stay changed until manual reset:", msg(e));
+	}
+}
+async function restoreVendorLever() {
+	const st = fanState;
+	fanState = null;
+	if (!st) return;
+	if (st.vendor === "uniwill") {
+		try {
+			const m = (await runners.runPowerShell(uniwillRestorePs(st.origMode), 6e3)).match(/NOW=(\d+)/);
+			if (!m || parseInt(m[1], 10) !== st.origMode) {
+				logger$2.error(`[Cooling] uniwill fan restore verify mismatch (got ${m ? m[1] : "unparsable"}, want ${st.origMode})`);
+				return;
+			}
+			logger$2.info(`[Cooling] uniwill ECRAM 0x751 restored to ${st.origMode}`);
+		} catch (e) {
+			logger$2.error("[Cooling] uniwill fan restore FAILED — fan may stay boosted until manual reset:", msg(e));
+		}
+		return;
+	}
+	if (st.vendor === "lenovo") await restoreFanMode(LENOVO_CLASS, st.origMode);
+}
+function restoreVendorLeverSync() {
+	const st = fanState;
+	fanState = null;
+	if (!st) return;
+	try {
+		(0, node_child_process.execFileSync)("powershell.exe", [
+			"-NoProfile",
+			"-NonInteractive",
+			"-EncodedCommand",
+			toEncodedCommand(st.vendor === "uniwill" ? uniwillRestorePs(st.origMode) : `$ErrorActionPreference='Stop'; $obj = Get-CimInstance -Namespace root/wmi -ClassName ${LENOVO_CLASS} | Select-Object -First 1; Invoke-CimMethod -InputObject $obj -MethodName SetSmartFanMode -Arguments @{ mode = ${st.origMode} } | Out-Null`)
+		], {
+			timeout: 4e3,
+			windowsHide: true,
+			stdio: "ignore"
+		});
+		logger$2.info(`[Cooling] ${st.vendor} fan mode restored (sync, quit path)`);
+	} catch (e) {
+		logger$2.error("[Cooling] sync fan restore failed:", msg(e));
+	}
+}
+var TEMP_ZONE_PS = "Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction Stop | Select-Object -ExpandProperty CurrentTemperature";
+var TEMP_PERF_PS = "Get-CimInstance Win32_PerfFormattedData_Counters_ThermalZoneInformation -ErrorAction Stop | Select-Object -ExpandProperty Temperature";
+async function readTempC() {
+	try {
+		const c = pickMaxZoneTemp(await runners.runPowerShell(TEMP_ZONE_PS));
+		if (c !== null) return c;
+	} catch {}
+	try {
+		const c = pickMaxPerfCounterTemp(await runners.runPowerShell(TEMP_PERF_PS));
+		if (c !== null) return c;
+	} catch {}
+	return null;
+}
+var STATE_FILE = "cooling-state.json";
+/** 把当前两档杠杆的"改动前原值"序列化落盘（每档杠杆提交后都重写一次，内容幂等）。 */
+function writeStateFile() {
+	const dir = dataDir$1();
+	if (!dir) return;
+	const payload = {
+		schemeGuid: powerState?.schemeGuid ?? "",
+		acOrig: powerState?.acOrig ?? 100,
+		dcOrig: powerState?.dcOrig ?? null,
+		fanVendor: fanState?.vendor ?? null,
+		fanOrigMode: fanState?.origMode ?? null,
+		startedAt
+	};
+	try {
+		node_fs.writeFileSync((0, node_path.join)(dir, STATE_FILE), JSON.stringify(payload), "utf-8");
+	} catch (e) {
+		logger$2.warn("[Cooling] write state file failed:", msg(e));
+	}
+}
+function deleteStateFile() {
+	const dir = dataDir$1();
+	if (!dir) return;
+	try {
+		node_fs.unlinkSync((0, node_path.join)(dir, STATE_FILE));
+	} catch {}
+}
+/** 启动时崩溃残留修复：cooling-state.json 在场 → 把电源设置/风扇模式写回原值后删文件。
+*  电源 scheme 只写值；仅当它仍是活动 scheme 才 /setactive——用户崩溃后可能已手动换了
+*  电源计划，强切回去是二次打扰；非活动 scheme 写值即持久化，再次激活自然生效。 */
+function recoverCoolingResidue() {
+	const dir = dataDir$1();
+	if (!dir) return;
+	const f = (0, node_path.join)(dir, STATE_FILE);
+	let st = null;
+	try {
+		st = JSON.parse(node_fs.readFileSync(f, "utf-8"));
+	} catch {
+		return;
+	}
+	if (!st || typeof st.schemeGuid !== "string" || !st.schemeGuid) {
+		try {
+			node_fs.unlinkSync(f);
+		} catch {}
+		return;
+	}
+	logger$2.warn("[Cooling] residue found from previous crash, restoring power/fan settings");
+	const opts = {
+		timeout: 3e3,
+		windowsHide: true,
+		stdio: "ignore"
+	};
+	try {
+		(0, node_child_process.execFileSync)("powercfg", [
+			"/setacvalueindex",
+			st.schemeGuid,
+			"SUB_PROCESSOR",
+			"PROCTHROTTLEMAX",
+			String(st.acOrig)
+		], opts);
+		if (typeof st.dcOrig === "number") try {
+			(0, node_child_process.execFileSync)("powercfg", [
+				"/setdcvalueindex",
+				st.schemeGuid,
+				"SUB_PROCESSOR",
+				"PROCTHROTTLEMAX",
+				String(st.dcOrig)
+			], opts);
+		} catch {}
+		if (parseActiveScheme((0, node_child_process.execFileSync)("powercfg", ["/getactivescheme"], {
+			timeout: 3e3,
+			windowsHide: true,
+			encoding: "utf8"
+		})) === st.schemeGuid) (0, node_child_process.execFileSync)("powercfg", ["/setactive", st.schemeGuid], opts);
+		logger$2.info("[Cooling] residue power restore done");
+	} catch (e) {
+		logger$2.error("[Cooling] residue power restore failed:", msg(e));
+	}
+	if (typeof st.fanOrigMode === "number" && (st.fanVendor === "lenovo" || st.fanVendor === "uniwill")) {
+		const script = st.fanVendor === "uniwill" ? uniwillRestorePs(st.fanOrigMode) : `$ErrorActionPreference='Stop'; $obj = Get-CimInstance -Namespace root/wmi -ClassName ${LENOVO_CLASS} | Select-Object -First 1; Invoke-CimMethod -InputObject $obj -MethodName SetSmartFanMode -Arguments @{ mode = ${st.fanOrigMode} } | Out-Null`;
+		try {
+			(0, node_child_process.execFileSync)("powershell.exe", [
+				"-NoProfile",
+				"-NonInteractive",
+				"-EncodedCommand",
+				toEncodedCommand(script)
+			], {
+				timeout: 4e3,
+				windowsHide: true,
+				stdio: "ignore"
+			});
+			logger$2.info(`[Cooling] residue ${st.fanVendor} fan restore done`);
+		} catch (e) {
+			logger$2.warn("[Cooling] residue fan restore failed:", msg(e));
+		}
+	}
+	try {
+		node_fs.unlinkSync(f);
+	} catch {}
+}
+var phase = "idle";
+/** 收尾/取消时自增，让在途的杠杆 apply 知道要立即回滚（防异步竞态写回中间态） */
+var restoreToken = 0;
+var startedAt = 0;
+var coolingTimer = null;
+var tickTimer = null;
+var usageTimer = null;
+var onUpdateCb = null;
+var tempBefore = null;
+var tempAfter = null;
+var currentTempC = null;
+var levers = {
+	fan: false,
+	power: false
+};
+var usage = {
+	cpu: null,
+	gpu: null,
+	disk: null,
+	mem: null
+};
+function clearTimers() {
+	if (coolingTimer) {
+		clearTimeout(coolingTimer);
+		coolingTimer = null;
+	}
+	if (tickTimer) {
+		clearInterval(tickTimer);
+		tickTimer = null;
+	}
+	if (usageTimer) {
+		clearInterval(usageTimer);
+		usageTimer = null;
+	}
+}
+function remainSec() {
+	return Math.max(0, Math.ceil((durationMs() - (Date.now() - startedAt)) / 1e3));
+}
+function emit(extra) {
+	if (!onUpdateCb) return;
+	onUpdateCb({
+		phase: "active",
+		remainSec: remainSec(),
+		tempC: currentTempC,
+		usage: { ...usage },
+		levers: { ...levers },
+		tempBefore,
+		tempAfter: null,
+		...extra
+	});
+}
+/** 散热是否进行中（active/restoring）。悬浮球据此在散热动画期间挂起收起逻辑，
+*  避免旋转中的花瓣被 blur/外部点击打断——转完由散热完成回调按原状态复位。 */
+function isCoolingActive() {
+	return phase !== "idle";
+}
+/** 散热总时长（秒）。花瓣旋转动画时长与之对齐（setCoolingVisual 传给渲染层）。 */
+function getCoolingDurationSec() {
+	return Math.round(durationMs() / 1e3);
+}
+/** 采一轮占用率并推送（每 2.5 秒一次；失败保持上次值）。 */
+async function pollUsage() {
+	try {
+		const parsed = parseUsageLine(await runners.runPowerShell(USAGE_POLL_PS, 6e3));
+		if (parsed) usage = parsed;
+	} catch {}
+	if (phase === "active") emit();
+}
+/** 启动 20 秒散热。返回 false = 已在散热中（UI 据此提示，不重复启动/不重置计时）。 */
+function startCooling(onUpdate) {
+	if (phase !== "idle") {
+		logger$2.info("[Cooling] re-entry ignored (phase =", phase + ")");
+		return false;
+	}
+	phase = "active";
+	restoreToken++;
+	startedAt = Date.now();
+	tempBefore = null;
+	tempAfter = null;
+	currentTempC = null;
+	levers = {
+		fan: false,
+		power: false
+	};
+	usage = {
+		cpu: null,
+		gpu: null,
+		disk: null,
+		mem: null
+	};
+	onUpdateCb = onUpdate;
+	emit();
+	coolingTimer = setTimeout(() => {
+		finishCooling();
+	}, durationMs());
+	tickTimer = setInterval(() => {
+		emit();
+		const r = remainSec();
+		if (r > 0 && r % 3 === 0) refreshTempC();
+	}, 1e3);
+	usageTimer = setInterval(() => {
+		pollUsage();
+	}, 2500);
+	pollUsage();
+	beginLevers();
+	return true;
+}
+/** 后台并行启用两档杠杆；每档落定即时 emit，UI 文案随之从"监测中"变为实际生效杠杆。 */
+async function beginLevers() {
+	const token = restoreToken;
+	currentTempC = await readTempC();
+	tempBefore = currentTempC;
+	emit();
+	if (token !== restoreToken) return;
+	levers.power = await applyPowerLever(token);
+	emit();
+	if (token !== restoreToken) return;
+	levers.fan = await applyVendorLever(token);
+	emit();
+}
+async function refreshTempC() {
+	const t = await readTempC();
+	if (phase !== "active") return;
+	currentTempC = t;
+	emit();
+}
+/** 20s 到点：停表 → 读结束温度 → 逐档恢复原值 → 上报 done（UI 展示前后对比后自关）。 */
+async function finishCooling() {
+	if (phase !== "active") return;
+	phase = "restoring";
+	restoreToken++;
+	clearTimers();
+	tempAfter = await readTempC();
+	await restorePowerLever();
+	await restoreVendorLever();
+	deleteStateFile();
+	phase = "idle";
+	const cb = onUpdateCb;
+	onUpdateCb = null;
+	cb?.({
+		phase: "done",
+		remainSec: 0,
+		tempC: tempAfter,
+		usage: { ...usage },
+		levers: { ...levers },
+		tempBefore,
+		tempAfter
+	});
+}
+/** before-quit 同步收尾：清定时器 + 同步尽力恢复电源/风扇（退出路径不能 await）。 */
+function cancelCooling() {
+	restoreToken++;
+	clearTimers();
+	if (phase === "idle") return;
+	logger$2.info("[Cooling] cancel on quit");
+	phase = "restoring";
+	const st = powerState;
+	powerState = null;
+	if (st) restorePowerLeverSync(st);
+	restoreVendorLeverSync();
+	deleteStateFile();
+	phase = "idle";
+	onUpdateCb = null;
+}
+//#endregion
+//#region electron/main/cooling-overlay.ts
+init_i18n();
+var PANEL_W = 224;
+var PANEL_H = 100;
+var GAP = 8;
+var BALL_HALF = 33;
+var RESULT_SHOW_MS = 3e3;
+var panelWindow = null;
+var lastPayload = null;
+var closeTimer = null;
+/** 由球心推面板左上角（上方优先，放不下翻下方，水平夹回屏幕内）。 */
+function panelOrigin(center) {
+	const display = electron.screen.getDisplayMatching({
+		x: center.x - 20,
+		y: center.y - 20,
+		width: 40,
+		height: 40
+	}).workArea;
+	let x = Math.round(center.x - PANEL_W / 2);
+	let y = Math.round(center.y - BALL_HALF - GAP - PANEL_H);
+	if (y < display.y) y = Math.round(center.y + BALL_HALF + GAP);
+	x = Math.min(Math.max(x, display.x), display.x + display.width - PANEL_W);
+	return {
+		x,
+		y
+	};
+}
+/** 创建并显示散热面板。center 传 null（球不存在）时放弃——面板只是辅助 UI。 */
+function showCoolingOverlay(center) {
+	if (panelWindow && !panelWindow.isDestroyed()) {
+		if (closeTimer) {
+			clearTimeout(closeTimer);
+			closeTimer = null;
+		}
+		if (lastPayload) sendToPanel(lastPayload);
+		return;
+	}
+	if (!center) return;
+	const origin = panelOrigin(center);
+	panelWindow = new electron.BrowserWindow({
+		x: origin.x,
+		y: origin.y,
+		width: PANEL_W,
+		height: PANEL_H,
+		frame: false,
+		transparent: true,
+		resizable: false,
+		movable: false,
+		alwaysOnTop: true,
+		skipTaskbar: true,
+		hasShadow: false,
+		focusable: false,
+		show: false,
+		webPreferences: {
+			nodeIntegration: true,
+			contextIsolation: false
+		}
+	});
+	panelWindow.setAlwaysOnTop(true, "screen-saver");
+	panelWindow.setVisibleOnAllWorkspaces(true);
+	panelWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildPanelHtml())}`);
+	panelWindow.once("ready-to-show", () => {
+		panelWindow?.show();
+		if (lastPayload) sendToPanel(lastPayload);
+	});
+	panelWindow.on("closed", () => {
+		panelWindow = null;
+	});
+}
+/** 散热中拖动悬浮球时跟随：按新球心重算面板位置（窗口存在才有意义）。 */
+function repositionCoolingOverlay(center) {
+	if (!panelWindow || panelWindow.isDestroyed() || !center) return;
+	const origin = panelOrigin(center);
+	try {
+		panelWindow.setBounds({
+			x: origin.x,
+			y: origin.y,
+			width: PANEL_W,
+			height: PANEL_H
+		});
+	} catch {}
+}
+/** 推送状态到面板。文案与数值格式化在主进程/面板 JS 各自完成，面板只做 dumb 渲染。 */
+function updateCoolingOverlay(s) {
+	const leversText = s.levers.fan ? t("ball.cooling.fanOn") : s.levers.power ? t("ball.cooling.powerOnly") : t("ball.cooling.monitoring");
+	const doneText = s.tempBefore !== null && s.tempAfter !== null ? t("ball.cooling.done", {
+		before: s.tempBefore,
+		after: s.tempAfter
+	}) : t("ball.cooling.doneNoTemp");
+	const u = s.usage;
+	lastPayload = {
+		phase: s.phase,
+		remainSec: s.remainSec,
+		tempC: s.tempC,
+		usage: {
+			cpu: u.cpu,
+			gpu: u.gpu,
+			disk: u.disk,
+			mem: u.mem
+		},
+		leversText,
+		doneText,
+		tempUnknownText: t("ball.cooling.tempUnknown")
+	};
+	if (!panelWindow || panelWindow.isDestroyed()) return;
+	if (s.phase === "done") {
+		sendToPanel(lastPayload);
+		if (closeTimer) clearTimeout(closeTimer);
+		closeTimer = setTimeout(() => {
+			closeTimer = null;
+			hideCoolingOverlay();
+		}, RESULT_SHOW_MS);
+	} else {
+		if (closeTimer) {
+			clearTimeout(closeTimer);
+			closeTimer = null;
+		}
+		sendToPanel(lastPayload);
+	}
+}
+/** 散热中再次右键的轻提示：面板抖一下（面板不存在时静默——如球刚被隐藏的场景）。 */
+function shakeCoolingOverlay() {
+	if (!panelWindow || panelWindow.isDestroyed()) return;
+	try {
+		panelWindow.webContents.executeJavaScript(`if(window.shake) shake()`).catch(() => {});
+	} catch {}
+}
+/** 销毁面板（before-quit / 结果展示到期时调用）。 */
+function hideCoolingOverlay() {
+	if (closeTimer) {
+		clearTimeout(closeTimer);
+		closeTimer = null;
+	}
+	lastPayload = null;
+	if (panelWindow && !panelWindow.isDestroyed()) {
+		const win = panelWindow;
+		panelWindow = null;
+		win.destroy();
+	}
+}
+function sendToPanel(payload) {
+	if (!panelWindow || panelWindow.isDestroyed()) return;
+	try {
+		panelWindow.webContents.send("cooling-update", payload);
+	} catch {}
+}
+function buildPanelHtml() {
+	return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;user-select:none}
+html,body{width:100%;height:100%;background:transparent;overflow:clip;
+  font-family:'Segoe UI',system-ui,sans-serif}
+/* 浅色卡片与悬浮球花瓣同系（白底蓝调），冷色光呼应"散热"；紧凑三行布局 */
+#card{width:100%;height:100%;border-radius:12px;
+  background:linear-gradient(160deg,#ffffff,#eaf3ff);
+  border:1px solid rgba(150,190,255,0.45);
+  box-shadow:0 3px 14px rgba(40,80,160,0.16);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  padding:7px 12px}
+#top{display:flex;align-items:baseline;gap:10px}
+#big{font-size:21px;font-weight:700;color:#3d6fd6;line-height:1;
+  font-variant-numeric:tabular-nums}
+#temp{font-size:12px;font-weight:600;color:#4a5568}
+/* 占用率四列横排：标签上、数值下，一行放下 CPU/GPU/磁盘/内存 */
+#stats{display:flex;justify-content:space-between;width:100%}
+.st{display:flex;flex-direction:column;align-items:center;flex:1;gap:0}
+.st .lb{font-size:9px;font-weight:600;color:#8b97ad;line-height:1.25}
+.st .vl{font-size:12px;font-weight:700;color:#3a4156;line-height:1.25;
+  font-variant-numeric:tabular-nums}
+#lever{font-size:9.5px;font-weight:600;color:#6b7a99;line-height:1.2}
+body.done #big{color:#2fa36b}
+body.done #stats{visibility:hidden}
+body.shake #card{animation:shake .45s ease}
+@keyframes shake{
+  0%,100%{transform:translateX(0)}
+  20%{transform:translateX(-5px)}
+  40%{transform:translateX(5px)}
+  60%{transform:translateX(-3px)}
+  80%{transform:translateX(3px)}
+}
+</style>
+</head>
+<body>
+<div id="card">
+  <div id="top"><span id="big">--</span><span id="temp"></span></div>
+  <div id="stats">
+    <div class="st"><span class="lb">CPU</span><span class="vl" id="cpu">--</span></div>
+    <div class="st"><span class="lb">GPU</span><span class="vl" id="gpu">--</span></div>
+    <div class="st"><span class="lb">${t("ball.cooling.disk")}</span><span class="vl" id="disk">--</span></div>
+    <div class="st"><span class="lb">${t("ball.cooling.mem")}</span><span class="vl" id="mem">--</span></div>
+  </div>
+  <div id="lever"></div>
+</div>
+<script>
+const {ipcRenderer} = require('electron')
+
+function fmtTemp(c){ return (c === null || c === undefined) ? null : (Math.round(c*10)/10) + '\\u00b0C' }
+function fmtPct(v){ return (v === null || v === undefined) ? '--' : v + '%' }
+
+ipcRenderer.on('cooling-update', function(_e, p){
+  var big = document.getElementById('big')
+  var temp = document.getElementById('temp')
+  var lever = document.getElementById('lever')
+  if(p.phase === 'done'){
+    document.body.classList.add('done')
+    big.textContent = '\\u2713'
+    temp.textContent = p.doneText
+    lever.textContent = ''
+  } else {
+    document.body.classList.remove('done')
+    big.textContent = p.remainSec + 's'
+    var c = fmtTemp(p.tempC)
+    temp.textContent = (c === null) ? p.tempUnknownText : c
+    lever.textContent = p.leversText
+  }
+  var u = p.usage || {}
+  document.getElementById('cpu').textContent = fmtPct(u.cpu)
+  document.getElementById('gpu').textContent = fmtPct(u.gpu)
+  document.getElementById('disk').textContent = fmtPct(u.disk)
+  document.getElementById('mem').textContent = fmtPct(u.mem)
+})
+
+// 散热中再次右键：轻提示抖动（主进程经 executeJavaScript 调用）
+function shake(){
+  document.body.classList.add('shake')
+  setTimeout(function(){ document.body.classList.remove('shake') }, 500)
+}
+<\/script>
+</body>
+</html>`;
+}
+//#endregion
 //#region electron/main/floating-ball.ts
 init_logger();
 init_i18n();
@@ -4779,6 +5781,24 @@ function applyFloatingBallBadge(count, flash, visible) {
 	if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
 	floatingBallWindow.webContents.executeJavaScript(`if(window.updateBadge) updateBadge(${Number(count) || 0}, ${!!flash}, ${!!visible})`).catch(() => {});
 }
+/** 球心屏幕坐标（散热面板定位用）：由窗口几何反推，与 move 事件的中心逻辑同源。
+*  球不存在/已销毁返回 null（面板据此放弃创建）。 */
+function getBallCenterForOverlay() {
+	if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return null;
+	const [wx, wy] = floatingBallWindow.getPosition();
+	const [ww, wh] = floatingBallWindow.getSize();
+	return {
+		x: Math.round(wx + ww / 2),
+		y: Math.round(wy + wh / 2)
+	};
+}
+/** 悬浮球散热动画开关：body.cooling class → 弧形菜单逆时针旋转（时长=散热时长）+
+*  圆圈冷光静止（内联 JS 提供 setCoolingVisual）。经 executeJavaScript 调用，
+*  与 applyFloatingBallBadge 同模式。 */
+function setFloatingBallCoolingVisual(on) {
+	if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
+	floatingBallWindow.webContents.executeJavaScript(`if(window.setCoolingVisual) setCoolingVisual(${!!on}, ${getCoolingDurationSec()})`).catch(() => {});
+}
 /** 把设置作用到活动悬浮球（visible 切换显隐，alwaysOnTop 切层级） */
 function applyFloatingBallSettings(s) {
 	if (s.visible) showFloatingBall();
@@ -4841,11 +5861,13 @@ function showFloatingBall() {
 			x: Math.round(wx + ww / 2 - BALL_SIZE / 2),
 			y: Math.round(wy + wh / 2 - BALL_SIZE / 2)
 		};
+		if (isCoolingActive()) repositionCoolingOverlay(getBallCenterForOverlay());
 	});
 	floatingBallWindow.on("close", () => {
 		if (ballPos) saveBallPosition(ballPos);
 	});
 	floatingBallWindow.on("blur", () => {
+		if (isCoolingActive()) return;
 		if (isBallExpanded) collapseBall();
 	});
 	logger_default.info("Floating ball shown");
@@ -5144,6 +6166,27 @@ body.expanded .arc-label{
   transition:width .5s ease, height .5s ease, border-radius .5s ease;
 }
 #trigger:active{transform:scale(0.95)}
+/* 散热模式（右键触发）：中央圆圈保持不动（仅泛青蓝冷光示态），弧形菜单花瓣
+   像风扇一样旋转——时间轴 5%/90%/5% 三段：前 5% 时间加速、中段 90% 匀速快转
+   （2 圈/秒）、末 5% 减速；关键帧按时间百分比铺，线性分段（animation: linear），
+   拖尾峰值 ≈720°/s。总转角 38 圈整=360°倍数，class 移除时无视觉跳变。
+   旋转时长由主进程经 setCoolingVisual(on, sec) 传入（--spin-dur），与散热时长对齐。
+   菜单收起时由主进程临时展开再转。 */
+body.cooling #trigger{
+  background:linear-gradient(135deg,#eaf7ff,#d2ecff);
+  box-shadow:0 0 0 3px rgba(96,182,255,0.35),0 0 16px rgba(96,182,255,0.45);
+}
+body.cooling #trigger,body.cooling #trigger:hover{transform:none} /* 散热中圆圈纹丝不动（含悬停放大） */
+body.cooling .ring-svg{animation:coolingMenuSpin var(--spin-dur,20s) linear 1 both}
+@keyframes coolingMenuSpin{
+  0%{transform:rotate(0deg)}
+  2.5%{transform:rotate(-108deg)}    /* 缓起前半：速度爬升 30% */
+  5%{transform:rotate(-360deg)}      /* 达到风扇速度 720°/s（2 圈/秒） */
+  95%{transform:rotate(-13320deg)}   /* 90% 时间匀速快转（10800°/18s） */
+  97.5%{transform:rotate(-13572deg)} /* 缓停前半 */
+  100%{transform:rotate(-13680deg)}  /* 38 圈整收尾 */
+}
+body.cooling .arc-item{pointer-events:none !important} /* 旋转中的花瓣不可点击，防误触菜单动作 */
 /* 水滴吸附（G5）：吸附后从 66px 圆球收缩成更小的半透明水滴。
    关键 = 贴边那侧 29px 大圆角圆润地"鼓出"到屏幕边缘（水滴粘结感，绝非直角），
    外侧两端全圆，整体变小、半透明、不太显眼。窗口仍保持 66px 透明窗（不 shrink），
@@ -5268,6 +6311,13 @@ function updateBadge(count, flash, visible){
   el.classList.toggle('flash', !!flash)
 }
 ipcRenderer.send('floating-ball-badge-ready')
+
+// === 散热模式视觉开关：主进程经 executeJavaScript 调用（同 updateBadge 模式） ===
+// sec = 旋转总时长（秒），与散热时长对齐；花瓣缓→快→缓转 10 圈整。
+function setCoolingVisual(on, sec){
+  document.body.classList.toggle('cooling', !!on)
+  if(on) document.body.style.setProperty('--spin-dur', (sec || 20) + 's')
+}
 
 // 生成圆弧路径（四分之一圆环）
 function arcPath(cx, cy, r1, r2, sa, ea){
@@ -5423,10 +6473,17 @@ function restartBloom(){
 let dsX = 0, dsY = 0, dragging = false
 
 trigger.addEventListener('pointerdown', function(e){
+  if(e.button !== 0) return  // 仅左键参与拖拽/展开；右键归散热(contextmenu)，中键不响应
   dsX = e.screenX; dsY = e.screenY
   dragging = false
   trigger.setPointerCapture(e.pointerId)
   ipcRenderer.send('floating-ball-drag-start', e.screenX, e.screenY)
+})
+
+// 右键中央圆圈 = 散热模式入口（10 秒尽力降温，见 cooling.ts）
+trigger.addEventListener('contextmenu', function(e){
+  e.preventDefault()
+  ipcRenderer.send('floating-ball-cooling')
 })
 
 trigger.addEventListener('pointermove', function(e){
@@ -5442,6 +6499,12 @@ trigger.addEventListener('pointermove', function(e){
 })
 
 trigger.addEventListener('pointerup', function(e){
+  if(e.button !== 0) return  // 只有左键释放才切换展开/收起（右键/中键的释放曾误触发 toggle）
+  if(document.body.classList.contains('cooling')){
+    // 散热中：拖拽照常收尾（面板跟随依赖 move 事件），但不切换展开/收起——转完按原状态复位
+    if(dragging){ dragging = false; ipcRenderer.send('floating-ball-drag-end') }
+    return
+  }
   trigger.releasePointerCapture(e.pointerId)
   if(dragging){
     ipcRenderer.send('floating-ball-drag-end')
@@ -5480,6 +6543,7 @@ ipcRenderer.on('ball-snap',function(_event,side){
 // 点到窗口内任何透明区域（圆内空隙、四角、环外）都被视为"点到外部"，即收起菜单。
 document.addEventListener('click',function(e){
   if(!isExpanded) return
+  if(document.body.classList.contains('cooling')) return // 散热中：外部点击不收起（转完按原状态复位）
   if(e.target.closest('#trigger') || e.target.closest('.arc-item')) return
   ipcRenderer.send('floating-ball-collapse')
 })
@@ -5693,6 +6757,22 @@ function registerFloatingBallHandlers() {
 		logger_default.info("Floating ball action:", action);
 		forwardAction(action);
 	});
+	let coolingOriginExpanded = false;
+	electron.ipcMain.on("floating-ball-cooling", () => {
+		logger_default.info("Floating ball cooling requested");
+		if (startCooling((s) => {
+			updateCoolingOverlay(s);
+			if (s.phase === "done") {
+				setFloatingBallCoolingVisual(false);
+				if (!coolingOriginExpanded && isBallExpanded) collapseBall();
+			}
+		})) {
+			coolingOriginExpanded = isBallExpanded;
+			if (!isBallExpanded) expandBall();
+			setFloatingBallCoolingVisual(true);
+			showCoolingOverlay(getBallCenterForOverlay());
+		} else shakeCoolingOverlay();
+	});
 	let dragSize = null;
 	electron.ipcMain.on("floating-ball-drag-start", (_event, sx, sy) => {
 		if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
@@ -5711,7 +6791,7 @@ function registerFloatingBallHandlers() {
 	});
 	electron.ipcMain.on("floating-ball-drag-clear", (_event, sx, sy) => {
 		if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
-		if (isBallExpanded) collapseToBallImmediate();
+		if (isBallExpanded && !isCoolingActive()) collapseToBallImmediate();
 		clearSnap();
 		if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
 		const [wx, wy] = floatingBallWindow.getPosition();
@@ -8467,6 +9547,8 @@ electron.app.whenReady().then(() => {
 	setRegistryLogger(logger_default);
 	setHwEncoderLogger(logger_default);
 	setStateMachineLogger(logger_default);
+	setCoolingLogger(logger_default);
+	recoverCoolingResidue();
 	setI18nLocale(getBallSettings().locale);
 	const preloadPath = (0, node_path.join)(__dirname, "..", "preload", "index.cjs");
 	try {
@@ -8544,6 +9626,8 @@ electron.app.on("before-quit", () => {
 	agentBridge?.stop();
 	hideAiIsland();
 	killAllConversions();
+	cancelCooling();
+	hideCoolingOverlay();
 	stopTodoScheduler();
 	closeTodoWindow();
 	hideTodoReminder();

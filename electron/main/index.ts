@@ -19,6 +19,8 @@ import { hideTodoReminder } from './todo-reminder-window'
 import { syncStickyNotes, closeAllStickyNotes } from './todo-sticky'
 import { registerTodoBadgeHandlers, refreshTodoBadge } from './todo-badge'
 import { startTodoScheduler, stopTodoScheduler } from './todo-scheduler'
+import { setCoolingLogger, cancelCooling, recoverCoolingResidue } from './cooling'
+import { hideCoolingOverlay } from './cooling-overlay'
 
 declare const __dirname: string
 
@@ -121,6 +123,9 @@ app.whenReady().then(() => {
   setRegistryLogger(log)
   setHwEncoderLogger(log)
   setStateMachineLogger(log)
+  setCoolingLogger(log)
+  // 崩溃残留修复：上次散热中被强杀的话，把 powercfg/风扇模式写回原值（须在 logger 注入后）
+  recoverCoolingResidue()
   // 启动即同步全局界面语言（悬浮球设置的 locale 是唯一真源），保证任何窗口创建前已就绪
   setI18nLocale(getBallSettings().locale)
   const preloadPath = join(__dirname, '..', 'preload', 'index.cjs')
@@ -229,6 +234,9 @@ app.on('before-quit', () => {
   hideAiIsland()
   // kill 所有在途 ffmpeg 转换，避免 ffmpeg.exe 成为孤儿进程继续吃 CPU
   killAllConversions()
+  // 散热模式：同步尽力恢复被限制的电源设置/风扇模式 + 拆散热面板（见 cooling.ts）
+  cancelCooling()
+  hideCoolingOverlay()
   // 停止待办提醒调度 + 拆待办窗口 + 提醒弹窗 + 贴屏便签
   stopTodoScheduler()
   closeTodoWindow()
