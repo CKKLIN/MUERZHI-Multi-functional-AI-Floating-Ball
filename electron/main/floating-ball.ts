@@ -5,6 +5,8 @@ import log from './logger'
 import { getLogoDataUrl } from './logo'
 import { setI18nLocale, isLocale, t, type Locale } from './i18n'
 import { reloadAiIsland } from './ai-island'
+import { startCooling, isCoolingActive, getCoolingDurationSec, type CoolingStatus } from './cooling'
+import { showCoolingOverlay, updateCoolingOverlay, shakeCoolingOverlay, repositionCoolingOverlay } from './cooling-overlay'
 
 // === 悬浮球窗口 ===
 let floatingBallWindow: BrowserWindow | null = null
@@ -197,6 +199,25 @@ export function applyFloatingBallBadge(count: number, flash: boolean, visible: b
   ).catch(() => {})
 }
 
+/** 球心屏幕坐标（散热面板定位用）：由窗口几何反推，与 move 事件的中心逻辑同源。
+ *  球不存在/已销毁返回 null（面板据此放弃创建）。 */
+export function getBallCenterForOverlay(): { x: number; y: number } | null {
+  if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return null
+  const [wx, wy] = floatingBallWindow.getPosition()
+  const [ww, wh] = floatingBallWindow.getSize()
+  return { x: Math.round(wx + ww / 2), y: Math.round(wy + wh / 2) }
+}
+
+/** 悬浮球散热动画开关：body.cooling class → 弧形菜单逆时针旋转（时长=散热时长）+
+ *  圆圈冷光静止（内联 JS 提供 setCoolingVisual）。经 executeJavaScript 调用，
+ *  与 applyFloatingBallBadge 同模式。 */
+export function setFloatingBallCoolingVisual(on: boolean) {
+  if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
+  floatingBallWindow.webContents.executeJavaScript(
+    `if(window.setCoolingVisual) setCoolingVisual(${!!on}, ${getCoolingDurationSec()})`
+  ).catch(() => {})
+}
+
 /** 把设置作用到活动悬浮球（visible 切换显隐，alwaysOnTop 切层级） */
 function applyFloatingBallSettings(s: FloatingBallSettings) {
   if (s.visible) {
@@ -283,6 +304,9 @@ export function showFloatingBall() {
       x: Math.round(wx + ww / 2 - BALL_SIZE / 2),
       y: Math.round(wy + wh / 2 - BALL_SIZE / 2),
     }
+    // 散热面板跟随：拖动悬浮球时面板同步移动（move 在 setBounds/拖拽/贴边动画中高频触发，
+    // 每次一次轻量 setBounds，无节流必要）
+    if (isCoolingActive()) repositionCoolingOverlay(getBallCenterForOverlay())
   })
 
   floatingBallWindow.on('close', () => {
@@ -291,7 +315,9 @@ export function showFloatingBall() {
 
   // 失焦自动收起：展开态下点击/切走任意其他窗口时，悬浮球失去焦点即收回菜单，
   // 避免菜单常驻遮挡屏幕。blur 也可能由本窗口内部弹窗触发，但 Cart 中无弹窗，安全。
+  // 散热动画期间例外：旋转中的花瓣不被打断，转完由散热完成回调按原状态复位。
   floatingBallWindow.on('blur', () => {
+    if (isCoolingActive()) return
     if (isBallExpanded) collapseBall()
   })
 
@@ -625,6 +651,27 @@ body.expanded .arc-label{
   transition:width .5s ease, height .5s ease, border-radius .5s ease;
 }
 #trigger:active{transform:scale(0.95)}
+/* 散热模式（右键触发）：中央圆圈保持不动（仅泛青蓝冷光示态），弧形菜单花瓣
+   像风扇一样旋转——时间轴 5%/90%/5% 三段：前 5% 时间加速、中段 90% 匀速快转
+   （2 圈/秒）、末 5% 减速；关键帧按时间百分比铺，线性分段（animation: linear），
+   拖尾峰值 ≈720°/s。总转角 38 圈整=360°倍数，class 移除时无视觉跳变。
+   旋转时长由主进程经 setCoolingVisual(on, sec) 传入（--spin-dur），与散热时长对齐。
+   菜单收起时由主进程临时展开再转。 */
+body.cooling #trigger{
+  background:linear-gradient(135deg,#eaf7ff,#d2ecff);
+  box-shadow:0 0 0 3px rgba(96,182,255,0.35),0 0 16px rgba(96,182,255,0.45);
+}
+body.cooling #trigger,body.cooling #trigger:hover{transform:none} /* 散热中圆圈纹丝不动（含悬停放大） */
+body.cooling .ring-svg{animation:coolingMenuSpin var(--spin-dur,20s) linear 1 both}
+@keyframes coolingMenuSpin{
+  0%{transform:rotate(0deg)}
+  2.5%{transform:rotate(-108deg)}    /* 缓起前半：速度爬升 30% */
+  5%{transform:rotate(-360deg)}      /* 达到风扇速度 720°/s（2 圈/秒） */
+  95%{transform:rotate(-13320deg)}   /* 90% 时间匀速快转（10800°/18s） */
+  97.5%{transform:rotate(-13572deg)} /* 缓停前半 */
+  100%{transform:rotate(-13680deg)}  /* 38 圈整收尾 */
+}
+body.cooling .arc-item{pointer-events:none !important} /* 旋转中的花瓣不可点击，防误触菜单动作 */
 /* 水滴吸附（G5）：吸附后从 66px 圆球收缩成更小的半透明水滴。
    关键 = 贴边那侧 29px 大圆角圆润地"鼓出"到屏幕边缘（水滴粘结感，绝非直角），
    外侧两端全圆，整体变小、半透明、不太显眼。窗口仍保持 66px 透明窗（不 shrink），
@@ -749,6 +796,13 @@ function updateBadge(count, flash, visible){
   el.classList.toggle('flash', !!flash)
 }
 ipcRenderer.send('floating-ball-badge-ready')
+
+// === 散热模式视觉开关：主进程经 executeJavaScript 调用（同 updateBadge 模式） ===
+// sec = 旋转总时长（秒），与散热时长对齐；花瓣缓→快→缓转 10 圈整。
+function setCoolingVisual(on, sec){
+  document.body.classList.toggle('cooling', !!on)
+  if(on) document.body.style.setProperty('--spin-dur', (sec || 20) + 's')
+}
 
 // 生成圆弧路径（四分之一圆环）
 function arcPath(cx, cy, r1, r2, sa, ea){
@@ -904,10 +958,17 @@ function restartBloom(){
 let dsX = 0, dsY = 0, dragging = false
 
 trigger.addEventListener('pointerdown', function(e){
+  if(e.button !== 0) return  // 仅左键参与拖拽/展开；右键归散热(contextmenu)，中键不响应
   dsX = e.screenX; dsY = e.screenY
   dragging = false
   trigger.setPointerCapture(e.pointerId)
   ipcRenderer.send('floating-ball-drag-start', e.screenX, e.screenY)
+})
+
+// 右键中央圆圈 = 散热模式入口（10 秒尽力降温，见 cooling.ts）
+trigger.addEventListener('contextmenu', function(e){
+  e.preventDefault()
+  ipcRenderer.send('floating-ball-cooling')
 })
 
 trigger.addEventListener('pointermove', function(e){
@@ -923,6 +984,12 @@ trigger.addEventListener('pointermove', function(e){
 })
 
 trigger.addEventListener('pointerup', function(e){
+  if(e.button !== 0) return  // 只有左键释放才切换展开/收起（右键/中键的释放曾误触发 toggle）
+  if(document.body.classList.contains('cooling')){
+    // 散热中：拖拽照常收尾（面板跟随依赖 move 事件），但不切换展开/收起——转完按原状态复位
+    if(dragging){ dragging = false; ipcRenderer.send('floating-ball-drag-end') }
+    return
+  }
   trigger.releasePointerCapture(e.pointerId)
   if(dragging){
     ipcRenderer.send('floating-ball-drag-end')
@@ -961,6 +1028,7 @@ ipcRenderer.on('ball-snap',function(_event,side){
 // 点到窗口内任何透明区域（圆内空隙、四角、环外）都被视为"点到外部"，即收起菜单。
 document.addEventListener('click',function(e){
   if(!isExpanded) return
+  if(document.body.classList.contains('cooling')) return // 散热中：外部点击不收起（转完按原状态复位）
   if(e.target.closest('#trigger') || e.target.closest('.arc-item')) return
   ipcRenderer.send('floating-ball-collapse')
 })
@@ -1117,6 +1185,31 @@ export function registerFloatingBallHandlers() {
     forwardAction(action)
   })
 
+  // === 右键散热模式：10 秒尽力降温（厂商风扇 WMI → powercfg 功耗 → 温度监测，逐级降级） ===
+  // 动画语义：中央圆圈不动，弧形菜单花瓣逆时针旋转 10 秒。若触发时菜单是收起的，
+  // 临时展开用于旋转；散热结束按触发前的状态复位（原展开→保持展开，原收起→收回）。
+  let coolingOriginExpanded = false
+  ipcMain.on('floating-ball-cooling', () => {
+    log.info('Floating ball cooling requested')
+    const started = startCooling((s: CoolingStatus) => {
+      updateCoolingOverlay(s)
+      if (s.phase === 'done') {
+        setFloatingBallCoolingVisual(false)
+        // 转完复位：原本收起的（散热时被临时展开）现在收回；原本展开的不动
+        if (!coolingOriginExpanded && isBallExpanded) collapseBall()
+      }
+    })
+    if (started) {
+      coolingOriginExpanded = isBallExpanded
+      if (!isBallExpanded) expandBall() // 收起态散热：临时展开菜单以播放旋转动画
+      setFloatingBallCoolingVisual(true)
+      showCoolingOverlay(getBallCenterForOverlay())
+    } else {
+      // 防重入：已在散热中，面板抖动提示（不重置计时，避免功耗限制被无限延长）
+      shakeCoolingOverlay()
+    }
+  })
+
   // === 手动拖拽：绝对增量 + setBounds + 读回修正 DWM 偏移 ===
   let dragSize: { w: number; h: number } | null = null
 
@@ -1134,7 +1227,8 @@ export function registerFloatingBallHandlers() {
   // 若从展开态起拖，先立即收起成 66 球并重设锚点，避免以 240 窗口几何拖动/贴屏错乱。
   ipcMain.on('floating-ball-drag-clear', (_event: any, sx: number, sy: number) => {
     if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
-    if (isBallExpanded) collapseToBallImmediate()
+    // 散热中例外：花瓣旋转动画需要菜单保持展开，拖拽以 240 几何进行（面板跟随正常）
+    if (isBallExpanded && !isCoolingActive()) collapseToBallImmediate()
     clearSnap()
     if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
     const [wx, wy] = floatingBallWindow.getPosition()

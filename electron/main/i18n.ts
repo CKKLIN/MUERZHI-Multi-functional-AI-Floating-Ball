@@ -35,6 +35,18 @@ const zh: Record<string, string> = {
   'ball.menu.todo': '待办便签',
   'ball.menu.settings': '设置',
 
+  // === 悬浮球右键散热模式 ===
+  // 文案必须如实反映实际生效的杠杆：风扇不受控的机器显示"功耗散热中"，不谎称风扇已启动
+  'ball.cooling.title': '散热模式',
+  'ball.cooling.fanOn': '风扇已全速',
+  'ball.cooling.powerOnly': '功耗散热中',
+  'ball.cooling.monitoring': '温度监测中',
+  'ball.cooling.tempUnknown': '温度未知',
+  'ball.cooling.disk': '磁盘',
+  'ball.cooling.mem': '内存',
+  'ball.cooling.done': '散热完成 {before}°C → {after}°C',
+  'ball.cooling.doneNoTemp': '散热完成',
+
   // === 悬浮球设置面板 ===
   'settings.group.ball': '悬浮球',
   'settings.ball.show': '显示悬浮球',
@@ -335,6 +347,19 @@ const en: Record<string, string> = {
   'ball.menu.ai': 'AI',
   'ball.menu.todo': 'Notes',
   'ball.menu.settings': 'Settings',
+
+  // === floating ball right-click cooling mode ===
+  // Labels must reflect what actually engaged: machines without fan control show
+  // "Power-limited cooling", never a false "fans at full speed"
+  'ball.cooling.title': 'Cooling',
+  'ball.cooling.fanOn': 'Fans at full speed',
+  'ball.cooling.powerOnly': 'Power-limited cooling',
+  'ball.cooling.monitoring': 'Monitoring temps',
+  'ball.cooling.tempUnknown': 'Temp unknown',
+  'ball.cooling.disk': 'Disk',
+  'ball.cooling.mem': 'RAM',
+  'ball.cooling.done': 'Cooling done {before}°C → {after}°C',
+  'ball.cooling.doneNoTemp': 'Cooling finished',
 
   // === floating ball settings panel ===
   'settings.group.ball': 'Floating Ball',
