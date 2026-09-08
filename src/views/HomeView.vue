@@ -195,6 +195,21 @@ function stopCamera() {
   store.isCameraEnabled = false
 }
 
+// 切到设置页时录制页 UI 已卸载，摄像头流若继续持有就是"隐形占用设备"（灯亮着却无任何画面）。
+// 停轨释放但保留 isCameraEnabled 记忆（与 handleFullscreen 的停轨不翻开关同款），
+// 回到录制页再按开关状态重新拉起。录制中 canStart=false 直接跳过：录制的画面合成需要摄像头。
+watch(activeTab, (tab) => {
+  if (!store.canStart) return
+  if (tab !== 'record') {
+    recording.cameraStream.value?.getTracks().forEach(t => t.stop())
+    recording.cameraStream.value = null
+    window.electronAPI.hideCameraPreview()
+  } else if (store.isCameraEnabled && !recording.cameraStream.value) {
+    startCamera()
+    window.electronAPI.toggleCameraPreview(true, settingsStore.cameraDeviceId)
+  }
+})
+
 async function handleFullscreen() {
   const sources = await window.electronAPI.getSources(['screen'])
   const displays = await window.electronAPI.getAllDisplays()
