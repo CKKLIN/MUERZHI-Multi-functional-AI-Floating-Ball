@@ -80,10 +80,10 @@ const hasSource = computed(() => !!store.selectedSource)
     <div class="control-divider"></div>
 
     <div class="main-controls">
+      <!-- 未选录制来源（全屏/区域）时直接隐藏，避免出现灰置不可用的按钮 -->
       <button
-        v-if="store.canStart"
+        v-if="store.canStart && hasSource"
         class="btn record-btn"
-        :disabled="!hasSource"
         @click="emit('start')"
         :title="t('record.startShort', { k: 'Ctrl+Shift+R' })"
       >
@@ -167,7 +167,13 @@ const hasSource = computed(() => !!store.selectedSource)
     1px 1px 2px rgba(0, 0, 0, 0.06),
     inset 1px 1px 2px rgba(255, 255, 255, 0.9),
     inset -1px -1px 0 rgba(0, 0, 0, 0.04);
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  /* color/text-shadow 不参与过渡：hover 换浅底时字色必须同帧变红，
+     若走 all 过渡，低帧率下字色动画迟迟跟不上，会出现白字压白底的空窗 */
+  transition:
+    background 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
@@ -215,14 +221,25 @@ const hasSource = computed(() => !!store.selectedSource)
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 
+/* 悬浮：底色转浅粉、文字与圆点变红 —— 只换字色会红字压红底看不清，
+   转浅底后红字才立得住，且与暂停/继续“浅底+深色字”的 hover 语言一致 */
 .record-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #ff8599 0%, #ff6b81 100%);
-  border-top-color: rgba(255, 200, 210, 0.7);
+  background: linear-gradient(135deg, #fff1f4 0%, #ffdde2 100%);
+  border-color: rgba(255, 170, 185, 0.7);
+  border-top-color: rgba(255, 200, 210, 0.9);
+  border-left-color: rgba(255, 180, 195, 0.85);
+  color: var(--accent);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
   box-shadow:
     6px 6px 18px rgba(233, 69, 96, 0.4),
     2px 2px 5px rgba(233, 69, 96, 0.25),
-    inset 1px 1px 2px rgba(255, 255, 255, 0.5),
-    inset -1px -1px 0 rgba(0, 0, 0, 0.08);
+    inset 1px 1px 2px rgba(255, 255, 255, 0.9),
+    inset -1px -1px 0 rgba(0, 0, 0, 0.05);
+}
+
+.record-btn:hover:not(:disabled) .record-icon {
+  background: var(--accent);
+  box-shadow: 0 1px 2px rgba(233, 69, 96, 0.35);
 }
 
 .record-btn:active:not(:disabled) {

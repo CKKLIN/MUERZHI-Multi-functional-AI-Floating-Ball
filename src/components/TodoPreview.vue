@@ -4,6 +4,7 @@
 import { computed } from 'vue'
 import { useTodoStore } from '../stores/todo'
 import { t } from '../stores/i18n'
+import { formatTodoDate } from '../utils/todo-date'
 
 const store = useTodoStore()
 const it = computed(() => store.previewItem)
@@ -16,20 +17,7 @@ function typeLabel(ty: string): string {
   return t(ty === 'todo' ? 'todo.typeTodo' : 'todo.typeMemo')
 }
 
-function fmtTime(iso: string | null): string {
-  if (!iso) return ''
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
-// 创建时间（epoch ms）
-function fmtCreated(ms: number): string {
-  const d = new Date(ms)
-  if (isNaN(d.getTime())) return ''
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
+// 创建/提醒时间统一走 utils/todo-date（与列表卡片同一格式，窗口内任何日期长一个样）
 
 // 富文本 → 纯文本（无标题，正文即内容；标题行取正文首行）
 function plainText(html: string): string {
@@ -61,8 +49,11 @@ const headingText = computed(() => {
         <div class="pv-meta">
           <span class="type" :class="it.type">{{ typeLabel(it.type) }}</span>
           <span class="prio"><i class="dot" :style="{ background: PRIO_COLOR[it.priority] }"></i>{{ prioLabel(it.priority) }}</span>
-          <span>{{ fmtCreated(it.createdAt) }}</span>
-          <span v-if="it.reminder">{{ t('todo.reminder') }} {{ fmtTime(it.reminder) }}</span>
+          <span class="pv-time">{{ formatTodoDate(it.createdAt) }}</span>
+          <span v-if="it.reminder" class="pv-time reminder" :title="t('todo.reminder')">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            {{ formatTodoDate(it.reminder) }}
+          </span>
         </div>
 
         <div class="pv-body" v-if="it.content" v-html="it.content"></div>
@@ -99,6 +90,10 @@ const headingText = computed(() => {
 .type.memo { background: var(--warning-bg); color: var(--warning); }
 .prio { display: inline-flex; align-items: center; gap: 5px; }
 .prio .dot { width: 8px; height: 8px; border-radius: 50%; }
+.pv-time { font-variant-numeric: tabular-nums; }
+/* 提醒时间：与列表卡片同款时钟图标 + 悬浮 title，两页视觉语言一致 */
+.pv-time.reminder { display: inline-flex; align-items: center; gap: 4px; }
+.pv-time.reminder svg { flex-shrink: 0; }
 
 .pv-body { margin-top: 14px; font-size: 14px; line-height: 1.6; color: var(--text-secondary); }
 .pv-body :deep(img) { max-width: 100%; border-radius: 10px; }

@@ -256,6 +256,13 @@ const zh: Record<string, string> = {
   'todo.open': '点击打开',
   'todo.reminderRing': '到点了',
   'todo.reminderBody': '到时间了，记得处理一下。',
+  // 日期统一格式化用的相对日标签（见 src/utils/todo-date.ts）
+  'todo.today': '今天',
+  'todo.yesterday': '昨天',
+  // 自绘日期时间选择弹层（TodoEditor）：周次固定周一起；月份标题两种语言格式不同
+  'todo.weekdays': '一,二,三,四,五,六,日',
+  'todo.monthNames': '1月,2月,3月,4月,5月,6月,7月,8月,9月,10月,11月,12月',
+  'todo.monthTitle': '{y}年{m}月',
 
   // === 定时录制 ===
   'sched.title': '定时录制',
@@ -570,6 +577,13 @@ const en: Record<string, string> = {
   'todo.open': 'Click to open',
   'todo.reminderRing': "Time's up",
   'todo.reminderBody': "It's time — take care of it.",
+  // Relative-day labels for the unified date formatter (see src/utils/todo-date.ts)
+  'todo.today': 'Today',
+  'todo.yesterday': 'Yesterday',
+  // Custom date-time picker popover (TodoEditor): weeks start Monday; month title format differs per locale
+  'todo.weekdays': 'Mon,Tue,Wed,Thu,Fri,Sat,Sun',
+  'todo.monthNames': 'January,February,March,April,May,June,July,August,September,October,November,December',
+  'todo.monthTitle': '{month} {y}',
 
   // === scheduled recording ===
   'sched.title': 'Scheduled Recording',

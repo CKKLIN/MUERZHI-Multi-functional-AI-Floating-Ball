@@ -7,6 +7,7 @@ import TodoEditor from './TodoEditor.vue'
 import TodoPreview from './TodoPreview.vue'
 import Tooltip from './Tooltip.vue'
 import { t } from '../stores/i18n'
+import { formatTodoDate } from '../utils/todo-date'
 
 const store = useTodoStore()
 
@@ -84,20 +85,7 @@ function plainText(html: string): string {
   return txt
 }
 
-function fmtTime(iso: string | null): string {
-  if (!iso) return ''
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
-// 创建时间（createdAt 是 epoch ms）
-function fmtCreated(ms: number): string {
-  const d = new Date(ms)
-  if (isNaN(d.getTime())) return ''
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
+// 创建时间与提醒时间的格式化统一走 utils/todo-date（此前两套各写各的，列表提醒丢年份、预览又带年份）
 
 async function onSave(draft: TodoDraft) {
   try {
@@ -234,8 +222,11 @@ onUnmounted(() => {
             <div class="meta">
               <span class="type" :class="it.type">{{ typeLabel(it.type) }}</span>
               <span class="prio"><i class="dot" :style="{ background: PRIO_COLOR[it.priority] }"></i>{{ prioLabel(it.priority) }}</span>
-              <span class="time">{{ fmtCreated(it.createdAt) }}</span>
-              <span v-if="it.reminder" class="time">{{ t('todo.reminder') }} {{ fmtTime(it.reminder) }}</span>
+              <span class="time">{{ formatTodoDate(it.createdAt) }}</span>
+              <span v-if="it.reminder" class="time reminder" :title="t('todo.reminder')">
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                {{ formatTodoDate(it.reminder) }}
+              </span>
               <Tooltip v-if="it.type === 'memo' && plainText(it.content)" :text="plainText(it.content)" class="vtip-excerpt">
                 <span class="excerpt">{{ plainText(it.content) }}</span>
               </Tooltip>
@@ -363,7 +354,10 @@ onUnmounted(() => {
 .type.memo { background: var(--warning-bg); color: var(--warning); }
 .prio { display: inline-flex; align-items: center; gap: 5px; }
 .prio .dot { width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 0 2px rgba(0,0,0,0.02); }
-.time { color: var(--text-muted); }
+.time { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+/* 提醒时间：时钟图标标识“未来要做的事”，与纯记录性质的创建时间区分；悬浮 title 补语义 */
+.time.reminder { display: inline-flex; align-items: center; gap: 3px; }
+.time.reminder svg { flex-shrink: 0; }
 .excerpt { color: var(--text-muted); max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 悬浮提示包裹器（备忘摘要用）：外层保持 45% 上限；内层 excerpt 填满锚点以触发省略号 */
 .vtip-excerpt { max-width: 45%; flex-shrink: 1; min-width: 0; }
