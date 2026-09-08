@@ -9,12 +9,9 @@ const videoDevices = ref<MediaDeviceInfo[]>([])
 const audioDevices = ref<MediaDeviceInfo[]>([])
 
 onMounted(async () => {
-  // 请求权限后枚举设备
-  try {
-    await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-  } catch {
-    // 静默失败
-  }
+  // 只枚举设备，绝不 getUserMedia：一进设置页就点亮摄像头/麦克风指示灯是用户可感知的
+  // "偷开设备"。权限已授权过时 enumerateDevices 自带设备名；未授权时 label 为空，
+  // UI 回退到"摄像头 1 / 麦克风 1"默认名，等用户真正启用设备后再来就有名字了。
   try {
     const devices = await navigator.mediaDevices.enumerateDevices()
     videoDevices.value = devices.filter(d => d.kind === 'videoinput')
