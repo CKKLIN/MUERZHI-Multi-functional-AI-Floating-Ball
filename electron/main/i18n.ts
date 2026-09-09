@@ -64,6 +64,11 @@ const zh: Record<string, string> = {
   'settings.language.desc': '切换后悬浮球、AI 岛等窗口在下次打开时生效', // 说明是 next-open 策略
   'settings.lang.zh': '简体中文',
   'settings.lang.en': 'English',
+  'settings.group.about': '关于',
+  'settings.about.appName': 'MUERZHI 万能 AI 悬浮球',
+  'settings.about.desc': '屏幕录制 · AI 助手 · 待办便签 · 一键散热',
+  'settings.about.author': '作者：MUERZHI',
+  'settings.about.github': 'GitHub 开源仓库 · 点击访问',
 
   // === AI 岛（主进程内联 HTML） ===
   'aiIsland.idle': 'AI 待机',
@@ -171,6 +176,11 @@ const zh: Record<string, string> = {
   'ai.hooksNotInstalled': '未安装',
   'ai.autoAllow': '自动允许权限',
   'ai.autoAllowDesc': '开启后新权限请求自动放行，不再弹出审批卡片',
+  'ai.expireToggle': '审批与提问自动过期',
+  'ai.expireToggleDesc': '到期后权限卡自动取消、提问卡自动收起',
+  'ai.expireTime': '过期时长',
+  'ai.expireTimeDesc': '队首卡片的处理时限',
+  'ai.minutes': '分钟',
   'ai.serverPort': '本地服务端口',
   'ai.serverRunning': '服务运行中',
   'ai.serverStopped': '服务未运行',
@@ -385,6 +395,11 @@ const en: Record<string, string> = {
   'settings.language.desc': 'Ball, AI assistant and other windows apply on next open',
   'settings.lang.zh': '简体中文',
   'settings.lang.en': 'English',
+  'settings.group.about': 'About',
+  'settings.about.appName': 'MUERZHI Multi-functional AI Floating Ball',
+  'settings.about.desc': 'Screen recording · AI assistant · Todo notes · One-click cooling',
+  'settings.about.author': 'Author: MUERZHI',
+  'settings.about.github': 'GitHub repository · Click to visit',
 
   // === AI settings panel ===
   'ai.title': 'AI Assistant',
@@ -395,6 +410,11 @@ const en: Record<string, string> = {
   'ai.hooksNotInstalled': 'Not installed',
   'ai.autoAllow': 'Auto-allow permissions',
   'ai.autoAllowDesc': 'When on, new permission requests are allowed automatically without approval cards',
+  'ai.expireToggle': 'Auto-expire approvals & questions',
+  'ai.expireToggleDesc': 'Permission cards are cancelled and question cards dismissed on expiry',
+  'ai.expireTime': 'Expiry duration',
+  'ai.expireTimeDesc': 'Time allowed to handle the front card',
+  'ai.minutes': 'min',
   'ai.serverPort': 'Local server port',
   'ai.serverRunning': 'Server running',
   'ai.serverStopped': 'Server not running',

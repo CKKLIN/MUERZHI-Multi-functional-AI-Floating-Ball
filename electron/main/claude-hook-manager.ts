@@ -12,6 +12,11 @@ const HOOK_MARKER_NAME = "erzhi-recording"
 const WATCH_INTERVAL_MS = 5 * 60 * 1000
 const MAX_REPAIR_RETRIES = 3
 
+// PermissionRequest HTTP hook 的超时（秒）。必须始终 > 审批卡最长过期（agent-bridge 的
+// CARD_EXPIRE_MAX_S=1800s），否则 Claude 先断开而卡片还在等，决策无处投递。多留 60s 余量。
+// 服务端过期时服务端先回 cancel/deny，hook 提前返回，此超时只是兜底（含"永不过期"场景）。
+const HOOK_HTTP_TIMEOUT_S = 1860
+
 // Claude Code CLI 支持的事件列表
 const HOOK_EVENTS = [
   "SessionStart",
@@ -154,7 +159,7 @@ export function createClaudeHookManager(agentPort: () => number | null) {
       return eventHooks.some((group: ClaudeHookGroup) =>
         group.hooks?.some((h: any) => {
           if (event === "PermissionRequest") {
-            return h.type === "http" && h.url?.includes("/permission")
+            return h.type === "http" && h.url?.includes("/permission") && (h.timeout ?? 0) >= HOOK_HTTP_TIMEOUT_S
           }
           return h.type === "command" && h.command?.startsWith("&") && h.command?.includes("clawd-hook.js") && h.shell === "powershell"
         })
@@ -174,7 +179,7 @@ export function createClaudeHookManager(agentPort: () => number | null) {
         hook = {
           type: "http",
           url: `http://127.0.0.1:${port}/permission`,
-          timeout: 600,
+          timeout: HOOK_HTTP_TIMEOUT_S,
         }
       } else {
         const { command, shell } = buildHookCommand(event, scriptPath)

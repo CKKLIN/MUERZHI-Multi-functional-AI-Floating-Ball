@@ -110,6 +110,15 @@ async function resetPosition() {
   }
 }
 
+// 关于卡：整卡可点，跳转 GitHub 仓库主页（经 open-external 走系统浏览器）
+const REPO_URL = 'https://github.com/CKKLIN/MUERZHI-Multi-functional-AI-Floating-Ball'
+
+function openRepo() {
+  window.electronAPI.openExternal(REPO_URL).catch((e) => {
+    console.error('[FloatingBallSettingsPanel] openRepo error:', e)
+  })
+}
+
 onMounted(loadSettings)
 </script>
 
@@ -199,6 +208,25 @@ onMounted(loadSettings)
             <button class="toggle-btn" :class="{ on: openAtLogin }" @click="toggleOpenAtLogin">
               <span class="toggle-knob"></span>
             </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <div class="group-header">{{ t('settings.group.about') }}</div>
+        <div class="settings-section">
+          <div class="about-card" @click="openRepo" :title="REPO_URL">
+            <div class="about-github">
+              <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+              </svg>
+            </div>
+            <div class="row-text">
+              <div class="row-label">{{ t('settings.about.appName') }}</div>
+              <div class="row-desc">{{ t('settings.about.desc') }}</div>
+              <div class="row-desc author-line">{{ t('settings.about.author') }}</div>
+            </div>
+            <span class="about-link">{{ t('settings.about.github') }} ↗</span>
           </div>
         </div>
       </div>
@@ -319,5 +347,64 @@ onMounted(loadSettings)
   border-color: rgba(255, 255, 255, 0.4);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
   box-shadow: var(--surface-accent-glow);
+}
+
+/* 关于/作者卡：整卡可点跳转 GitHub，立体手法与 reset-btn 同源 */
+.about-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-top-color: rgba(255, 255, 255, 0.9);
+  border-left-color: rgba(255, 255, 255, 0.85);
+  border-right-color: rgba(200, 200, 210, 0.4);
+  border-bottom-color: rgba(190, 190, 200, 0.5);
+  background: var(--surface-grad);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s var(--bevel-ease);
+  box-shadow: var(--bevel-shadow);
+}
+.about-card:hover {
+  background: var(--surface-grad-hover);
+  transform: translate(-1px, -1px);
+  box-shadow: var(--bevel-shadow-hover);
+}
+.about-card:active {
+  background: var(--surface-grad-active);
+  border-color: rgba(175, 175, 190, 0.5);
+  border-top-color: rgba(190, 190, 205, 0.6);
+  transform: translate(1px, 1px);
+  box-shadow: var(--bevel-shadow-active);
+}
+.about-github {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  color: #fff;
+  background: var(--surface-accent-grad);
+  box-shadow: var(--surface-accent-glow);
+}
+.about-card .row-text {
+  flex: 1;
+  min-width: 0;
+}
+.author-line {
+  color: var(--surface-accent);
+  font-weight: 600;
+  margin-top: 2px;
+}
+.about-link {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--surface-accent);
+  white-space: nowrap;
 }
 </style>

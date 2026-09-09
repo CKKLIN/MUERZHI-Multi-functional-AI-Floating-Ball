@@ -124,6 +124,8 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
 	agentGetAutoAllow: () => electron.ipcRenderer.invoke("agent-get-auto-allow"),
 	agentGetAutoAllowSessions: () => electron.ipcRenderer.invoke("agent-get-auto-allow-sessions"),
 	agentSetAutoAllowSession: (sessionId, enabled) => electron.ipcRenderer.invoke("agent-set-auto-allow-session", sessionId, enabled),
+	agentGetCardExpiry: () => electron.ipcRenderer.invoke("agent-get-card-expiry"),
+	agentSetCardExpiry: (enabled, seconds) => electron.ipcRenderer.invoke("agent-set-card-expiry", enabled, seconds),
 	onAgentStateUpdate: (callback) => {
 		const handler = (_event, data) => callback(data);
 		electron.ipcRenderer.on("agent-state-update", handler);

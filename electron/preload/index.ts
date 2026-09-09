@@ -182,6 +182,8 @@ const electronAPI = {
   agentGetAutoAllow: () => ipcRenderer.invoke('agent-get-auto-allow'),
   agentGetAutoAllowSessions: () => ipcRenderer.invoke('agent-get-auto-allow-sessions'),
   agentSetAutoAllowSession: (sessionId: string, enabled: boolean) => ipcRenderer.invoke('agent-set-auto-allow-session', sessionId, enabled),
+  agentGetCardExpiry: () => ipcRenderer.invoke('agent-get-card-expiry') as Promise<{ enabled: boolean; seconds: number }>,
+  agentSetCardExpiry: (enabled: boolean, seconds: number) => ipcRenderer.invoke('agent-set-card-expiry', enabled, seconds),
   onAgentStateUpdate: (callback: (data: any) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
     ipcRenderer.on('agent-state-update', handler)

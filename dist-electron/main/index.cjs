@@ -2518,6 +2518,11 @@ var init_i18n = __esmMin((() => {
 		"settings.language.desc": "切换后悬浮球、AI 岛等窗口在下次打开时生效",
 		"settings.lang.zh": "简体中文",
 		"settings.lang.en": "English",
+		"settings.group.about": "关于",
+		"settings.about.appName": "MUERZHI 万能 AI 悬浮球",
+		"settings.about.desc": "屏幕录制 · AI 助手 · 待办便签 · 一键散热",
+		"settings.about.author": "作者：MUERZHI",
+		"settings.about.github": "GitHub 开源仓库 · 点击访问",
 		"aiIsland.idle": "AI 待机",
 		"aiIsland.thinking": "AI 思考中",
 		"aiIsland.working": "AI 工作中",
@@ -2617,6 +2622,11 @@ var init_i18n = __esmMin((() => {
 		"ai.hooksNotInstalled": "未安装",
 		"ai.autoAllow": "自动允许权限",
 		"ai.autoAllowDesc": "开启后新权限请求自动放行，不再弹出审批卡片",
+		"ai.expireToggle": "审批与提问自动过期",
+		"ai.expireToggleDesc": "到期后权限卡自动取消、提问卡自动收起",
+		"ai.expireTime": "过期时长",
+		"ai.expireTimeDesc": "队首卡片的处理时限",
+		"ai.minutes": "分钟",
 		"ai.serverPort": "本地服务端口",
 		"ai.serverRunning": "服务运行中",
 		"ai.serverStopped": "服务未运行",
@@ -2801,6 +2811,11 @@ var init_i18n = __esmMin((() => {
 		"settings.language.desc": "Ball, AI assistant and other windows apply on next open",
 		"settings.lang.zh": "简体中文",
 		"settings.lang.en": "English",
+		"settings.group.about": "About",
+		"settings.about.appName": "MUERZHI Multi-functional AI Floating Ball",
+		"settings.about.desc": "Screen recording · AI assistant · Todo notes · One-click cooling",
+		"settings.about.author": "Author: MUERZHI",
+		"settings.about.github": "GitHub repository · Click to visit",
 		"ai.title": "AI Assistant",
 		"ai.installHooks": "Install Claude Code hooks",
 		"ai.uninstallHooks": "Uninstall Claude Code hooks",
@@ -2809,6 +2824,11 @@ var init_i18n = __esmMin((() => {
 		"ai.hooksNotInstalled": "Not installed",
 		"ai.autoAllow": "Auto-allow permissions",
 		"ai.autoAllowDesc": "When on, new permission requests are allowed automatically without approval cards",
+		"ai.expireToggle": "Auto-expire approvals & questions",
+		"ai.expireToggleDesc": "Permission cards are cancelled and question cards dismissed on expiry",
+		"ai.expireTime": "Expiry duration",
+		"ai.expireTimeDesc": "Time allowed to handle the front card",
+		"ai.minutes": "min",
 		"ai.serverPort": "Local server port",
 		"ai.serverRunning": "Server running",
 		"ai.serverStopped": "Server not running",
@@ -8055,6 +8075,11 @@ function registerIpcHandlers(agentBridge) {
 		electron.ipcMain.handle("agent-get-auto-allow", () => agentBridge?.getAutoAllow() ?? false);
 		electron.ipcMain.handle("agent-get-auto-allow-sessions", () => agentBridge?.getAutoAllowSessions() ?? []);
 		electron.ipcMain.handle("agent-set-auto-allow-session", (_event, sessionId, enabled) => agentBridge?.setAutoAllowSession(sessionId, enabled) ?? []);
+		electron.ipcMain.handle("agent-get-card-expiry", () => agentBridge?.getCardExpire() ?? {
+			enabled: true,
+			seconds: 300
+		});
+		electron.ipcMain.handle("agent-set-card-expiry", (_event, enabled, seconds) => agentBridge?.setCardExpire(enabled, seconds));
 	}
 	registerTodoIpcHandlers();
 }
@@ -8497,14 +8522,15 @@ function findPermissionToResolve(cards, sessionId, evt) {
 init_logger();
 var DEFAULT_PORT = 6e4;
 var MAX_PORT = 60019;
-var HEAD_TIMEOUT_MS = 12e4;
+var DEFAULT_HEAD_TIMEOUT_MS = 3e5;
 var runtimeDir = null;
 function getRuntimeDir() {
 	if (runtimeDir) return runtimeDir;
 	runtimeDir = path.join(require("os").homedir(), ".erzhi-recording");
 	return runtimeDir;
 }
-function createAgentServer(stateMachine) {
+function createAgentServer(stateMachine, options = {}) {
+	const getHeadTimeoutMs = options.getHeadTimeoutMs ?? (() => DEFAULT_HEAD_TIMEOUT_MS);
 	let server = null;
 	let activePort = null;
 	let cardQueue = [];
@@ -8585,14 +8611,14 @@ function createAgentServer(stateMachine) {
 	}
 	function startHeadTimer() {
 		if (headTimer) clearTimeout(headTimer);
-		if (!cardQueue.length) {
-			headTimer = null;
-			return;
-		}
+		headTimer = null;
+		if (!cardQueue.length) return;
+		const ms = getHeadTimeoutMs();
+		if (!ms || ms <= 0) return;
 		headTimer = setTimeout(() => {
 			headTimer = null;
 			expireHead("timeout");
-		}, HEAD_TIMEOUT_MS);
+		}, ms);
 	}
 	function notifyCard() {
 		if (onCardChange) onCardChange(headCard());
@@ -8918,7 +8944,8 @@ function createAgentServer(stateMachine) {
 		resolvePendingPermission,
 		dismissQuestion,
 		submitQuestion,
-		setOnCardChange
+		setOnCardChange,
+		restartHeadTimer: startHeadTimer
 	};
 }
 //#endregion
@@ -8927,6 +8954,7 @@ init_logger();
 var CLAUDE_SETTINGS_PATH = path.join(os.homedir(), ".claude", "settings.json");
 var WATCH_INTERVAL_MS = 300 * 1e3;
 var MAX_REPAIR_RETRIES = 3;
+var HOOK_HTTP_TIMEOUT_S = 1860;
 var HOOK_EVENTS = [
 	"SessionStart",
 	"SessionEnd",
@@ -9003,7 +9031,7 @@ function createClaudeHookManager(agentPort) {
 		agentPort();
 		if (HOOK_EVENTS.every((event) => {
 			return (hooks[event] || []).some((group) => group.hooks?.some((h) => {
-				if (event === "PermissionRequest") return h.type === "http" && h.url?.includes("/permission");
+				if (event === "PermissionRequest") return h.type === "http" && h.url?.includes("/permission") && (h.timeout ?? 0) >= HOOK_HTTP_TIMEOUT_S;
 				return h.type === "command" && h.command?.startsWith("&") && h.command?.includes("clawd-hook.js") && h.shell === "powershell";
 			}));
 		})) return {
@@ -9015,7 +9043,7 @@ function createClaudeHookManager(agentPort) {
 			if (event === "PermissionRequest") hook = {
 				type: "http",
 				url: `http://127.0.0.1:${agentPort() || 6e4}/permission`,
-				timeout: 600
+				timeout: HOOK_HTTP_TIMEOUT_S
 			};
 			else {
 				const { command, shell } = buildHookCommand(event, scriptPath);
@@ -9202,9 +9230,13 @@ function getClaudeSessionTitle(sessionId) {
 //#region electron/main/agent-bridge.ts
 init_logger();
 var AGENT_SETTINGS_FILE = "agent-settings.json";
+var CARD_EXPIRE_MIN_S = 10;
+var CARD_EXPIRE_MAX_S = 1800;
 var DEFAULT_AGENT_SETTINGS = {
 	autoAllow: false,
-	autoAllowSessions: []
+	autoAllowSessions: [],
+	cardExpireEnabled: true,
+	cardExpireSeconds: 300
 };
 function agentSettingsFilePath() {
 	const { app } = require("electron");
@@ -9216,7 +9248,9 @@ function loadAgentSettings() {
 		const parsed = JSON.parse(data);
 		return {
 			autoAllow: typeof parsed.autoAllow === "boolean" ? parsed.autoAllow : DEFAULT_AGENT_SETTINGS.autoAllow,
-			autoAllowSessions: Array.isArray(parsed.autoAllowSessions) ? parsed.autoAllowSessions.filter((s) => typeof s === "string" && s.length > 0) : DEFAULT_AGENT_SETTINGS.autoAllowSessions
+			autoAllowSessions: Array.isArray(parsed.autoAllowSessions) ? parsed.autoAllowSessions.filter((s) => typeof s === "string" && s.length > 0) : DEFAULT_AGENT_SETTINGS.autoAllowSessions,
+			cardExpireEnabled: typeof parsed.cardExpireEnabled === "boolean" ? parsed.cardExpireEnabled : DEFAULT_AGENT_SETTINGS.cardExpireEnabled,
+			cardExpireSeconds: typeof parsed.cardExpireSeconds === "number" && Number.isFinite(parsed.cardExpireSeconds) ? Math.min(CARD_EXPIRE_MAX_S, Math.max(CARD_EXPIRE_MIN_S, Math.round(parsed.cardExpireSeconds))) : DEFAULT_AGENT_SETTINGS.cardExpireSeconds
 		};
 	} catch {}
 	return { ...DEFAULT_AGENT_SETTINGS };
@@ -9248,17 +9282,21 @@ function createAgentBridge(config = {}) {
 		return claudeRunningCache;
 	}
 	const stateMachine = createAgentStateMachine({ isClaudeRunning: checkClaudeRunning });
-	const server = createAgentServer(stateMachine);
+	const server = createAgentServer(stateMachine, { getHeadTimeoutMs: () => cardExpireEnabled ? cardExpireSeconds * 1e3 : 0 });
 	const hookManager = createClaudeHookManager(() => server.getPort());
 	let stateListener = null;
 	let cardListener = null;
 	const persistedSettings = loadAgentSettings();
 	let autoAllow = persistedSettings.autoAllow;
 	let autoAllowSessions = persistedSettings.autoAllowSessions;
+	let cardExpireEnabled = persistedSettings.cardExpireEnabled;
+	let cardExpireSeconds = persistedSettings.cardExpireSeconds;
 	function persistSettings() {
 		saveAgentSettings({
 			autoAllow,
-			autoAllowSessions
+			autoAllowSessions,
+			cardExpireEnabled,
+			cardExpireSeconds
 		});
 	}
 	stateMachine.subscribe((state, sessions) => {
@@ -9349,6 +9387,19 @@ function createAgentBridge(config = {}) {
 		logger_default.info(`[AgentBridge] setAutoAllowSession: session=${sessionId}, enabled=${enabled}, count=${autoAllowSessions.length} (persisted)`);
 		return [...autoAllowSessions];
 	}
+	function setCardExpire(enabled, seconds) {
+		cardExpireEnabled = !!enabled;
+		cardExpireSeconds = Math.min(CARD_EXPIRE_MAX_S, Math.max(CARD_EXPIRE_MIN_S, Math.round(Number(seconds) || DEFAULT_AGENT_SETTINGS.cardExpireSeconds)));
+		persistSettings();
+		server.restartHeadTimer();
+		logger_default.info(`[AgentBridge] setCardExpire: enabled=${cardExpireEnabled}, seconds=${cardExpireSeconds} (persisted)`);
+	}
+	function getCardExpire() {
+		return {
+			enabled: cardExpireEnabled,
+			seconds: cardExpireSeconds
+		};
+	}
 	function getStatus() {
 		const sessionsRaw = stateMachine.getSessions();
 		const realCount = sessionsRaw.length;
@@ -9385,7 +9436,9 @@ function createAgentBridge(config = {}) {
 		setAutoAllow,
 		getAutoAllow,
 		getAutoAllowSessions,
-		setAutoAllowSession
+		setAutoAllowSession,
+		setCardExpire,
+		getCardExpire
 	};
 }
 //#endregion

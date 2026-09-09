@@ -420,6 +420,8 @@ export function registerIpcHandlers(agentBridge?: AgentBridge) {
     ipcMain.handle('agent-get-auto-allow', () => agentBridge?.getAutoAllow() ?? false)
     ipcMain.handle('agent-get-auto-allow-sessions', () => agentBridge?.getAutoAllowSessions() ?? [])
     ipcMain.handle('agent-set-auto-allow-session', (_event, sessionId: string, enabled: boolean) => agentBridge?.setAutoAllowSession(sessionId, enabled) ?? [])
+    ipcMain.handle('agent-get-card-expiry', () => agentBridge?.getCardExpire() ?? { enabled: true, seconds: 300 })
+    ipcMain.handle('agent-set-card-expiry', (_event, enabled: boolean, seconds: number) => agentBridge?.setCardExpire(enabled, seconds))
   }
 
   // === 待办便签 IPC ===

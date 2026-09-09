@@ -12,8 +12,10 @@ import log from "./logger"
 
 const DEFAULT_PORT = 60000
 const MAX_PORT = 60019
-// 卡片成为队首（被悬浮岛展示）后的处理时限；超时则自动结束该卡：权限→cancel，提问→静默收起
-const HEAD_TIMEOUT_MS = 120_000
+// 卡片成为队首（被悬浮岛展示）后的处理时限；超时则自动结束该卡：权限→cancel，提问→静默收起。
+// 实际时限由 createAgentServer 的 getHeadTimeoutMs 注入（agent-settings.json 的 cardExpire*，
+// 设置窗口可调）；0/负数 = 永不过期。此处仅作未注入时的兜底默认（5 分钟）。
+const DEFAULT_HEAD_TIMEOUT_MS = 300_000
 
 /** 权限审批卡：可承载答题回调（Claude Code 等待 PermissionRequest hook 的响应） */
 export interface PermissionCard {
@@ -61,7 +63,13 @@ function getRuntimeDir(): string {
   return runtimeDir
 }
 
-export function createAgentServer(stateMachine: ReturnType<typeof createAgentStateMachine>) {
+export interface AgentServerOptions {
+  /** 返回队首卡片的处理时限（ms）；<=0 表示永不过期（卡片一直等到用户处理或会话结束） */
+  getHeadTimeoutMs?: () => number
+}
+
+export function createAgentServer(stateMachine: ReturnType<typeof createAgentStateMachine>, options: AgentServerOptions = {}) {
+  const getHeadTimeoutMs = options.getHeadTimeoutMs ?? (() => DEFAULT_HEAD_TIMEOUT_MS)
   let server: http.Server | null = null
   let activePort: number | null = null
 
@@ -155,14 +163,17 @@ export function createAgentServer(stateMachine: ReturnType<typeof createAgentSta
     notifyCard()
   }
 
-  // 只为队首起倒计时；队列空则不设
+  // 只为队首起倒计时；队列空或不启用过期（<=0）则不设
   function startHeadTimer() {
     if (headTimer) clearTimeout(headTimer)
-    if (!cardQueue.length) { headTimer = null; return }
+    headTimer = null
+    if (!cardQueue.length) return
+    const ms = getHeadTimeoutMs()
+    if (!ms || ms <= 0) return
     headTimer = setTimeout(() => {
       headTimer = null
       expireHead("timeout")
-    }, HEAD_TIMEOUT_MS)
+    }, ms)
   }
 
   // 队首（含成为队首/清空）变化时通知外层（悬浮岛）
@@ -549,5 +560,6 @@ export function createAgentServer(stateMachine: ReturnType<typeof createAgentSta
   return {
     start, stop, getPort, getSafeCurrentCard,
     resolvePendingPermission, dismissQuestion, submitQuestion, setOnCardChange,
+    restartHeadTimer: startHeadTimer,
   }
 }
