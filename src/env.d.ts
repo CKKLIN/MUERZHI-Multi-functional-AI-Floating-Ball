@@ -172,6 +172,8 @@ export interface ElectronAPI {
   agentGetAutoAllow: () => Promise<boolean>
   agentGetAutoAllowSessions: () => Promise<string[]>
   agentSetAutoAllowSession: (sessionId: string, enabled: boolean) => Promise<string[]>
+  agentGetCardExpiry: () => Promise<{ enabled: boolean; seconds: number }>
+  agentSetCardExpiry: (enabled: boolean, seconds: number) => Promise<void>
   onAgentStateUpdate: (callback: (data: AgentStatePayload) => void) => () => void
   onAgentPermissionRequest: (callback: (data: AgentPermissionPayload) => void) => () => void
   showAiWindow: () => Promise<void>

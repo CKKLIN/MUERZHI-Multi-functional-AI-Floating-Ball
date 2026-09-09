@@ -50,6 +50,8 @@ export interface AgentBridge {
   getAutoAllow: () => boolean
   getAutoAllowSessions: () => string[]
   setAutoAllowSession: (sessionId: string, enabled: boolean) => string[]
+  setCardExpire: (enabled: boolean, seconds: number) => void
+  getCardExpire: () => { enabled: boolean; seconds: number }
 }
 
 // === 自动允许/同意设置持久化 ===
@@ -61,9 +63,17 @@ interface AgentSettings {
   autoAllow: boolean
   /** 选择性自动审批：只对这些会话（sessionId）自动放行权限；为空数组则无按会话的自动审批 */
   autoAllowSessions: string[]
+  /** 审批/提问卡是否自动过期；false = 永不过期（一直等用户处理或会话结束） */
+  cardExpireEnabled: boolean
+  /** 过期时长（秒），UI 以分钟编辑；clamp 见 loadAgentSettings */
+  cardExpireSeconds: number
 }
 
-const DEFAULT_AGENT_SETTINGS: AgentSettings = { autoAllow: false, autoAllowSessions: [] }
+// 过期时长边界：下限 10s 防手滑 0；上限 1800s（30min）——Claude Code HTTP hook 超时
+// （claude-hook-manager 的 HOOK_HTTP_TIMEOUT_S=1860s）必须始终覆盖此上限，改上限时同步改那里。
+const CARD_EXPIRE_MIN_S = 10
+const CARD_EXPIRE_MAX_S = 1800
+const DEFAULT_AGENT_SETTINGS: AgentSettings = { autoAllow: false, autoAllowSessions: [], cardExpireEnabled: true, cardExpireSeconds: 300 }
 
 function agentSettingsFilePath(): string {
   // 懒加载 electron：保持本文件在纯 Node 下可 import（与 conversion-registry / hw-encoder 同约定）。
@@ -82,6 +92,10 @@ function loadAgentSettings(): AgentSettings {
       autoAllowSessions: Array.isArray(parsed.autoAllowSessions)
         ? parsed.autoAllowSessions.filter((s: unknown): s is string => typeof s === 'string' && s.length > 0)
         : DEFAULT_AGENT_SETTINGS.autoAllowSessions,
+      cardExpireEnabled: typeof parsed.cardExpireEnabled === 'boolean' ? parsed.cardExpireEnabled : DEFAULT_AGENT_SETTINGS.cardExpireEnabled,
+      cardExpireSeconds: typeof parsed.cardExpireSeconds === 'number' && Number.isFinite(parsed.cardExpireSeconds)
+        ? Math.min(CARD_EXPIRE_MAX_S, Math.max(CARD_EXPIRE_MIN_S, Math.round(parsed.cardExpireSeconds)))
+        : DEFAULT_AGENT_SETTINGS.cardExpireSeconds,
     }
   } catch {}
   return { ...DEFAULT_AGENT_SETTINGS }
@@ -122,7 +136,10 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
   // 状态机注入 isClaudeRunning：cleanStaleSessions 用"是否仍有 claude 进程"区分
   // 长思考的活跃会话（claude 在跑 → 不降级）与真僵尸（claude 全退出 → 5min 回收）。
   const stateMachine = createAgentStateMachine({ isClaudeRunning: checkClaudeRunning })
-  const server = createAgentServer(stateMachine)
+  // 过期时限 getter：每张卡升为队首时实时读取，设置面板改动立即对后续卡片生效
+  const server = createAgentServer(stateMachine, {
+    getHeadTimeoutMs: () => (cardExpireEnabled ? cardExpireSeconds * 1000 : 0),
+  })
   const hookManager = createClaudeHookManager(() => server.getPort())
 
   let stateListener: ((state: DisplayState, sessions: AgentSession[]) => void) | null = null
@@ -133,10 +150,12 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
   const persistedSettings = loadAgentSettings()
   let autoAllow = persistedSettings.autoAllow
   let autoAllowSessions = persistedSettings.autoAllowSessions
+  let cardExpireEnabled = persistedSettings.cardExpireEnabled
+  let cardExpireSeconds = persistedSettings.cardExpireSeconds
 
   // 把两份设置一起落盘，避免只存其一导致另一份静默丢失
   function persistSettings() {
-    saveAgentSettings({ autoAllow, autoAllowSessions })
+    saveAgentSettings({ autoAllow, autoAllowSessions, cardExpireEnabled, cardExpireSeconds })
   }
 
   stateMachine.subscribe((state, sessions) => {
@@ -231,6 +250,20 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
     return [...autoAllowSessions]
   }
 
+  // 过期开关/时长：落盘后立刻重启队首倒计时——已在展示中的那张卡立即按新时限重算，
+  // 关掉过期时撤掉现有 timer（该卡改为一直等待）
+  function setCardExpire(enabled: boolean, seconds: number) {
+    cardExpireEnabled = !!enabled
+    cardExpireSeconds = Math.min(CARD_EXPIRE_MAX_S, Math.max(CARD_EXPIRE_MIN_S, Math.round(Number(seconds) || DEFAULT_AGENT_SETTINGS.cardExpireSeconds)))
+    persistSettings()
+    server.restartHeadTimer()
+    log.info(`[AgentBridge] setCardExpire: enabled=${cardExpireEnabled}, seconds=${cardExpireSeconds} (persisted)`)
+  }
+
+  function getCardExpire(): { enabled: boolean; seconds: number } {
+    return { enabled: cardExpireEnabled, seconds: cardExpireSeconds }
+  }
+
   function getStatus(): AgentBridgeStatus {
     const sessionsRaw = stateMachine.getSessions()
     const realCount = sessionsRaw.length
@@ -256,5 +289,6 @@ export function createAgentBridge(config: AgentBridgeConfig = {}): AgentBridge {
     setStateListener, setCardListener,
     resolvePermission, dismissQuestion, submitQuestion, installHooks, uninstallHooks,
     setAutoAllow, getAutoAllow, getAutoAllowSessions, setAutoAllowSession,
+    setCardExpire, getCardExpire,
   }
 }

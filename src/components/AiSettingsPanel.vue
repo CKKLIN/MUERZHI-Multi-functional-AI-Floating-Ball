@@ -76,6 +76,43 @@ function sessionLabel(s: any): string {
   return `${model}${tool} · ${short}`
 }
 
+// === 审批/提问卡过期（真源在主进程 agent-settings.json，经 agent-card-expiry IPC读写） ===
+const cardExpireEnabled = ref(true)
+const cardExpireMinutes = ref(5)
+
+async function loadCardExpiry() {
+  try {
+    const e = await window.electronAPI.agentGetCardExpiry()
+    cardExpireEnabled.value = e.enabled
+    // 主进程以秒存储（下限 10s），UI 以分钟编辑，秒级精度对用户无意义
+    cardExpireMinutes.value = Math.max(1, Math.round(e.seconds / 60))
+  } catch (e) {
+    console.error('[AiSettingsPanel] loadCardExpiry error:', e)
+  }
+}
+
+async function toggleCardExpire() {
+  const prev = cardExpireEnabled.value
+  cardExpireEnabled.value = !prev
+  try {
+    await window.electronAPI.agentSetCardExpiry(cardExpireEnabled.value, cardExpireMinutes.value * 60)
+  } catch (e) {
+    console.error('[AiSettingsPanel] toggleCardExpire error:', e)
+    cardExpireEnabled.value = prev
+  }
+}
+
+async function applyExpireMinutes() {
+  // 输入框可能拿到空串/越界值，钳制后回写（后端还有 10..1800s 的最终钳制）
+  const clamped = Math.min(30, Math.max(1, Math.round(Number(cardExpireMinutes.value) || 5)))
+  cardExpireMinutes.value = clamped
+  try {
+    await window.electronAPI.agentSetCardExpiry(cardExpireEnabled.value, clamped * 60)
+  } catch (e) {
+    console.error('[AiSettingsPanel] applyExpireMinutes error:', e)
+  }
+}
+
 async function toggleIslandFlat() {
   if (!islandFlatLoaded.value) return // 初始值尚未读回，先不响应，避免与初始 get 竞态
   islandFlat.value = !islandFlat.value
@@ -126,6 +163,8 @@ onMounted(async () => {
   try {
     autoAllowSessions.value = await window.electronAPI.agentGetAutoAllowSessions()
   } catch {}
+  // 读取审批/提问卡的过期设置
+  loadCardExpiry()
   // 读取 AI 岛外观设置（横条态）
   try {
     const s = await window.electronAPI.getAiIslandSettings()
@@ -221,6 +260,33 @@ onUnmounted(() => {
               </button>
             </div>
           </template>
+
+          <!-- 过期控制：常显——自动允许只作用于权限卡，提问卡仍会弹出并等待，过期对其有意义 -->
+          <div class="setting-row expire-row">
+            <div class="row-text">
+              <div class="row-label">{{ t('ai.expireToggle') }}</div>
+              <div class="row-desc">{{ t('ai.expireToggleDesc') }}</div>
+            </div>
+            <button class="toggle-btn" :class="{ on: cardExpireEnabled }" @click="toggleCardExpire">
+              <span class="toggle-knob"></span>
+            </button>
+          </div>
+          <div class="setting-row expire-row" v-show="cardExpireEnabled">
+            <div class="row-text">
+              <div class="row-label">{{ t('ai.expireTime') }}</div>
+              <div class="row-desc">{{ t('ai.expireTimeDesc') }}</div>
+            </div>
+            <div class="expire-input">
+              <input
+                type="number"
+                min="1"
+                max="30"
+                v-model.number="cardExpireMinutes"
+                @change="applyExpireMinutes"
+              />
+              <span class="unit">{{ t('ai.minutes') }}</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -378,6 +444,39 @@ onUnmounted(() => {
   /* 标题可能较长：单行省略，不撑爆行 */
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 审批卡过期：开关 + 分钟输入；与上方按会话审批块留出间隔 */
+.expire-row {
+  margin-top: 12px;
+}
+.expire-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.expire-input input {
+  width: 52px;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-top-color: rgba(255, 255, 255, 0.9);
+  background: #fff;
+  color: var(--text-primary);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08);
+  outline: none;
+}
+.expire-input input:focus {
+  border-color: var(--surface-accent);
+}
+.expire-input .unit {
+  font-size: 12px;
+  color: var(--text-secondary);
   white-space: nowrap;
 }
 
