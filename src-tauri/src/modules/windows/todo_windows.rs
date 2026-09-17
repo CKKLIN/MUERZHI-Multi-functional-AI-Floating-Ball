@@ -378,3 +378,59 @@ pub fn on_sticky_open(app: &AppHandle, id: &str) {
     }
     let _ = app.emit("todo-focus-item", id);
 }
+
+// ===== 数据变更后的统一副作用（对齐 ipc-handlers.ts 的 refreshTodoBadge + syncStickyNotes）=====
+
+/// 待办数据变更后：刷新悬浮球角标 + 同步贴屏便签（P3 todo 数据层调用）
+pub fn after_todo_change(app: &AppHandle) {
+    refresh_badge(app);
+    sync_sticky_from_store(app);
+}
+
+/// 角标：未完成待办数 + badgeVisible → 推给悬浮球（对齐 refreshTodoBadge）
+pub fn refresh_badge(app: &AppHandle) {
+    let count = crate::modules::todo::store::incomplete_todo_count(app);
+    let visible = crate::modules::todo::store::load_settings(app).badge_visible;
+    let flash = TODO_BADGE_FLASH.load(std::sync::atomic::Ordering::SeqCst);
+    if let Some(win) = app.get_webview_window("floating-ball") {
+        let _ = win.eval(&format!(
+            "if (window.updateBadge) updateBadge({count}, {flash}, {visible}); void 0;"
+        ));
+    }
+}
+
+/// 到期闪烁标记（内存态，与 TS 一致：重启丢失）
+pub static TODO_BADGE_FLASH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 设置闪烁（scheduler 到期时置 true；打开待办窗口时熄灭）
+pub fn set_badge_flash(app: &AppHandle, on: bool) {
+    TODO_BADGE_FLASH.store(on, std::sync::atomic::Ordering::SeqCst);
+    refresh_badge(app);
+}
+
+/// 按 store 数据重建贴屏便签（对齐 syncStickyNotes）
+pub fn sync_sticky_from_store(app: &AppHandle) {
+    let items = crate::modules::todo::store::load_items(app);
+    let notes: Vec<StickyNote> = items
+        .iter()
+        .filter(|i| i.pinned)
+        .map(|it| {
+            let txt = crate::modules::todo::store::strip_html(&it.content).trim().to_string();
+            let memo_title = if it.kind == "memo" {
+                crate::modules::todo::store::strip_html(&it.title).trim().to_string()
+            } else {
+                String::new()
+            };
+            let is_memo = !memo_title.is_empty();
+            StickyNote {
+                id: it.id.clone(),
+                kind: it.kind.clone(),
+                title: if is_memo { memo_title.clone() } else { txt.clone() },
+                body: if is_memo { txt } else { String::new() },
+                done: it.done,
+                priority: it.priority.clone(),
+            }
+        })
+        .collect();
+    sync_sticky_notes(app, notes);
+}

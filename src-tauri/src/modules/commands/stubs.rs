@@ -108,58 +108,44 @@ pub fn agent_dismiss_question() {}
 pub fn agent_submit_question(_sessionId: String, _answers: Value) {}
 
 // ===== 待办（P3 迁移）=====
+// todo 设置/CRUD 已实装于 modules/todo/store.rs（P3）
+
+// ===== 待办窗口控制（P3 实装：show/close/visible/alwaysOnTop）=====
+
 #[tauri::command]
-pub fn todo_get() -> Value {
-    json!([])
+pub fn todo_show_window(app: tauri::AppHandle) {
+    crate::modules::windows::open_or_focus(&app, "todo", "/todo");
+    // 打开即视为已查看到期项：熄灭角标闪烁（对齐 acknowledgeTodoBadgeFlash）
+    crate::modules::windows::todo_windows::set_badge_flash(&app, false);
 }
 
 #[tauri::command]
-pub fn todo_create(_input: Value) -> Value {
-    json!([])
+pub fn todo_close_window(app: tauri::AppHandle) {
+    use tauri::Manager;
+    if let Some(win) = app.get_webview_window("todo") {
+        let _ = win.hide();
+    }
 }
 
 #[tauri::command]
-pub fn todo_update(_id: String, _patch: Value) -> Value {
-    json!([])
+pub fn todo_window_visible(app: tauri::AppHandle) -> bool {
+    use tauri::Manager;
+    app.get_webview_window("todo").map(|w| w.is_visible().unwrap_or(false)).unwrap_or(false)
 }
 
+/// 翻转待办窗口置顶并持久化（对齐 toggleTodoWindowAlwaysOnTop）
 #[tauri::command]
-pub fn todo_delete(_id: String) -> Value {
-    json!([])
-}
-
-#[tauri::command]
-pub fn todo_toggle_done(_id: String) -> Value {
-    json!([])
-}
-
-#[tauri::command]
-pub fn todo_toggle_pin(_id: String) -> Value {
-    json!([])
-}
-
-#[tauri::command]
-pub fn todo_show_window() {}
-
-#[tauri::command]
-pub fn todo_close_window() {}
-
-#[tauri::command]
-pub fn todo_window_visible() -> bool {
-    false
-}
-
-#[tauri::command]
-pub fn todo_toggle_always_on_top() -> bool {
-    false
-}
-
-#[tauri::command]
-pub fn todo_get_settings() -> Value {
-    json!({ "badgeVisible": true, "windowAlwaysOnTop": false, "stickyBoardPos": null })
-}
-
-#[tauri::command]
-pub fn todo_set_settings(_patch: Value) -> Value {
-    json!({ "badgeVisible": true, "windowAlwaysOnTop": false, "stickyBoardPos": null })
+pub fn todo_toggle_always_on_top(app: tauri::AppHandle) -> bool {
+    let s = crate::modules::todo::store::load_settings(&app);
+    let next = crate::modules::todo::store::update_settings(
+        &app,
+        &serde_json::json!({ "windowAlwaysOnTop": !s.window_always_on_top }),
+    );
+    {
+        use tauri::Manager;
+        if let Some(win) = app.get_webview_window("todo") {
+            let _ = win.set_always_on_top(next.window_always_on_top);
+        }
+    }
+    next.window_always_on_top
 }

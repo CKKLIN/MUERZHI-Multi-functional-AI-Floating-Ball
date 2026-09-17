@@ -127,18 +127,18 @@ pub fn run() {
             modules::commands::stubs::agent_resolve_permission,
             modules::commands::stubs::agent_dismiss_question,
             modules::commands::stubs::agent_submit_question,
-            modules::commands::stubs::todo_get,
-            modules::commands::stubs::todo_create,
-            modules::commands::stubs::todo_update,
-            modules::commands::stubs::todo_delete,
-            modules::commands::stubs::todo_toggle_done,
-            modules::commands::stubs::todo_toggle_pin,
+            modules::todo::store::todo_get,
+            modules::todo::store::todo_create,
+            modules::todo::store::todo_update,
+            modules::todo::store::todo_delete,
+            modules::todo::store::todo_toggle_done,
+            modules::todo::store::todo_toggle_pin,
             modules::commands::stubs::todo_show_window,
             modules::commands::stubs::todo_close_window,
             modules::commands::stubs::todo_window_visible,
             modules::commands::stubs::todo_toggle_always_on_top,
-            modules::commands::stubs::todo_get_settings,
-            modules::commands::stubs::todo_set_settings,
+            modules::todo::store::todo_get_settings,
+            modules::todo::store::todo_set_settings,
         ])
         .setup(|app| {
             log::info!("MUERZHI (Tauri) starting...");
@@ -175,6 +175,11 @@ pub fn run() {
             // 录制工具条/悬浮岛事件（close → 关边框；其余动作由 event 广播到主窗口）
             setup_region_events(app.handle());
             setup_todo_events(app.handle());
+
+            // 待办：启动提醒调度（先补扫再 30s 轮询）+ 整理贴屏便签 + 推一次角标
+            modules::todo::scheduler::start(app.handle());
+            modules::windows::todo_windows::sync_sticky_from_store(app.handle());
+            modules::windows::todo_windows::refresh_badge(app.handle());
 
             Ok(())
         })

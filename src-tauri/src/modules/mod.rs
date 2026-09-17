@@ -5,4 +5,5 @@ pub mod autostart;
 pub mod commands;
 pub mod i18n;
 pub mod settings;
+pub mod todo;
 pub mod windows;
