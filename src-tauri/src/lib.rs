@@ -40,26 +40,48 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             modules::commands::basic::get_app_version,
             modules::commands::basic::get_app_i18n,
-            // P1 桥 stub 命令（P2-P4 逐个替换为真实现）
-            modules::commands::stubs::get_default_save_dir,
+            // P1 实装命令
+            modules::commands::files::write_file,
+            modules::commands::files::read_file,
+            modules::commands::files::file_exists,
+            modules::commands::files::delete_file,
+            modules::commands::files::get_file_size,
+            modules::commands::files::load_recordings,
+            modules::commands::files::save_recordings,
+            modules::commands::files::get_default_save_dir,
+            modules::commands::screen::get_screen_scale_factor,
+            modules::commands::screen::get_screen_bounds,
+            modules::commands::screen::get_all_displays,
+            modules::commands::app_settings::get_floating_ball_settings,
+            modules::commands::app_settings::set_floating_ball_settings,
+            modules::commands::app_settings::reset_floating_ball_position,
+            modules::commands::app_settings::agent_get_auto_allow,
+            modules::commands::app_settings::agent_set_auto_allow,
+            modules::commands::app_settings::agent_get_auto_allow_sessions,
+            modules::commands::app_settings::agent_set_auto_allow_session,
+            modules::commands::app_settings::agent_get_card_expiry,
+            modules::commands::app_settings::agent_set_card_expiry,
+            modules::commands::app_settings::get_ai_island_settings,
+            modules::commands::app_settings::set_ai_island_settings,
+            modules::commands::app_settings::show_ai_window,
+            modules::commands::app_settings::show_settings_window,
+            modules::commands::app_settings::show_main_window,
+            modules::commands::app_settings::notify_conversion_start,
+            modules::commands::app_settings::notify_conversion_done,
+            modules::windows::show_about_window,
+            modules::windows::close_about_window,
+            modules::windows::open_external,
+            // P2-P4 待替换的 stub 命令
             modules::commands::stubs::take_screenshot,
             modules::commands::stubs::select_region,
-            modules::commands::stubs::file_exists,
-            modules::commands::stubs::get_file_size,
-            modules::commands::stubs::delete_file,
             modules::commands::stubs::convert_to_mp4,
             modules::commands::stubs::crop_video,
             modules::commands::stubs::convert_to_gif,
             modules::commands::stubs::merge_multi_screen,
-            modules::commands::stubs::load_recordings,
-            modules::commands::stubs::save_recordings,
             modules::commands::stubs::minimize_window,
             modules::commands::stubs::show_window,
             modules::commands::stubs::maximize_window,
             modules::commands::stubs::close_window,
-            modules::commands::stubs::get_screen_scale_factor,
-            modules::commands::stubs::get_screen_bounds,
-            modules::commands::stubs::get_all_displays,
             modules::commands::stubs::show_region_border,
             modules::commands::stubs::hide_region_border,
             modules::commands::stubs::hide_border_only,
@@ -67,8 +89,6 @@ pub fn run() {
             modules::commands::stubs::hide_floating_island,
             modules::commands::stubs::show_ai_island,
             modules::commands::stubs::hide_ai_island,
-            modules::commands::stubs::get_ai_island_settings,
-            modules::commands::stubs::set_ai_island_settings,
             modules::commands::stubs::hide_camera_preview,
             modules::commands::stubs::toggle_camera_preview,
             modules::commands::stubs::set_island_state,
@@ -77,24 +97,12 @@ pub fn run() {
             modules::commands::stubs::show_floating_ball,
             modules::commands::stubs::hide_floating_ball,
             modules::commands::stubs::toggle_floating_ball,
-            modules::commands::stubs::get_floating_ball_settings,
-            modules::commands::stubs::set_floating_ball_settings,
-            modules::commands::stubs::reset_floating_ball_position,
             modules::commands::stubs::agent_get_status,
             modules::commands::stubs::agent_install_hooks,
             modules::commands::stubs::agent_uninstall_hooks,
             modules::commands::stubs::agent_resolve_permission,
             modules::commands::stubs::agent_dismiss_question,
             modules::commands::stubs::agent_submit_question,
-            modules::commands::stubs::agent_set_auto_allow,
-            modules::commands::stubs::agent_get_auto_allow,
-            modules::commands::stubs::agent_get_auto_allow_sessions,
-            modules::commands::stubs::agent_set_auto_allow_session,
-            modules::commands::stubs::agent_get_card_expiry,
-            modules::commands::stubs::agent_set_card_expiry,
-            modules::commands::stubs::show_ai_window,
-            modules::commands::stubs::show_settings_window,
-            modules::commands::stubs::show_main_window,
             modules::commands::stubs::todo_get,
             modules::commands::stubs::todo_create,
             modules::commands::stubs::todo_update,
@@ -107,8 +115,6 @@ pub fn run() {
             modules::commands::stubs::todo_toggle_always_on_top,
             modules::commands::stubs::todo_get_settings,
             modules::commands::stubs::todo_set_settings,
-            modules::commands::stubs::write_file,
-            modules::commands::stubs::read_file,
         ])
         .setup(|app| {
             log::info!("MUERZHI (Tauri) starting...");
@@ -120,6 +126,13 @@ pub fn run() {
             // 启动时按持久化设置对齐开机自启（对齐 index.ts L162-168）
             let settings = BallSettings::load(app.handle());
             modules::autostart::sync(app.handle(), settings.open_at_login);
+
+            // i18n locale 对齐悬浮球设置（渲染层 get_app_i18n 前主进程窗口标题等已就绪）
+            modules::i18n::I18n::global()
+                .set_locale(modules::i18n::Locale::from_str_lossy(&settings.locale));
+
+            // 主窗口关闭 → 通知渲染层释放 + 隐藏（对齐 Electron close 语义）
+            modules::windows::setup_main_window_close_guard(app.handle());
 
             // 主窗口 ready-to-show 后再显示（配置里 visible:false）
             if let Some(win) = app.get_webview_window("main") {

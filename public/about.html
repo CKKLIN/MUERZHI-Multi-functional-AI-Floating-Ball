@@ -168,7 +168,7 @@
     </style>
   </head>
   <body>
-    <div class="titlebar">
+    <div class="titlebar" data-tauri-drag-region>
       <button class="titlebar-btn close" id="closeBtn" title="关闭">
         <svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1.5"/><line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" stroke-width="1.5"/></svg>
       </button>
@@ -185,11 +185,23 @@
       <button class="update-btn" id="updateBtn">检查更新</button>
     </div>
     <script>
+      // Tauri 环境 shim：等 __TAURI__ 注入后挂 electronAPI 最小桥（Electron 版靠 preload
+      // 自动注入；Tauri 无 per-window preload，about.html 又不走 vite/main.ts）
+      ;(function bootstrap() {
+        if (window.__ABOUT_BOOTED) return
+        if (!window.__TAURI__) { setTimeout(bootstrap, 80); return }
+        window.__ABOUT_BOOTED = true
+        const invoke = (n, a) => window.__TAURI__.core.invoke(n, a)
+        window.electronAPI = {
+          closeAboutWindow: () => invoke('close_about_window'),
+          openExternal: (url) => invoke('open_external', { url }),
+        }
+      })()
       document.getElementById('closeBtn').addEventListener('click', () => {
-        window.electronAPI.closeAboutWindow()
+        if (window.electronAPI) window.electronAPI.closeAboutWindow()
       })
       document.getElementById('updateBtn').addEventListener('click', function() {
-        window.electronAPI.openExternal('https://github.com/CKKLIN/screen-capture---texture-tool/releases')
+        if (window.electronAPI) window.electronAPI.openExternal('https://github.com/CKKLIN/screen-capture---texture-tool/releases')
       })
     </script>
   </body>

@@ -3,12 +3,14 @@ import { t } from '../stores/i18n'
 function minimize() { window.electronAPI.minimizeWindow() }
 function maximize() { window.electronAPI.maximizeWindow() }
 function close() { window.electronAPI.closeWindow() }
+// 标题栏拖拽：Electron 用 -webkit-app-region: drag；WebView2 无效，
+// Tauri 下用 data-tauri-drag-region 属性（wry 拦截 mousedown 实现系统拖拽）
 </script>
 
 <template>
   <div class="layout">
-    <div class="titlebar" style="-webkit-app-region: drag">
-      <div class="titlebar-brand" style="-webkit-app-region: drag">
+    <div class="titlebar" style="-webkit-app-region: drag" data-tauri-drag-region>
+      <div class="titlebar-brand" style="-webkit-app-region: drag" data-tauri-drag-region>
         <img class="titlebar-logo" src="/logo.png" alt="Logo" />
         <span class="titlebar-title">MUERZHI</span>
       </div>

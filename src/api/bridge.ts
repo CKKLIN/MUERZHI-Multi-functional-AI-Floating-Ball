@@ -167,8 +167,8 @@ const electronAPI = {
 
   // ===== App info =====
   getAppVersion: () => cmd<string>('get_app_version'),
-  showAboutWindow: () => { w('showAboutWindow') },
-  closeAboutWindow: () => { w('closeAboutWindow') },
+  showAboutWindow: () => { tauriInvoke('show_about_window') },
+  closeAboutWindow: () => { tauriInvoke('close_about_window') },
 
   // ===== Window（P2 窗口体系迁移）=====
   minimizeWindow: () => cmd<void>('minimize_window'),
@@ -176,17 +176,25 @@ const electronAPI = {
   maximizeWindow: () => cmd<void>('maximize_window'),
   closeWindow: () => cmd<void>('close_window'),
 
-  // ===== Tray notifications（P3 托盘通知迁移）=====
-  notifyConversionStart: () => { w('notifyConversionStart') },
-  notifyConversionDone: (_filePath: string) => { w('notifyConversionDone') },
+  // ===== Tray notifications =====
+  notifyConversionStart: () => { tauriInvoke('notify_conversion_start') },
+  notifyConversionDone: (filePath: string) => { tauriInvoke('notify_conversion_done', { filePath }) },
 
   // ===== Screen info =====
   getScreenScaleFactor: () => cmd<number>('get_screen_scale_factor'),
   getScreenBounds: () => cmd<{ x: number; y: number; width: number; height: number }>('get_screen_bounds'),
-  getAllDisplays: () => {
-    w('getAllDisplays')
-    return cmd<never[]>('get_all_displays')
-  },
+  getAllDisplays: () =>
+    cmd<{
+      id: number
+      label: string
+      bounds: { x: number; y: number; width: number; height: number }
+      scaleFactor: number
+      size: { width: number; height: number }
+      isPrimary: boolean
+      sourceId: string | null
+      sourceName: string
+      thumbnail: string
+    }[]>('get_all_displays'),
 
   // ===== Screenshot（P4 迁移）=====
   takeScreenshot: () => {

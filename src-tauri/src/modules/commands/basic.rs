@@ -11,7 +11,8 @@ pub fn get_app_version() -> String {
 
 #[tauri::command]
 pub fn get_app_i18n(app: AppHandle) -> I18nBundle {
-    // 启动后首次调用时按悬浮球设置对齐 locale（Electron 版在 ready 时同步）
+    // locale 真源是悬浮球设置文件：每次调用都以文件为准对齐（Electron 版语义：
+    // set-floating-ball-settings 时主动 set_locale 并广播，文件修改后调用也应跟随）
     let settings = crate::modules::settings::BallSettings::load(&app);
     let i18n = I18n::global();
     i18n.set_locale(crate::modules::i18n::Locale::from_str_lossy(&settings.locale));

@@ -28,6 +28,7 @@ tauri-plugin-log = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 log = "0.4"
+tokio = { version = "1", features = ["time"] }
 
 [profile.release]
 # 与 electron-builder 的 compression: maximum 对齐，安装包尽量小
