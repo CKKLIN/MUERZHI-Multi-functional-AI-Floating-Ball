@@ -103,6 +103,12 @@ pub fn run() {
             modules::windows::ai_island::ai_island_drag_move,
             modules::windows::ai_island::ai_island_drag_end,
             modules::windows::ai_island::set_ai_island_mouse_mode,
+            // 待办窗口族（P2 实装：贴屏便签/提醒弹窗/散热面板）
+            modules::windows::todo_windows::push_sticky_notes_cmd,
+            modules::windows::todo_windows::close_sticky_notes,
+            modules::windows::todo_windows::hide_todo_reminder_cmd,
+            modules::windows::todo_windows::clear_todo_reminder_queue_cmd,
+            modules::windows::todo_windows::hide_cooling_overlay_cmd,
             modules::commands::stubs::update_audio_levels,
             // 悬浮球（P2 实装）
             modules::windows::floating_ball::show_floating_ball,
@@ -168,6 +174,7 @@ pub fn run() {
 
             // 录制工具条/悬浮岛事件（close → 关边框；其余动作由 event 广播到主窗口）
             setup_region_events(app.handle());
+            setup_todo_events(app.handle());
 
             Ok(())
         })
@@ -286,6 +293,37 @@ fn setup_region_events(app: &tauri::AppHandle) {
         let action = event.payload().trim().trim_matches('"').to_string();
         if action == "close" {
             modules::windows::region::hide_floating_island(app_owned2.clone());
+        }
+    });
+}
+
+/// 贴屏便签动作：unpin → 取消贴屏（P3 接 todo 数据层）；open → 拉起待办窗口
+fn setup_todo_events(app: &tauri::AppHandle) {
+    use tauri::Listener;
+
+    let app_owned = app.clone();
+    app.listen("todo-sticky-unpin".to_string(), move |event| {
+        let id = event.payload().trim().trim_matches('"').to_string();
+        modules::windows::todo_windows::on_sticky_unpin(&app_owned, &id);
+    });
+
+    let app_owned2 = app.clone();
+    app.listen("todo-sticky-open".to_string(), move |event| {
+        let id = event.payload().trim().trim_matches('"').to_string();
+        modules::windows::todo_windows::on_sticky_open(&app_owned2, &id);
+    });
+
+    let app_owned3 = app.clone();
+    app.listen("todo-reminder-close".to_string(), move |_event| {
+        modules::windows::todo_windows::hide_todo_reminder(&app_owned3);
+    });
+
+    let app_owned4 = app.clone();
+    app.listen("todo-reminder-open".to_string(), move |_event| {
+        modules::windows::todo_windows::clear_todo_reminder_queue(&app_owned4);
+        if let Some(win) = app_owned4.get_webview_window("todo") {
+            let _ = win.show();
+            let _ = win.set_focus();
         }
     });
 }

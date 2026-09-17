@@ -2,6 +2,7 @@
 pub mod ai_island;
 pub mod floating_ball;
 pub mod region;
+pub mod todo_windows;
 
 // 内部共享符号（命令经 generate_handler 的完整路径 modules::windows::floating_ball::xxx 注册）
 #[allow(unused_imports)]

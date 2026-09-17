@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<!-- 贴屏便签板 — 移植自 todo-sticky.ts buildBoardHtml()
+     单个合并窗口：pinned 待办轮播（圆点/箭头切换），点便签打开待办，✕ 取消贴屏。
+     Rust 经 window.renderNotes(list, idx) 推数据；点按经 emit('todo-sticky-unpin'/'todo-sticky-open') 回传。 -->
+<html><head><meta charset="utf-8"><style>
+*{margin:0;padding:0;box-sizing:border-box;user-select:none}
+html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-family:'Segoe UI',system-ui,sans-serif}
+.board{height:100%;background:#ffffff;border:1px solid #e3e4ea;border-radius:16px;display:flex;flex-direction:column;overflow:hidden}
+.bar{height:26px;background:#f3f4f8;border-bottom:1px solid #e6e7ec;padding:0 3px 0 10px;display:flex;align-items:center;gap:7px;flex-shrink:0}
+.logo{width:13px;height:13px;border-radius:3px;object-fit:cover}
+.brand{font-size:10px;font-weight:800;color:#2a2a3a;letter-spacing:1.2px}
+.counter{margin-left:auto;font-size:9px;color:#b6b7c1;font-variant-numeric:tabular-nums}
+.close{width:22px;height:22px;border:none;border-radius:6px;background:transparent;color:#9a9aa6;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.close:hover{background:#eef0f5;color:#1d1d1f}
+.note{flex:1;min-height:0;display:flex;position:relative;cursor:pointer}
+.accent{position:absolute;left:0;top:0;bottom:0;width:3px;background:#60a5fa}
+.in{padding:7px 10px 4px 13px;display:flex;flex-direction:column;min-width:0;width:100%}
+.t{font-size:12px;font-weight:700;color:#1d1d1f;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.b{font-size:11px;color:#6e6e76;line-height:1.4;margin-top:2px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.board.todo .t{white-space:normal;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;word-break:break-word}
+.tip{position:absolute;top:4px;left:12px;right:6px;z-index:8;max-height:calc(100% - 8px);overflow:auto;padding:6px 8px;border-radius:8px;background:rgba(29,29,31,0.94);color:#fff;font-size:11px;line-height:1.5;white-space:normal;word-break:break-word;box-shadow:0 4px 12px rgba(0,0,0,0.25);opacity:0;pointer-events:none;transform:translateY(-3px);transition:opacity .15s ease,transform .15s ease}
+.tip::-webkit-scrollbar{width:3px}
+.tip::-webkit-scrollbar-track{background:transparent}
+.tip::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.28);border-radius:2px}
+.tip::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.45)}
+.note:hover .tip{opacity:1;transform:none}
+.tip.none{display:none}
+.open-hint{margin-top:auto;align-self:flex-end;font-size:8.5px;color:#c6c7d1}
+.board.done .t{text-decoration:line-through;color:#9a9aa6}
+.board.done .b{color:#a8a8b0}
+.foot{height:26px;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 6px;flex-shrink:0;border-top:1px solid #f0f1f5}
+.arw{width:20px;height:20px;border:none;border-radius:6px;background:transparent;color:#9a9aa6;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.arw:hover{background:#f0f1f5;color:#1d1d1f}
+.dots{display:flex;gap:4px;align-items:center}
+.dot{width:4px;height:4px;border-radius:999px;background:#d5d7e0;cursor:pointer;transition:width .2s ease,background .2s ease}
+.dot.on{width:14px;background:#4e5cd4}
+</style></head><body><div class="board" id="board">
+  <div class="bar" data-tauri-drag-region>
+    <img class="logo" src="/logo.png">
+    <div class="brand">MUERZHI</div>
+    <div class="counter" id="counter"></div>
+    <button class="close" id="closeBtn">✕</button>
+  </div>
+  <div class="note" id="note">
+    <div class="accent" id="accent"></div>
+    <div class="in">
+      <div class="t" id="t"></div>
+      <div class="b" id="b"></div>
+      <div class="open-hint" id="openHint">打开待办</div>
+    </div>
+    <div class="tip none" id="tip"></div>
+  </div>
+  <div class="foot">
+    <button class="arw" id="prev">‹</button>
+    <div class="dots" id="dots"></div>
+    <button class="arw" id="next">›</button>
+  </div>
+</div>
+<script>
+const emit = window.__TAURI__.event.emit
+const invoke = window.__TAURI__.core.invoke
+
+let I18N = { noContent: '（无内容）', open: '打开待办', unpin: '取消贴屏' }
+let NOTES = [], IDX = 0, LAST = null
+
+invoke('get_app_i18n').then((b) => {
+  const m = b.messages || {}
+  I18N = {
+    noContent: m['todo.noContent'] || I18N.noContent,
+    open: m['todo.open'] || I18N.open,
+    unpin: m['todo.unpin'] || I18N.unpin,
+  }
+  document.getElementById('openHint').textContent = I18N.open
+  draw()
+}).catch(() => {})
+
+function act(a) {
+  const n = NOTES[IDX]
+  if (n) emit('todo-sticky-' + a, n.id)
+}
+function go(d) {
+  if (NOTES.length < 2) return
+  IDX = (IDX + d + NOTES.length) % NOTES.length
+  draw()
+}
+function isTrunc(el) {
+  if (!el || el.style.display === 'none') return false
+  return el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1
+}
+
+document.getElementById('closeBtn').addEventListener('click', (e) => { e.stopPropagation(); act('unpin') })
+document.getElementById('note').addEventListener('click', () => act('open'))
+document.getElementById('prev').addEventListener('click', () => go(-1))
+document.getElementById('next').addEventListener('click', () => go(1))
+
+// 便签卡内全文提示：滚轮滚动（tip 是 pointer-events:none 装饰层，转发给 tip）
+document.getElementById('note').addEventListener('wheel', function (e) {
+  const tip = document.getElementById('tip')
+  if (!tip || tip.className.indexOf('none') >= 0) return
+  if (tip.scrollHeight > tip.clientHeight) {
+    tip.scrollTop += e.deltaY
+    e.preventDefault()
+  }
+}, { passive: false })
+
+function draw() {
+  const n = NOTES[IDX]
+  if (!n) return
+  const board = document.getElementById('board')
+  const t = document.getElementById('t')
+  const b = document.getElementById('b')
+  const accent = document.getElementById('accent')
+  const dots = document.getElementById('dots')
+  const counter = document.getElementById('counter')
+  t.textContent = n.title || I18N.noContent
+  if (n.body) { b.textContent = n.body; b.style.display = '' } else { b.style.display = 'none' }
+  board.className = 'board' + (n.done ? ' done' : '') + (n.type === 'todo' ? ' todo' : '')
+  accent.style.background = { urgent: '#f97316', high: '#f59e0b', medium: '#60a5fa', low: '#b0b0b8' }[n.priority] || '#60a5fa'
+  counter.textContent = NOTES.length > 1 ? (IDX + 1) + '/' + NOTES.length : ''
+  dots.innerHTML = ''
+  NOTES.forEach(function (x, i) {
+    const d = document.createElement('span')
+    d.className = 'dot' + (i === IDX ? ' on' : '')
+    d.addEventListener('click', () => { IDX = i; draw() })
+    dots.appendChild(d)
+  })
+  document.getElementById('prev').style.visibility = NOTES.length > 1 ? 'visible' : 'hidden'
+  document.getElementById('next').style.visibility = NOTES.length > 1 ? 'visible' : 'hidden'
+  const tip = document.getElementById('tip')
+  let tipText = ''
+  if (isTrunc(t)) tipText = t.textContent
+  else if (isTrunc(b)) tipText = b.textContent
+  tip.textContent = tipText || ''
+  tip.className = 'tip' + (tipText ? '' : ' none')
+  LAST = (NOTES[IDX] || {}).id
+}
+
+function renderNotes(list, idx) {
+  NOTES = list || []
+  IDX = 0
+  // 尽量保持当前看的这条（按 id 定位），避免任意数据同步把轮播跳回第一张
+  if (LAST !== null) {
+    for (let i = 0; i < NOTES.length; i++) {
+      if (NOTES[i].id === LAST) { IDX = i; break }
+    }
+  }
+  if (NOTES.length && (LAST === null || !NOTES.some((x) => x.id === LAST))) {
+    IDX = Math.max(0, Math.min(idx || 0, NOTES.length - 1))
+  }
+  draw()
+}
+window.renderNotes = renderNotes
+</script></body></html>
