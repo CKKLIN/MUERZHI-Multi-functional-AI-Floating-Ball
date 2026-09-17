@@ -273,6 +273,12 @@ export function showFloatingBall() {
   floatingBallWindow.setVisibleOnAllWorkspaces(true)
   floatingBallWindow.setAlwaysOnTop(getBallSettings().alwaysOnTop, 'screen-saver')
 
+  // 初始即穿透：新窗口在第一次轮询纠正前（≤100ms）不能拿全矩形拦下方点击；
+  // 光标悬在球上时由 pollBallPassThrough 切回可交互
+  ballMouseIgnored = true
+  floatingBallWindow.setIgnoreMouseEvents(true, { forward: true })
+  startBallMousePolling()
+
   const html = buildFloatingBallHtml()
   floatingBallWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
 
@@ -291,6 +297,7 @@ export function showFloatingBall() {
   const self = floatingBallWindow
   floatingBallWindow.on('closed', () => {
     if (floatingBallWindow === self) floatingBallWindow = null
+    stopBallMousePolling()
   })
 
   // 移动/拖拽时持续记录位置。
@@ -336,6 +343,7 @@ export function hideFloatingBall() {
     saveBallPosition(ballPos!)
     // 用 destroy() 同步销毁并立即置 null，避免 close() 异步触发 'closed' 事件时
     // floatingBallWindow 已被 showFloatingBall 重新赋值为新窗口，导致新窗口引用被清成 null
+    stopBallMousePolling()
     const win = floatingBallWindow
     floatingBallWindow = null
     win.destroy()
@@ -1156,6 +1164,82 @@ function clearSnap() {
 function clearSnapVisualOnly() {
   if (snapTimer) { clearInterval(snapTimer); snapTimer = null }
   if (snappedSide) sendSnapVisual(null)
+}
+
+// === 透明区点击穿透（主进程几何轮询，方案同 ai-island.ts） ===
+// 悬浮球窗口是 66/240 的透明矩形，Windows 下透明区域默认也接收鼠标——贴屏时水滴只占
+// 窗口一侧，对侧整条透明余条（用户报的"贴屏后下方点不到"）、圆球四角、展开菜单环外四角
+// 全都会把本属于下层应用的点击吃掉。依赖 forwarded mousemove 在渲染层判穿透不可靠
+//（转发丢帧会卡在"光标在透明区但窗口仍可交互"，且花瓣间空隙/散热旋转时元素命中与
+// 几何形状对不上会来回抖），改为主进程轮询 screen.getCursorScreenPoint() + 几何判定：
+// 光标落在球的可交互形状内 → 可交互；否则 setIgnoreMouseEvents(true,{forward:true}) 穿透。
+// forward 保证穿透态下仍转发 mousemove，轮询下一拍即能发现"移回球上"并恢复接收。
+let ballMouseIgnored = true
+let ballMousePollTimer: ReturnType<typeof setInterval> | null = null
+
+/** 可交互半径余量：展开(240 窗)=花瓣外缘 r2=75 +3px；收起(66 窗)=中央 56px 圆半径 28 +2px。
+ *  余量宁可略大：光标贴着形状边缘快速点击时，宁可让窗口多接 1-2px 的点击也别穿透露掉。 */
+const PASS_R_EXPANDED = 78
+const PASS_R_BALL = 30
+
+function pollBallPassThrough() {
+  if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return
+  // 拖拽中全程保持可交互：窗口跟手高频移动，穿透切换会和指针捕获竞争（拖一半窗体变穿透
+  // 会导致 move 事件断流、球掉在半路），宁可拖拽期间整块不穿透
+  if (dragOrigin) {
+    if (ballMouseIgnored) {
+      ballMouseIgnored = false
+      floatingBallWindow.setIgnoreMouseEvents(false)
+    }
+    return
+  }
+  const [wx, wy] = floatingBallWindow.getPosition()
+  const [ww, wh] = floatingBallWindow.getSize()
+  const cp = screen.getCursorScreenPoint()
+  let inside: boolean
+  if (ww >= RING_SIZE) {
+    // 240 窗（展开/开花合拢动画中）：以窗心为圆的"花瓣环 + 中心按钮"区域。
+    // 按窗口尺寸而非 isBallExpanded 判定——展开准备期/收起动画期 isBallExpanded 与
+    // 屏幕上可见内容短暂不一致，窗口尺寸才是几何真相
+    const dx = cp.x - (wx + ww / 2)
+    const dy = cp.y - (wy + wh / 2)
+    inside = dx * dx + dy * dy <= PASS_R_EXPANDED * PASS_R_EXPANDED
+  } else if (snappedSide) {
+    // 吸附收起态：可交互=水滴胶囊矩形。不能用窗心圆——圆会伸进水滴对侧的透明余条，
+    // 把"贴屏后对侧点不到"的原 bug 留一半。矩形与 snap-* CSS 的胶囊几何一一对应
+    //（44×58 胶囊，贴边侧抵窗缘；若改 CSS 的 44/58/22/4 须同步这里），+2px 余量
+    const S = 2
+    let x0 = 0, y0 = 0, x1 = BALL_SIZE, y1 = BALL_SIZE
+    if (snappedSide === 'left') { x1 = 44 + S; y0 = 4 - S; y1 = 62 + S }
+    else if (snappedSide === 'right') { x0 = 22 - S; y0 = 4 - S; y1 = 62 + S }
+    else if (snappedSide === 'top') { x0 = 4 - S; x1 = 62 + S; y1 = 44 + S }
+    else { x0 = 4 - S; x1 = 62 + S; y0 = 22 - S }
+    const lx = cp.x - wx
+    const ly = cp.y - wy
+    inside = lx >= x0 && lx <= x1 && ly >= y0 && ly <= y1
+  } else {
+    // 未吸附收起态：中央 56px 圆（窗心，半径 28 + 2px 余量），四角透明区穿透
+    const dx = cp.x - (wx + ww / 2)
+    const dy = cp.y - (wy + wh / 2)
+    inside = dx * dx + dy * dy <= PASS_R_BALL * PASS_R_BALL
+  }
+  const ignore = !inside
+  if (ignore !== ballMouseIgnored) {
+    ballMouseIgnored = ignore
+    floatingBallWindow.setIgnoreMouseEvents(ignore, { forward: true })
+  }
+}
+
+function startBallMousePolling() {
+  stopBallMousePolling()
+  ballMousePollTimer = setInterval(pollBallPassThrough, 100)
+}
+
+function stopBallMousePolling() {
+  if (ballMousePollTimer) {
+    clearInterval(ballMousePollTimer)
+    ballMousePollTimer = null
+  }
 }
 
 // === IPC 处理器注册 ===

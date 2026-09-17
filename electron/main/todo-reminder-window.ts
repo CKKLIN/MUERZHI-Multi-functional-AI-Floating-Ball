@@ -7,6 +7,7 @@ import { BrowserWindow, screen } from 'electron'
 import log from './logger'
 import { getLogoDataUrl } from './logo'
 import { t } from './i18n'
+import { TOOLTIP_CSS } from './tooltip-css'
 
 let reminderWindow: BrowserWindow | null = null
 
@@ -41,12 +42,12 @@ html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-fam
 .foot{margin-top:auto;display:flex;justify-content:flex-end;padding-top:8px}
 .open{border:none;border-radius:8px;background:#4e5cd4;color:#fff;font-size:11px;font-weight:600;padding:5px 12px;cursor:pointer}
 .open:hover{background:#404db9}
-</style></head><body><div class="card">
+</style><style>${TOOLTIP_CSS}</style></head><body><div class="card">
   <div class="bar">
     <div class="brand">${logo ? `<img class="logo" src="${logo}">` : '<div class="logo">MU</div>'}<div class="brand-txt">MUERZHI</div></div>
     <div class="bar-right">
       <div class="ring">${t('todo.reminderRing')}</div>
-      <button class="close" title="${t('common.close')}" onclick="ipc.send('todo-reminder-close')">✕</button>
+      <button class="close" data-tip="${t('common.close')}" data-tip-pos="below" onclick="ipc.send('todo-reminder-close')">✕</button>
     </div>
   </div>
   <div class="body">

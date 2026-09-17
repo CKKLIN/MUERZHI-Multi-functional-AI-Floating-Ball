@@ -88,12 +88,12 @@ watch(() => props.text, async () => { await nextTick(); checkTruncated() })
     <Teleport to="body">
       <div
         v-if="show && text && truncated"
-        class="vtip-bubble"
+        class="tip-bubble"
         :class="{ below, right: alignRight }"
         :style="bubbleStyle"
         role="tooltip"
       >
-        <span class="vtip-arrow" :style="{ left: bubble.arrow + 'px' }"></span>
+        <span class="tip-arrow" :style="{ left: bubble.arrow + 'px' }"></span>
         <span class="vtip-text">{{ text }}</span>
       </div>
     </Teleport>
@@ -101,53 +101,17 @@ watch(() => props.text, async () => { await nextTick(); checkTruncated() })
 </template>
 
 <style scoped>
+/* 气泡/箭头样式走全局 .tip-bubble / .tip-arrow（style.css，与 v-tip 指令共用同一套视觉），
+   这里只保留组件特有的：锚点容器与全文滚动 */
 .vtip {
   position: relative;
   display: inline-block;
   max-width: 100%;
   min-width: 0;
 }
-.vtip-bubble {
-  position: fixed;
-  z-index: 99999;
-  max-width: 280px;
-  padding: 8px 11px;
-  border-radius: 9px;
-  background: rgba(29, 29, 31, 0.94);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  color: #fff;
-  font-size: 12px;
-  line-height: 1.5;
-  white-space: normal;
-  word-break: break-word;
-  box-shadow:
-    0 6px 18px rgba(0, 0, 0, 0.24),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  pointer-events: none;
-  animation: vtip-in 0.15s ease;
-}
 .vtip-text {
   display: block;
   max-height: 40vh;
   overflow: auto;
-}
-.vtip-arrow {
-  position: absolute;
-  bottom: -5px;
-  width: 0;
-  height: 0;
-  border: 5px solid transparent;
-  border-top-color: rgba(29, 29, 31, 0.94);
-}
-.vtip-bubble.below .vtip-arrow {
-  top: -5px;
-  bottom: auto;
-  border-top-color: transparent;
-  border-bottom-color: rgba(29, 29, 31, 0.94);
-}
-@keyframes vtip-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
 }
 </style>

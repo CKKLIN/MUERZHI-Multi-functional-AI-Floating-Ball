@@ -29,6 +29,11 @@ const HOOK_EVENTS = [
   "StopFailure",
   "ApiError",
   "Notification",
+  // 用户在 Claude Code 原生界面拒绝/取消（Esc 关掉提问、权限点"否"）后触发，携带
+  // tool_name/tool_input/tool_use_id（claude.exe executePermissionDeniedHooks 实证）。
+  // agent-server 靠它把「原生界面已取消」对应的审批/提问卡精确关掉——没有它，
+  // 原生取消后悬浮岛卡片只能等队首超时（若用户关了自动过期则永远挂着）
+  "PermissionDenied",
   "PermissionRequest",
 ]
 

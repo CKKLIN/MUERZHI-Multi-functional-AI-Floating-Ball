@@ -2,8 +2,35 @@ import { BrowserWindow, ipcMain, screen } from 'electron'
 import { join } from 'node:path'
 import log from './logger'
 import { t } from './i18n'
+import { TIP_STRIP, TOOLTIP_CSS } from './tooltip-css'
 
 let mainWindow: BrowserWindow | null = null
+
+/** 内容矩形光标穿透轮询（仿 ai-island 的几何判定，不依赖事件转发）。
+ *  工具条/悬浮岛窗口底部留了 TIP_STRIP 气泡带、宽度上原有 +20 透明缓冲，这些透明区若不穿透
+ *  会拦截录制区域内/下方应用的点击。改为每 120ms 轮询全局光标：光标在 contentRect 内 → 可交互，
+ *  否则 → setIgnoreMouseEvents(true,{forward:true}) 穿透。forward 让穿透时仍能收到 mousemove，
+ *  移回内容即恢复。contentRect 由调用方按窗口实时 getBounds 计算，天然跟随窗口变化。 */
+function startCursorPassThrough(win: BrowserWindow, contentRect: () => { x: number; y: number; width: number; height: number }) {
+  let ignored = false
+  const poll = () => {
+    if (!win || win.isDestroyed()) return
+    const r = contentRect()
+    const cp = screen.getCursorScreenPoint()
+    const inside = cp.x >= r.x && cp.x <= r.x + r.width && cp.y >= r.y && cp.y <= r.y + r.height
+    if (inside === ignored) {
+      ignored = !inside
+      try {
+        win.setIgnoreMouseEvents(ignored, { forward: true })
+      } catch (e) {
+        log.warn('Cursor pass-through setIgnoreMouseEvents failed:', (e as Error)?.message ?? e)
+      }
+    }
+  }
+  poll()
+  const timer = setInterval(poll, 120)
+  win.once('closed', () => clearInterval(timer))
+}
 
 /** 录制悬浮岛/工具栏内联 HTML 的 i18n 词条（label/title）。JS 内联部分在脚本头部注入 I18N JSON。 */
 function recorderI18n() {
@@ -235,7 +262,7 @@ function showFloatingIsland(audioState?: { micEnabled: boolean; sysEnabled: bool
   const bounds = display.bounds
   islandTargetBounds = bounds
   const islandW = 340
-  const islandH = 44
+  const islandH = 44 + TIP_STRIP // 内容 44 + 底部气泡带：气泡朝下弹出需在窗口内留出空间
   const islandX = Math.round(bounds.x + (bounds.width - islandW) / 2)
   const islandY = bounds.y + 4
 
@@ -257,15 +284,20 @@ function showFloatingIsland(audioState?: { micEnabled: boolean; sysEnabled: bool
     },
   })
   floatingIsland.setVisibleOnAllWorkspaces(true)
-  floatingIsland.setMinimumSize(100, 44)
+  floatingIsland.setMinimumSize(100, islandH)
   floatingIsland.setAlwaysOnTop(true, 'screen-saver')
+  // 悬浮岛窗口宽含右侧 +20 透明缓冲、高含底部气泡带：几何轮询穿透，防止透明区拦截录制区域点击
+  startCursorPassThrough(floatingIsland, () => {
+    const b = floatingIsland!.getBounds()
+    return { x: b.x, y: b.y, width: Math.max(0, b.width - 20), height: Math.max(0, b.height - TIP_STRIP) }
+  })
 
   const html = `<!DOCTYPE html>
 <html><head><style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif}
 .island{
-  width:fit-content;height:100%;
+  width:fit-content;height:44px;
   background:rgba(20,20,40,0.96);
   border-radius:22px;
   display:flex;align-items:center;justify-content:center;gap:8px;
@@ -333,12 +365,12 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
 .perm-btn.deny:hover{background:rgba(233,69,96,0.3);color:#e94560}
 .perm-btn.always{background:rgba(78,205,196,0.15);color:#4ecdc4;border:1px solid rgba(78,205,196,0.3)}
 .perm-btn.always:hover{background:rgba(78,205,196,0.25)}
-</style></head><body>
+</style><style>${TOOLTIP_CSS}</style></head><body>
 <div class="island" id="island">
   <span class="recording-dot" id="dot" style="display:none"></span>
   <span class="timer" id="timer">00:00</span>
   <div class="btn-group">
-    <button id="micBtn" title="${t('record.toggleMic')}" onclick="doToggleMic()">
+    <button id="micBtn" data-tip="${t('record.toggleMic')}" data-tip-pos="below" onclick="doToggleMic()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
     </button>
     <div class="meter-group" id="micMeter"></div>
@@ -350,7 +382,7 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
     <div class="meter-group" id="sysMeter"></div>
   </div> -->
   <div class="btn-group">
-    <button id="camBtn" title="${t('record.toggleCamera')}" onclick="doToggleCam()">
+    <button id="camBtn" data-tip="${t('record.toggleCamera')}" data-tip-pos="below" onclick="doToggleCam()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
     </button>
   </div>
@@ -359,21 +391,21 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
     <svg width="10" height="10" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="currentColor"/></svg>
     <span>${t('record.recBtn')}</span>
   </button>
-  <button class="stop-btn" id="stopBtn" style="display:none" onclick="doStop()" title="${t('record.stop')}">
+  <button class="stop-btn" id="stopBtn" style="display:none" onclick="doStop()" data-tip="${t('record.stop')}" data-tip-pos="below">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
   </button>
-  <button class="pause-btn" id="pauseBtn" style="display:none" onclick="doPause()" title="${t('record.pause')}">
+  <button class="pause-btn" id="pauseBtn" style="display:none" onclick="doPause()" data-tip="${t('record.pause')}" data-tip-pos="below">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
   </button>
-  <button id="resumeBtn" style="display:none" onclick="doResume()" title="${t('record.resume')}">
+  <button id="resumeBtn" style="display:none" onclick="doResume()" data-tip="${t('record.resume')}" data-tip-pos="below">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
   </button>
-  <button class="close-btn" onclick="doClose()" title="${t('common.cancel')}">
+  <button class="close-btn" onclick="doClose()" data-tip="${t('common.cancel')}" data-tip-pos="below">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
   </button>
 </div>
 <div class="sep" id="aiSep" style="display:none"></div>
-<div class="ai-indicator" id="aiIndicator" style="display:none" onclick="showAiDetail()" title="${t('aiIsland.viewDetail')}">
+<div class="ai-indicator" id="aiIndicator" style="display:none" onclick="showAiDetail()" data-tip="${t('aiIsland.viewDetail')}" data-tip-pos="below">
   <span class="ai-dot idle" id="aiDot"></span>
   <span class="ai-label" id="aiLabel">${t('aiIsland.idle')}</span>
 </div>
@@ -612,7 +644,7 @@ function showRegionBorder(region: { x: number; y: number; width: number; height:
     x: tbX,
     y: tbY,
     width: tbW,
-    height: TOOLBAR_HEIGHT,
+    height: TOOLBAR_HEIGHT + TIP_STRIP, // 内容 TOOLBAR_HEIGHT + 底部气泡带（气泡朝下需窗口内留空间）
     frame: false,
     transparent: true,
     resizable: false,
@@ -627,6 +659,11 @@ function showRegionBorder(region: { x: number; y: number; width: number; height:
   })
   toolbarWindow.setVisibleOnAllWorkspaces(true)
   toolbarWindow.setAlwaysOnTop(true, 'screen-saver')
+  // 工具条窗口高含底部气泡带：几何轮询穿透，防止透明带拦截录制区域内下方应用的点击
+  startCursorPassThrough(toolbarWindow, () => {
+    const b = toolbarWindow!.getBounds()
+    return { x: b.x, y: b.y, width: b.width, height: Math.max(0, b.height - TIP_STRIP) }
+  })
 
   const toolbarHtml = `<!DOCTYPE html>
 <html><head><style>
@@ -675,11 +712,11 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Segoe UI',system-u
 .toolbar[data-pos="inside"]{border-radius:8px}
 .toolbar.minimal{width:fit-content;height:40px!important;border-radius:22px;background:rgba(20,20,40,0.96);border:1px solid rgba(255,255,255,0.08);padding:0 10px}
 .toolbar.minimal .audio-toggle,.toolbar.minimal .meter-group,.toolbar.minimal .sep,.toolbar.minimal .size-label,.toolbar.minimal .close-btn{display:none!important}
-</style></head><body>
+</style><style>${TOOLTIP_CSS}</style></head><body>
 <div class="toolbar" id="toolbar" data-pos="${tbPos}">
   <span class="recording-dot" id="dot"></span>
   <span class="timer" id="timer">00:00</span>
-  <button class="audio-toggle" id="micBtn" title="${t('record.toggleMic')}" onclick="doToggleMic()">
+  <button class="audio-toggle" id="micBtn" data-tip="${t('record.toggleMic')}" data-tip-pos="below" onclick="doToggleMic()">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
   </button>
   <div class="meter-group" id="micMeter"></div>
@@ -687,25 +724,25 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Segoe UI',system-u
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
   </button>
   <div class="meter-group" id="sysMeter"></div> -->
-  <button class="audio-toggle" id="camBtn" title="${t('record.toggleCamera')}" onclick="doToggleCam()">
+  <button class="audio-toggle" id="camBtn" data-tip="${t('record.toggleCamera')}" data-tip-pos="below" onclick="doToggleCam()">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
   </button>
   <div class="sep"></div>
-  <button class="rec" id="startBtn" onclick="doStart()" title="${t('record.start')}">
+  <button class="rec" id="startBtn" onclick="doStart()" data-tip="${t('record.start')}" data-tip-pos="below">
     <svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="currentColor"/></svg>
     <span>${t('record.recBtn')}</span>
   </button>
-  <button class="stop-btn" id="stopBtn" style="display:none" onclick="doStop()" title="${t('record.stop')}">
+  <button class="stop-btn" id="stopBtn" style="display:none" onclick="doStop()" data-tip="${t('record.stop')}" data-tip-pos="below">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
   </button>
-  <button class="pause-btn" id="pauseBtn" style="display:none" onclick="doPause()" title="${t('record.pause')}">
+  <button class="pause-btn" id="pauseBtn" style="display:none" onclick="doPause()" data-tip="${t('record.pause')}" data-tip-pos="below">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
   </button>
-  <button id="resumeBtn" style="display:none" onclick="doResume()" title="${t('record.resume')}">
+  <button id="resumeBtn" style="display:none" onclick="doResume()" data-tip="${t('record.resume')}" data-tip-pos="below">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
   </button>
   <span class="size-label" id="sizeLabel">${region.width}×${region.height}</span>
-  <button class="close-btn" onclick="doClose()" title="${t('record.closeAndStop')}">
+  <button class="close-btn" onclick="doClose()" data-tip="${t('record.closeAndStop')}" data-tip-pos="below">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
   </button>
 </div>
@@ -974,8 +1011,9 @@ function registerRegionSelectorHandlers() {
       const bounds = islandTargetBounds || screen.getPrimaryDisplay().bounds
       const totalW = contentWidth + 20 // padding
       const newX = Math.round(bounds.x + (bounds.width - totalW) / 2)
-      const h = Number.isFinite(contentHeight) ? contentHeight : 44
-      floatingIsland.setBounds({ x: newX, y: bounds.y + 4, width: totalW, height: h })
+      const h = typeof contentHeight === 'number' && Number.isFinite(contentHeight) ? contentHeight : 44
+      // 高度加 TIP_STRIP：内容之外底部留气泡带（穿透由 startCursorPassThrough 几何轮询兜住）
+      floatingIsland.setBounds({ x: newX, y: bounds.y + 4, width: totalW, height: h + TIP_STRIP })
     }
   })
 }

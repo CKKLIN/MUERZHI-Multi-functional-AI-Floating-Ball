@@ -42,13 +42,13 @@ function handleOpenFolder(filePath: string) {
           <span class="row-meta">{{ formatTime(rec.duration) }} · {{ formatFileSize(rec.fileSize) }} · {{ formatDate(rec.createdAt) }}</span>
         </div>
         <div class="row-actions">
-          <button class="row-btn" @click="handleOpenFolder(rec.filePath)" :title="t('record.openFolder')">
+          <button class="row-btn" @click="handleOpenFolder(rec.filePath)" v-tip="t('record.openFolder')">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
             </svg>
           </button>
-          <button v-if="!rec.filePath.endsWith('.gif')" class="row-btn" @click="emit('exportGif', rec)" :title="t('record.exportGif')">GIF</button>
-          <button class="row-btn danger" @click="emit('delete', rec.id)" :title="t('record.delete')">
+          <button v-if="!rec.filePath.endsWith('.gif')" class="row-btn" @click="emit('exportGif', rec)" v-tip="t('record.exportGif')">GIF</button>
+          <button class="row-btn danger" @click="emit('delete', rec.id)" v-tip="t('record.delete')">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/>
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>

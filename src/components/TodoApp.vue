@@ -148,20 +148,20 @@ onUnmounted(() => {
       <div class="top-actions">
         <!-- 编辑态：取消 + 保存 -->
         <template v-if="inEditor">
-          <button class="more-btn cancel-btn" :title="t('todo.cancel')" @click="store.closeEditor()">{{ t('todo.cancel') }}</button>
-          <button class="add-btn" :title="t('todo.save')" @click="editorRef?.save()">{{ t('todo.save') }}</button>
+          <button class="more-btn cancel-btn" v-tip="t('todo.cancel')" @click="store.closeEditor()">{{ t('todo.cancel') }}</button>
+          <button class="add-btn" v-tip="t('todo.save')" @click="editorRef?.save()">{{ t('todo.save') }}</button>
         </template>
         <!-- 预览态：编辑 + 删除（原“返回列表”行内容并入本行） -->
         <template v-else-if="store.previewId">
                   <!-- 预览态：← 返回列表 也进顶栏行 -->
-        <button v-if="!inEditor && store.previewId" class="back-btn" :title="t('todo.back')" @click="store.closePreview()">{{ t('todo.back') }}</button>
-          <button class="add-btn" :title="t('todo.edit')" @click="store.startEdit(store.previewId)">{{ t('todo.edit') }}</button>
-          <button class="del-btn" :title="t('todo.delete')" @click="onPreviewDelete()">{{ t('todo.delete') }}</button>
+        <button v-if="!inEditor && store.previewId" class="back-btn" v-tip="t('todo.back')" @click="store.closePreview()">{{ t('todo.back') }}</button>
+          <button class="add-btn" v-tip="t('todo.edit')" @click="store.startEdit(store.previewId)">{{ t('todo.edit') }}</button>
+          <button class="del-btn" v-tip="t('todo.delete')" @click="onPreviewDelete()">{{ t('todo.delete') }}</button>
         </template>
         <!-- 列表态：⋯ 更多设置 + 新建 -->
         <template v-else>
           <div class="more">
-            <button class="more-btn" :title="t('todo.more')" @click="menuOpen = !menuOpen">⋯</button>
+            <button class="more-btn" v-tip="t('todo.more')" @click="menuOpen = !menuOpen">⋯</button>
             <template v-if="menuOpen">
               <div class="more-backdrop" @click="menuOpen = false"></div>
               <div class="more-menu">
@@ -178,7 +178,7 @@ onUnmounted(() => {
               </div>
             </template>
           </div>
-          <button class="add-btn" :title="t('todo.add')" @click="store.startCreate()">＋</button>
+          <button class="add-btn" v-tip="t('todo.add')" @click="store.startCreate()">＋</button>
         </template>
       </div>
     </header>
@@ -223,7 +223,7 @@ onUnmounted(() => {
               <span class="type" :class="it.type">{{ typeLabel(it.type) }}</span>
               <span class="prio"><i class="dot" :style="{ background: PRIO_COLOR[it.priority] }"></i>{{ prioLabel(it.priority) }}</span>
               <span class="time">{{ formatTodoDate(it.updatedAt) }}</span>
-              <span v-if="it.reminder" class="time reminder" :title="t('todo.reminder')">
+              <span v-if="it.reminder" class="time reminder" v-tip="t('todo.reminder')">
                 <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
                 {{ formatTodoDate(it.reminder) }}
               </span>
@@ -234,14 +234,14 @@ onUnmounted(() => {
           </div>
           <div class="actions">
             <!-- 贴屏：两种状态（未贴=灰 / 已贴=靛蓝高亮） -->
-            <button class="act pin" :class="{ on: it.pinned }" :title="it.pinned ? t('todo.unpin') : t('todo.pin')"
+            <button class="act pin" :class="{ on: it.pinned }" v-tip="it.pinned ? t('todo.unpin') : t('todo.pin')"
               @click="store.togglePin(it.id)">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 17v5"/><path d="M6 3h12v2a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V3z"/><path d="M10 9l-1 12"/><path d="M14 9l1 12"/></svg>
             </button>
-            <button class="act" :title="t('todo.edit')" @click="store.startEdit(it.id)">
+            <button class="act" v-tip="t('todo.edit')" @click="store.startEdit(it.id)">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>
             </button>
-            <button class="act del" :title="t('todo.delete')" @click="store.remove(it.id)">
+            <button class="act del" v-tip="t('todo.delete')" @click="store.remove(it.id)">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
             </button>
           </div>

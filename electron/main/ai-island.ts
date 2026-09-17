@@ -8,6 +8,7 @@ import nodeFs from 'node:fs'
 import { join } from 'node:path'
 import log from './logger'
 import { t } from './i18n'
+import { TIP_STRIP, TOOLTIP_CSS } from './tooltip-css'
 
 let aiIsland: BrowserWindow | null = null
 /** AI 岛拖动的基准（绝对增量 + setBounds，仿悬浮球）；用户拖过后锁定位置不再被 resize 拉回 */
@@ -261,10 +262,10 @@ body.flat .island-row{height:12px;padding:0 16px;gap:5px}
 body.flat .ai-dot{width:5px;height:5px}
 body.flat .ai-label{font-size:8.5px;letter-spacing:0.5px;color:rgba(255,255,255,0.55)}
 body.flat .ai-label.active{color:#fff}
-</style></head><body${flat ? ' class="flat"' : ''}>
+</style><style>${TOOLTIP_CSS}</style></head><body${flat ? ' class="flat"' : ''}>
 <div class="island" id="island">
   <div class="island-row" id="islandRow">
-    <div class="ai-indicator" id="aiIndicator" onclick="showAiDetail()" title="${t('aiIsland.viewDetail')}">
+    <div class="ai-indicator" id="aiIndicator" onclick="showAiDetail()" data-tip="${t('aiIsland.viewDetail')}" data-tip-pos="below">
       <span class="ai-dot idle" id="aiDot"></span>
       <span class="ai-label" id="aiLabel">${t('aiIsland.idle')}</span>
     </div>
@@ -295,7 +296,7 @@ body.flat .ai-label.active{color:#fff}
       <span class="question-banner-dot"></span>
       <span class="question-banner-text">${t('aiIsland.questionTitle')}</span>
       <span class="question-progress" id="questionProgress"></span>
-      <span class="question-close" id="questionClose" onclick="closeQuestion()" title="${t('common.close')}">✕</span>
+      <span class="question-close" id="questionClose" onclick="closeQuestion()" data-tip="${t('common.close')}" data-tip-pos="below">✕</span>
     </div>
     <div class="question-body" id="questionBody"></div>
     <div class="question-actions">
@@ -676,14 +677,16 @@ export function registerAiIslandHandlers() {
       const b = screen.getDisplayMatching(aiIsland.getBounds()).bounds
       const newX = Math.round(b.x + (b.width - contentWidth) / 2)
       if (!Number.isFinite(newX)) return
-      aiIsland.setBounds({ x: newX, y: b.y, width: contentWidth, height: h })
+      // 高度加 TIP_STRIP：内容之外底部留气泡带（气泡朝下弹出）；内容矩形不含该带，
+      // 光标落在带内按"不在内容上"穿透，不会拦截下方应用点击
+      aiIsland.setBounds({ x: newX, y: b.y, width: contentWidth, height: h + TIP_STRIP })
       // 几何变化后立即刷新内容矩形（横条态 width=contentWidth，窗口与横条同大、无右侧透明缓冲）
       updateAiIslandContentScreen(newX, b.y, contentWidth, h)
     } else if (aiIslandUserMoved) {
       // 用户拖过（非横条态）：保留当前位置，只按内容调整宽高，避免被拉回居中/顶部
       const [x, y] = aiIsland.getPosition()
       if (!Number.isFinite(x) || !Number.isFinite(y)) return
-      aiIsland.setBounds({ x, y, width: totalW, height: h })
+      aiIsland.setBounds({ x, y, width: totalW, height: h + TIP_STRIP })
       // 非横条态窗口宽 = 内容宽 + 20 右侧透明缓冲，故内容矩形取 x..x+contentWidth
       updateAiIslandContentScreen(x, y, contentWidth, h)
     } else {
@@ -692,7 +695,7 @@ export function registerAiIslandHandlers() {
       const newX = Math.round(bounds.x + (bounds.width - totalW) / 2)
       const newY = bounds.y + 4
       if (!Number.isFinite(newX) || !Number.isFinite(newY)) return
-      aiIsland.setBounds({ x: newX, y: newY, width: totalW, height: h })
+      aiIsland.setBounds({ x: newX, y: newY, width: totalW, height: h + TIP_STRIP })
       updateAiIslandContentScreen(newX, newY, contentWidth, h)
     }
   })

@@ -27,7 +27,7 @@ const hasSource = computed(() => !!store.selectedSource)
         :class="{ active: store.isCameraEnabled }"
         :disabled="!store.canStart"
         @click="emit('toggleCamera')"
-        :title="t('record.toggleCameraShort', { k: 'Ctrl+Shift+C' })"
+        v-tip="t('record.toggleCameraShort', { k: 'Ctrl+Shift+C' })"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M23 7l-7 5 7 5V7z"/>
@@ -39,7 +39,7 @@ const hasSource = computed(() => !!store.selectedSource)
         :class="{ active: store.isMicrophoneEnabled }"
         :disabled="!store.canStart"
         @click="emit('toggleMic')"
-        :title="t('record.toggleMic')"
+        v-tip="t('record.toggleMic')"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
@@ -85,7 +85,7 @@ const hasSource = computed(() => !!store.selectedSource)
         v-if="store.canStart && hasSource"
         class="btn record-btn"
         @click="emit('start')"
-        :title="t('record.startShort', { k: 'Ctrl+Shift+R' })"
+        v-tip="t('record.startShort', { k: 'Ctrl+Shift+R' })"
       >
         <span class="record-icon"></span>
         <span>{{ t('record.recBtn') }}</span>
@@ -95,7 +95,7 @@ const hasSource = computed(() => !!store.selectedSource)
         v-if="store.canPause"
         class="btn pause-btn"
         @click="emit('pause')"
-        :title="t('record.pauseShort', { k: 'Ctrl+Shift+P' })"
+        v-tip="t('record.pauseShort', { k: 'Ctrl+Shift+P' })"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
           <rect x="6" y="4" width="4" height="16"/>
@@ -108,7 +108,7 @@ const hasSource = computed(() => !!store.selectedSource)
         v-if="store.canResume"
         class="btn resume-btn"
         @click="emit('resume')"
-        :title="t('record.resumeShort', { k: 'Ctrl+Shift+P' })"
+        v-tip="t('record.resumeShort', { k: 'Ctrl+Shift+P' })"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
           <polygon points="5,3 19,12 5,21"/>
@@ -120,7 +120,7 @@ const hasSource = computed(() => !!store.selectedSource)
         v-if="store.canStop"
         class="btn stop-btn"
         @click="emit('stop')"
-        :title="t('record.stopShort', { k: 'Ctrl+Shift+R' })"
+        v-tip="t('record.stopShort', { k: 'Ctrl+Shift+R' })"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
           <rect x="6" y="6" width="12" height="12" rx="1"/>

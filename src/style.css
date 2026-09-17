@@ -385,6 +385,67 @@ select.input {
   position: relative;
 }
 
+/* =========================================================
+   悬浮提示气泡 —— 全局 v-tip 指令（src/utils/tip.ts）与
+   Tooltip.vue 共用；覆盖窗口用 electron/main/tooltip-css.ts 的同款视觉。
+   单例气泡挂在 body 顶层不受滚动容器裁剪；默认锚点上方，
+   上方放不下翻到下方（.below），箭头随方向翻转。
+   ========================================================= */
+.tip-bubble {
+  position: fixed;
+  z-index: 99999;
+  display: none;
+  width: max-content;
+  max-width: 280px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: rgba(29, 29, 31, 0.94);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: normal;
+  word-break: break-word;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  animation: tip-in 0.15s ease;
+}
+
+.tip-bubble.below {
+  animation-name: tip-in-b;
+}
+
+/* 箭头：border-top 上色 = 尖朝下的三角，底边贴住气泡下缘、尖端指向锚点；
+   .below 时翻到气泡上缘、border-bottom 上色 = 尖朝上 */
+.tip-arrow {
+  position: absolute;
+  bottom: -5px;
+  width: 0;
+  height: 0;
+  border: 5px solid transparent;
+  border-top-color: rgba(29, 29, 31, 0.94);
+}
+
+.tip-bubble.below .tip-arrow {
+  bottom: auto;
+  top: -5px;
+  border-top-color: transparent;
+  border-bottom-color: rgba(29, 29, 31, 0.94);
+}
+
+.tip-text {
+  display: block;
+}
+
+@keyframes tip-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes tip-in-b {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* Animations */
 @keyframes pulse {
   0%, 100% { opacity: 1; }
