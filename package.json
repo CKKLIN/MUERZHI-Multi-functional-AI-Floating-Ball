@@ -5,8 +5,13 @@
   "main": "dist-electron/main/index.cjs",
   "scripts": {
     "dev": "vite",
+    "dev:web": "cross-env TAURI_BUILD=1 vite",
     "build": "vite build && electron-builder --win",
+    "build:web": "cross-env TAURI_BUILD=1 vite build",
     "build:dir": "vite build && electron-builder --win --dir",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
     "preview": "vite preview"
   },
   "build": {
@@ -69,10 +74,18 @@
     }
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-autostart": "^2.5.1",
+    "@tauri-apps/plugin-dialog": "^2.7.3",
+    "@tauri-apps/plugin-global-shortcut": "^2.3.2",
+    "@tauri-apps/plugin-log": "^2.9.1",
+    "@tauri-apps/plugin-notification": "^2.4.0",
+    "@tauri-apps/plugin-opener": "^2.5.5",
     "electron-log": "^5.4.3",
     "fluent-ffmpeg": "^2.1.3"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
     "@types/fluent-ffmpeg": "^2.1.27",
     "@types/node": "^24.12.2",
     "@vitejs/plugin-vue": "^6.0.6",

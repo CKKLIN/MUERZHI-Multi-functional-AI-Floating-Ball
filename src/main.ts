@@ -5,6 +5,13 @@ import router from './router'
 import './style.css'
 import { initI18n } from './stores/i18n'
 import { vTip } from './utils/tip'
+import { installElectronApiBridge } from './api/bridge'
+
+// Tauri 环境：先注入 electronAPI 兼容桥再挂载（Electron 下 preload 已提供同名 API）
+// 检测方式：Electron preload 暴露 electronAPI 且有 ipcRenderer；WebView2 无
+if (typeof window !== 'undefined' && !(window as any).electronAPI) {
+  installElectronApiBridge()
+}
 
 const app = createApp(App)
 app.use(createPinia())

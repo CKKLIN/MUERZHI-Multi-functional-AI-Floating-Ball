@@ -1,0 +1,37 @@
+[package]
+name = "muerzhi"
+version = "1.1.0"
+description = "MUERZHI 万能 AI 悬浮球 — Tauri 后端"
+authors = ["muerzhi"]
+edition = "2021"
+
+# 打包时由 tauri bundler 读取，作为 Windows 安装包元数据
+[package.metadata.bundle]
+identifier = "com.muerzhi.aiball"
+
+[lib]
+name = "muerzhi_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png", "image-ico", "devtools"] }
+tauri-plugin-single-instance = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-log = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+
+[profile.release]
+# 与 electron-builder 的 compression: maximum 对齐，安装包尽量小
+lto = true
+codegen-units = 1
+strip = true
+opt-level = "s"
