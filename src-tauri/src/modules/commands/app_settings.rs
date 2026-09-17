@@ -129,6 +129,12 @@ pub fn agent_set_auto_allow_session(app: AppHandle, sessionId: String, enabled: 
     s.auto_allow_sessions
 }
 
+/// 供 agent 模块读取卡片过期设置（enabled, seconds）
+pub fn agent_card_expiry(app: &AppHandle) -> (bool, u64) {
+    let s = AgentSettings::load(app);
+    (s.card_expire_enabled, s.card_expire_seconds)
+}
+
 #[tauri::command]
 pub fn agent_get_card_expiry(app: AppHandle) -> Value {
     let s = AgentSettings::load(&app);

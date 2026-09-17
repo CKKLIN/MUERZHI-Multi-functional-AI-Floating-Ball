@@ -83,30 +83,6 @@ pub fn update_audio_levels(_micLevel: f64, _sysLevel: f64) {}
 // ===== 悬浮球（P2 已实装于 windows/floating_ball.rs）=====
 
 // ===== Agent（P3 迁移；设置类已实装于 app_settings.rs）=====
-#[tauri::command]
-pub fn agent_get_status() -> Value {
-    Value::Null
-}
-
-#[tauri::command]
-pub fn agent_install_hooks() -> Value {
-    Value::Null
-}
-
-#[tauri::command]
-pub fn agent_uninstall_hooks() -> Value {
-    Value::Null
-}
-
-#[tauri::command]
-pub fn agent_resolve_permission(_behavior: String) {}
-
-#[tauri::command]
-pub fn agent_dismiss_question() {}
-
-#[tauri::command]
-pub fn agent_submit_question(_sessionId: String, _answers: Value) {}
-
 // ===== 待办（P3 迁移）=====
 // todo 设置/CRUD 已实装于 modules/todo/store.rs（P3）
 

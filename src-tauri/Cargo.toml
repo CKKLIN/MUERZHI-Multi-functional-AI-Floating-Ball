@@ -11,6 +11,11 @@ identifier = "com.muerzhi.aiball"
 
 [lib]
 name = "muerzhi_lib"
+# 桌面专有：去掉 cdylib（Windows 下其产物 muerzhi_lib.dll 与测试 harness 同名，
+# 会让 cargo test 加载到缺符号的 dll 报 STATUS_ENTRYPOINT_NOT_FOUND）
+# cdylib 必须保留：其内嵌的 Windows manifest（comctl32 v6 激活上下文）会让
+# cargo test 的 harness 也能解析 TaskDialogIndirect——少了它测试进程报
+# STATUS_ENTRYPOINT_NOT_FOUND（rlib-only 实测必挂）
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -28,7 +33,8 @@ tauri-plugin-log = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 log = "0.4"
-tokio = { version = "1", features = ["time"] }
+tokio = { version = "1", features = ["time", "rt-multi-thread", "net", "io-util", "sync"] }
+axum = "0.8"
 
 [profile.release]
 # 与 electron-builder 的 compression: maximum 对齐，安装包尽量小

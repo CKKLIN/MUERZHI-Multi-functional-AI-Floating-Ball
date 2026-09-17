@@ -121,12 +121,6 @@ pub fn run() {
             modules::windows::floating_ball::ball_move,
             modules::windows::floating_ball::ball_drag_end,
             modules::windows::floating_ball::reset_floating_ball_position,
-            modules::commands::stubs::agent_get_status,
-            modules::commands::stubs::agent_install_hooks,
-            modules::commands::stubs::agent_uninstall_hooks,
-            modules::commands::stubs::agent_resolve_permission,
-            modules::commands::stubs::agent_dismiss_question,
-            modules::commands::stubs::agent_submit_question,
             modules::todo::store::todo_get,
             modules::todo::store::todo_create,
             modules::todo::store::todo_update,
@@ -139,6 +133,13 @@ pub fn run() {
             modules::commands::stubs::todo_toggle_always_on_top,
             modules::todo::store::todo_get_settings,
             modules::todo::store::todo_set_settings,
+            // Agent 子系统（P3 实装）
+            agent_get_status,
+            agent_install_hooks,
+            agent_uninstall_hooks,
+            agent_resolve_permission,
+            agent_dismiss_question,
+            agent_submit_question,
         ])
         .setup(|app| {
             log::info!("MUERZHI (Tauri) starting...");
@@ -181,6 +182,12 @@ pub fn run() {
             modules::windows::todo_windows::sync_sticky_from_store(app.handle());
             modules::windows::todo_windows::refresh_badge(app.handle());
 
+            // Agent 子系统：HTTP 服务（60000-60019）+ 状态机 + Claude hooks 安装 + 健康看护
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                modules::agent::bridge::start(handle).await;
+            });
+
             Ok(())
         })
         .run(tauri::generate_context!())
@@ -204,6 +211,9 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
             }
             "quit" => {
                 log::info!("Quit from tray");
+                // before-quit 等价清理（对齐 index.ts before-quit 的子系统收尾）
+                modules::agent::bridge::stop();
+                modules::todo::scheduler::stop();
                 app.exit(0);
             }
             _ => {}
@@ -351,4 +361,50 @@ fn register_global_shortcuts(app: &tauri::AppHandle) {
     if let Err(e) = r1.and(r2) {
         log::error!("Global shortcut register failed: {e}");
     }
+}
+
+
+// ===== Agent 子系统命令（P3）=====
+
+#[tauri::command]
+fn agent_get_status() -> serde_json::Value {
+    modules::agent::bridge::get_status()
+}
+
+#[tauri::command]
+fn agent_install_hooks(app: tauri::AppHandle) -> serde_json::Value {
+    match modules::agent::hooks::install(&app) {
+        Ok(()) => modules::agent::bridge::get_status(),
+        Err(e) => {
+            log::error!("agent_install_hooks failed: {e}");
+            serde_json::Value::Null
+        }
+    }
+}
+
+#[tauri::command]
+fn agent_uninstall_hooks(app: tauri::AppHandle) -> serde_json::Value {
+    match modules::agent::hooks::uninstall(&app) {
+        Ok(()) => modules::agent::bridge::get_status(),
+        Err(e) => {
+            log::error!("agent_uninstall_hooks failed: {e}");
+            serde_json::Value::Null
+        }
+    }
+}
+
+#[tauri::command]
+fn agent_resolve_permission(behavior: String) {
+    modules::agent::server::AgentServer::global().resolve_pending_permission(&behavior);
+}
+
+#[tauri::command]
+fn agent_dismiss_question() {
+    modules::agent::server::AgentServer::global().dismiss_question();
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+fn agent_submit_question(sessionId: String, answers: serde_json::Value) {
+    modules::agent::server::AgentServer::global().submit_question(&sessionId, answers);
 }
