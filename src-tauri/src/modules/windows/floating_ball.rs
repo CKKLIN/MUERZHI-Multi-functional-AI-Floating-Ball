@@ -663,3 +663,11 @@ fn ball_data_script(app: &AppHandle) -> String {
         .collect();
     format!("window.__BALL_DATA__ = [{}]; void 0;", items.join(","))
 }
+
+/// 散热视觉开关（对齐 setFloatingBallCoolingVisual）：花瓣旋转 + 圆圈冷光静止
+pub fn set_cooling_visual(app: &AppHandle, on: bool) {
+    if let Some(win) = ball_window(app) {
+        let sec = crate::modules::cooling::Cooling::global().duration_sec();
+        let _ = win.eval(&format!("if (window.setCoolingVisual) setCoolingVisual({on}, {sec}); void 0;"));
+    }
+}

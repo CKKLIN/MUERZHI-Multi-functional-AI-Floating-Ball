@@ -42,3 +42,8 @@ lto = true
 codegen-units = 1
 strip = true
 opt-level = "s"
+
+# 单元测试入口（见 tests/unit.rs 顶部注释：Windows 下 manifest 需显式 test target）
+[[test]]
+name = "unit"
+path = "tests/unit.rs"

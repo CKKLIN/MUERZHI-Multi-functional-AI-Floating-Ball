@@ -109,6 +109,11 @@ pub fn run() {
             modules::windows::todo_windows::hide_todo_reminder_cmd,
             modules::windows::todo_windows::clear_todo_reminder_queue_cmd,
             modules::windows::todo_windows::hide_cooling_overlay_cmd,
+            // 散热（P3 实装）
+            modules::cooling::start_cooling,
+            modules::cooling::is_cooling_active,
+            modules::cooling::get_cooling_duration_sec,
+            modules::cooling::cancel_cooling,
             modules::commands::stubs::update_audio_levels,
             // 悬浮球（P2 实装）
             modules::windows::floating_ball::show_floating_ball,
@@ -182,6 +187,9 @@ pub fn run() {
             modules::windows::todo_windows::sync_sticky_from_store(app.handle());
             modules::windows::todo_windows::refresh_badge(app.handle());
 
+            // 散热：崩溃残留恢复（上次散热中被强杀 → 写回 powercfg/风扇原值）
+            modules::cooling::Cooling::recover_residue(app.handle());
+
             // Agent 子系统：HTTP 服务（60000-60019）+ 状态机 + Claude hooks 安装 + 健康看护
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -214,6 +222,9 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
                 // before-quit 等价清理（对齐 index.ts before-quit 的子系统收尾）
                 modules::agent::bridge::stop();
                 modules::todo::scheduler::stop();
+                // 散热：同步恢复被限制的电源设置/风扇模式（对齐 cancelCooling）
+                modules::cooling::Cooling::global().cancel(app);
+                modules::windows::todo_windows::hide_cooling_overlay(app);
                 app.exit(0);
             }
             _ => {}
@@ -282,6 +293,13 @@ fn setup_ball_events(app: &tauri::AppHandle) {
     });
 
     let app_owned2 = app.clone();
+    // 右键悬浮球 → 三档散热（面板 + 花瓣旋转）
+    let app_cooling = app.clone();
+    app.listen("floating-ball-cooling".to_string(), move |_event| {
+        log::info!("Floating ball cooling requested");
+        modules::cooling::trigger_from_ball(&app_cooling);
+    });
+
     app.listen("floating-ball-badge-ready".to_string(), move |_event| {
         // P3 todo 模块接入后由 todo-badge 推送真实计数；P2 先推 0（隐藏徽标）
         if let Some(win) = app_owned2.get_webview_window("floating-ball") {

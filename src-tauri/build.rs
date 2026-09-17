@@ -1,14 +1,15 @@
 fn main() {
     tauri_build::build();
 
-    // tauri-build 只把 Windows 资源（VERSIONINFO + comctl32 v6 manifest）经
-    // rustc-link-arg-bins 链给 bin 目标；cargo test 的测试进程拿不到该 manifest，
-    // 于是 comctl32 走 v5（不导出 TaskDialogIndirect）→ STATUS_ENTRYPOINT_NOT_FOUND。
-    // 这里用覆盖面更广的 rustc-link-arg 再链一次（bins/cdylib/tests 均生效）。
+    // tauri-build 把 Windows 资源（VERSIONINFO + comctl32 v6 manifest）经 rustc-link-arg-bins
+    // 只链给 bin 目标；cargo test 的 harness 缺该 manifest → comctl32 走 v5（不导出
+    // TaskDialogIndirect）→ 进程以 STATUS_ENTRYPOINT_NOT_FOUND 退出。
+    // 这里用 rustc-link-arg-tests 单独补给测试目标（不能再用 rustc-link-arg，否则
+    // 与 tauri-build 的 bins 链接重复 → CVTRES CVT1100 资源重复）。
     if let Ok(out_dir) = std::env::var("OUT_DIR") {
         let lib = std::path::Path::new(&out_dir).join("resource.lib");
         if lib.exists() {
-            println!("cargo:rustc-link-arg={}", lib.display());
+            println!("cargo:rustc-link-arg-tests={}", lib.display());
         }
     }
 }

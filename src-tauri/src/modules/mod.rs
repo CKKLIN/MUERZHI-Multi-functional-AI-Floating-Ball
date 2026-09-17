@@ -4,6 +4,7 @@
 pub mod agent;
 pub mod autostart;
 pub mod commands;
+pub mod cooling;
 pub mod i18n;
 pub mod settings;
 pub mod todo;
