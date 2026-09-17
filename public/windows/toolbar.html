@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<!-- 录制工具条 — 移植自 region-selector.ts 的工具条 data:URL
+     状态机经 applyToolbarState(state, elapsed) 由 Rust eval 推送：
+     idle / recording / paused 三态切换按钮可见性；
+     按钮点击统一 emit('toolbar-action', <action>) 由 Rust 转发主窗口。 -->
+<html>
+<head>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;user-select:none}
+html,body{width:100%;height:100%;overflow:hidden;background:transparent}
+body{display:flex;flex-direction:column}
+.toolbar{
+  height:44px;display:flex;align-items:center;gap:6px;padding:0 12px;
+  background:rgba(28,30,40,0.94);color:#fff;
+  font-family:'Segoe UI',system-ui,sans-serif;font-size:12px;
+  border-radius:8px;
+}
+body[data-pos="top"] .toolbar{border-radius:0 0 8px 8px}
+body[data-pos="bottom"] .toolbar{border-radius:8px 8px 0 0}
+body[data-pos="inside"] .toolbar{border-radius:8px}
+body[data-pos="inside"].minimal .toolbar{width:170px;padding:0 6px;gap:4px}
+.tip-strip{height:28px;flex:0 0 auto;pointer-events:none}
+.btn{
+  min-width:34px;height:34px;border:none;border-radius:8px;background:transparent;
+  color:#dfe3ea;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  font-size:13px;transition:background .15s ease;
+}
+.btn:hover{background:rgba(255,255,255,0.14)}
+.btn.rec{background:#e94560}
+.btn.rec:hover{background:#ff5b78}
+.timer{font:13px Consolas,monospace;min-width:48px;text-align:center;color:#fff}
+.size-label{font:12px Consolas,monospace;color:#9aa2b8}
+.meter{display:flex;gap:2px;align-items:flex-end;height:16px}
+.meter-bar{width:3px;height:5px;background:rgba(255,255,255,0.25);border-radius:1px;transition:height .08s,background .08s}
+.meter-bar.on{height:14px;background:#4ecdc4}
+.meter-bar.warn{background:#ffd93d}
+.meter-bar.hot{background:#e94560}
+[hidden]{display:none !important}
+</style>
+</head>
+<body data-pos="top">
+<div class="toolbar" id="toolbar">
+  <button class="btn" id="micBtn" title="麦克风">🎙</button>
+  <div class="meter" id="micMeter"></div>
+  <button class="btn" id="camBtn" title="摄像头">📷</button>
+  <span class="timer" id="timer">00:00</span>
+  <span class="size-label" id="sizeLabel"></span>
+  <button class="btn rec" id="startBtn" title="开始录制">●</button>
+  <button class="btn" id="stopBtn" title="停止录制" hidden>■</button>
+  <button class="btn" id="pauseBtn" title="暂停" hidden>⏸</button>
+  <button class="btn" id="resumeBtn" title="继续" hidden>▶</button>
+  <button class="btn" id="closeBtn" title="关闭">✕</button>
+</div>
+<div class="tip-strip"></div>
+<script>
+const { emit } = window.__TAURI__
+
+// ===== 音频电平条（8 根，20Hz 由 Rust updateAudioLevels 推送）=====
+const METER_BARS = 8
+const meterEl = document.getElementById('micMeter')
+const bars = []
+for (let i = 0; i < METER_BARS; i++) {
+  const bar = document.createElement('div')
+  bar.className = 'meter-bar'
+  meterEl.appendChild(bar)
+  bars.push(bar)
+}
+
+let state = 'idle'
+let elapsed = 0
+let timerInterval = null
+
+function formatTime(sec) {
+  const m = Math.floor(sec / 60)
+  const s = sec % 60
+  return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0')
+}
+
+function renderTimer() {
+  document.getElementById('timer').textContent = formatTime(elapsed)
+}
+
+function setButtons(s) {
+  const visible = {
+    startBtn: s === 'idle',
+    stopBtn: s !== 'idle',
+    pauseBtn: s === 'recording',
+    resumeBtn: s === 'paused',
+  }
+  for (const [id, show] of Object.entries(visible)) {
+    const el = document.getElementById(id)
+    if (el) el.hidden = !show
+  }
+}
+
+function startTicking() {
+  if (timerInterval) return
+  timerInterval = setInterval(() => { elapsed++; renderTimer() }, 1000)
+}
+function stopTicking() {
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null }
+}
+
+/** Rust 侧状态推送入口（对齐 setFloatingIslandState/updateToolbarState 语义）
+ *  idle 重置计时；recording 续跑；paused 冻结 */
+function applyToolbarState(s, seconds) {
+  state = s
+  if (typeof seconds === 'number') elapsed = seconds
+  if (s === 'recording') {
+    renderTimer()
+    startTicking()
+  } else if (s === 'paused') {
+    renderTimer()
+    stopTicking()
+  } else {
+    elapsed = 0
+    renderTimer()
+    stopTicking()
+  }
+  setButtons(s)
+  // inside 态（贴区域内部）切迷你布局；停止/暂停中且 inside 才收窄（对齐 TS minimal 条件）
+  const inside = document.body.dataset.pos === 'inside'
+  document.body.classList.toggle('minimal', inside && (s === 'recording' || s === 'paused'))
+}
+window.applyToolbarState = applyToolbarState
+
+/** 音频电平：level 0..1，-1 = 未启用 */
+window.updateMeter = function (micLevel) {
+  const active = micLevel <= 0 ? 0 : Math.round(micLevel * METER_BARS)
+  bars.forEach((bar, i) => {
+    bar.classList.toggle('on', i < active)
+    bar.classList.toggle('warn', i >= 5 && i < active)
+    bar.classList.toggle('hot', i >= 6 && i < active)
+  })
+}
+
+// ===== 按钮接线：统一 emit toolbar-action，由 Rust 转发主窗口 =====
+const actions = {
+  micBtn: 'toggle-mic',
+  camBtn: 'toggle-camera',
+  startBtn: 'start',
+  stopBtn: 'stop',
+  pauseBtn: 'pause',
+  resumeBtn: 'resume',
+  closeBtn: 'close',
+}
+for (const [id, action] of Object.entries(actions)) {
+  document.getElementById(id)?.addEventListener('click', () => emit('toolbar-action', action))
+}
+
+applyToolbarState('idle', 0)
+</script>
+</body>
+</html>

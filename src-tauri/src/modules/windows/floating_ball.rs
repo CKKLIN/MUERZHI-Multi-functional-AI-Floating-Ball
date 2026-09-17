@@ -455,11 +455,8 @@ pub fn show_ball(app: &AppHandle) {
     drop(pos);
 
     let settings = BallSettings::load(app);
-    let url = if cfg!(dev) {
-        WebviewUrl::External("http://localhost:21047/windows/floating-ball.html".parse().expect("valid url"))
-    } else {
-        WebviewUrl::App("windows/floating-ball.html".into())
-    };
+    // WebviewUrl::App 在 dev 下自动映射到 devUrl，打包态指向 dist（External 运行时创建会导航失败）
+    let url = WebviewUrl::App("windows/floating-ball.html".into());
     match WebviewWindowBuilder::new(app, "floating-ball", url)
         .title("MUERZHI")
         .inner_size(BALL_SIZE, BALL_SIZE)
@@ -514,7 +511,7 @@ pub fn ball_center_for_overlay(app: &AppHandle) -> Option<(i32, i32)> {
 // ===== tauri command（bridge.ts / floating-ball.html 经 invoke/emit 调用）=====
 
 #[tauri::command]
-pub fn show_floating_ball(app: AppHandle) {
+pub async fn show_floating_ball(app: AppHandle) { // async 原因：同步命令内建窗会死锁主线程（见 region.rs）
     show_ball(&app);
 }
 

@@ -78,37 +78,10 @@ pub fn close_window(window: tauri::Window, app: tauri::AppHandle) {
 
 // ===== 区域选择/悬浮岛/摄像头（P2 迁移）=====
 #[tauri::command]
-pub fn show_region_border() {}
-
-#[tauri::command]
-pub fn hide_region_border() {}
-
-#[tauri::command]
-pub fn hide_border_only() {}
-
-#[tauri::command]
-pub fn show_floating_island() {}
-
-#[tauri::command]
-pub fn hide_floating_island() {}
-
-#[tauri::command]
 pub fn show_ai_island() {}
 
 #[tauri::command]
 pub fn hide_ai_island() {}
-
-#[tauri::command]
-pub fn hide_camera_preview() {}
-
-#[tauri::command]
-pub fn toggle_camera_preview(_show: bool) {}
-
-#[tauri::command]
-pub fn set_island_state(_state: String) {}
-
-#[tauri::command]
-pub fn update_toolbar_state(_state: String) {}
 
 #[tauri::command]
 pub fn update_audio_levels(_micLevel: f64, _sysLevel: f64) {}

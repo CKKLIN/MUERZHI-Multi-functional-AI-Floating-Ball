@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<!-- 摄像头预览 — Tauri 版（移植自 electron/camera-preview.html）
+     变更：ipcRenderer 的 camera-control → window.__TAURI__ event listen；
+     拖拽事件 camera-drag-start/end → invoke（Rust 侧 16ms 轮询跟随，对齐 TS 实现）-->
+<html><head><style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden}
+.preview{
+  width:100%;height:100%;
+  border-radius:8px;
+  overflow:hidden;
+  box-shadow:0 4px 16px rgba(0,0,0,0.4);
+  background:#000;
+  cursor:grab;
+  -webkit-user-select:none;
+  user-select:none;
+}
+.preview.dragging{cursor:grabbing}
+.preview video{
+  width:100%;height:100%;
+  object-fit:cover;
+  display:block;
+  transform:scaleX(-1);
+  pointer-events:none;
+}
+</style></head><body>
+<div class="preview" id="preview"><video id="cam" autoplay muted playsinline></video></div>
+<script>
+const { invoke, listen } = window.__TAURI__
+
+const params = new URLSearchParams(window.location.search)
+const deviceId = params.get('deviceId') || ''
+let cameraStream = null
+
+async function startCamera() {
+  if (cameraStream) return
+  try {
+    const constraints = { video: { width: 320, height: 240 } }
+    if (deviceId) constraints.video.deviceId = { exact: deviceId }
+    cameraStream = await navigator.mediaDevices.getUserMedia(constraints)
+    document.getElementById('cam').srcObject = cameraStream
+  } catch (err) {
+    console.error('Camera preview failed:', err)
+  }
+}
+
+function stopCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop())
+    cameraStream = null
+  }
+}
+// Rust eval 入口（hide_camera_preview 时先停流再关窗，防硬件会话泄漏）
+window.startCamera = startCamera
+window.stopCamera = stopCamera
+
+// Rust 侧 camera-control 事件（start/stop）
+listen('camera-control', (ev) => {
+  if (ev.payload === 'stop') stopCamera()
+  else if (ev.payload === 'start') startCamera()
+})
+
+const preview = document.getElementById('preview')
+
+document.addEventListener('mousedown', (e) => {
+  preview.classList.add('dragging')
+  invoke('camera_drag_start')
+  e.preventDefault()
+})
+
+document.addEventListener('mouseup', () => {
+  preview.classList.remove('dragging')
+  invoke('camera_drag_end')
+})
+
+startCamera()
+</script>
+</body></html>

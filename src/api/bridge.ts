@@ -202,15 +202,33 @@ const electronAPI = {
     return cmd<string>('take_screenshot')
   },
 
-  // ===== Region selector（P2 窗口体系迁移）=====
+  // ===== Region selector（P2 已实装：windows/region.rs + public/windows/*.html）=====
+  // 选区走事件驱动：start_region_select 起全屏窗，用户在 region-selector.html 画框后
+  // invoke('region_selected'/'region_cancelled')，渲染层经 on('region-selected') 收结果。
   selectRegion: () => {
-    w('selectRegion')
-    return cmd<null>('select_region')
+    tauriInvoke('start_region_select')
+    return new Promise<null>((resolve) => {
+      let unlisten: (() => void) | null = null
+      const finish = (result: null) => {
+        unlisten?.()
+        resolve(result)
+      }
+      on('region-selected', (payload) => {
+        const r = payload as { x: number; y: number; width: number; height: number }
+        finish(null)
+        void r
+      })
+      on('region-cancelled', () => finish(null))
+      // 返回退订句柄给调用方的是 resolve 后的清理（上面 finish 已处理）
+      void unlisten
+    })
   },
-  showRegionBorder: (_region: { x: number; y: number; width: number; height: number }, _audioState?: { micEnabled: boolean; sysEnabled: boolean; cameraEnabled?: boolean; cameraDeviceId?: string }) => cmd<void>('show_region_border'),
+  showRegionBorder: (region: { x: number; y: number; width: number; height: number }, audioState?: { micEnabled: boolean; sysEnabled: boolean; cameraEnabled?: boolean; cameraDeviceId?: string }) =>
+    cmd<void>('show_region_border', { region, audioState }),
   hideRegionBorder: () => cmd<void>('hide_region_border'),
   hideBorderOnly: () => cmd<void>('hide_border_only'),
-  showFloatingIsland: (_audioState?: { micEnabled: boolean; sysEnabled: boolean; cameraEnabled?: boolean; cameraDeviceId?: string }, _targetDisplayId?: number) => cmd<void>('show_floating_island'),
+  showFloatingIsland: (audioState?: { micEnabled: boolean; sysEnabled: boolean; cameraEnabled?: boolean; cameraDeviceId?: string }, targetDisplayId?: number) =>
+    cmd<void>('show_floating_island', { audioState, targetDisplayId }),
   hideFloatingIsland: () => cmd<void>('hide_floating_island'),
   showAiIsland: () => cmd<void>('show_ai_island'),
   hideAiIsland: () => cmd<void>('hide_ai_island'),
@@ -222,7 +240,7 @@ const electronAPI = {
   updateToolbarState: (state: 'idle' | 'recording' | 'paused', elapsedSeconds?: number) => cmd<void>('update_toolbar_state', { state, elapsedSeconds }),
   updateAudioLevels: (micLevel: number, sysLevel: number) => { tauriInvoke('update_audio_levels', { micLevel, sysLevel }) },
   onToolbarAction: (callback: (action: string) => void) =>
-    on('on-toolbar-action', callback),
+    on('toolbar-action', callback),
 
   // ===== Media devices =====
   getMediaDevices: () => {

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<!-- 录制悬浮岛 — 移植自 region-selector.ts 的 showFloatingIsland（340×72 顶居中胶囊）
+     recording 时 500ms 轮询光标在岛内 → show，离开 → 500ms 后 hide（Rust 侧实现）。
+     状态经 applyIslandState(state, elapsed)；按钮 emit island-action。 -->
+<html>
+<head>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;user-select:none}
+html,body{width:100%;height:100%;overflow:hidden;background:transparent}
+body{display:flex;flex-direction:column;align-items:center}
+.island{
+  height:44px;display:flex;align-items:center;gap:8px;padding:0 16px;
+  background:rgba(24,26,34,0.95);color:#fff;border-radius:22px;
+  font-family:'Segoe UI',system-ui,sans-serif;font-size:12px;
+  box-shadow:0 4px 16px rgba(0,0,0,0.35);
+  transition:opacity .25s ease,transform .25s ease;
+}
+body.hidden-island .island{opacity:0;transform:translateY(-8px)}
+.tip-strip{height:28px;flex:0 0 auto;pointer-events:none}
+.rec-dot{
+  width:6px;height:6px;border-radius:50%;background:#e94560;flex:0 0 auto;
+}
+body.recording .rec-dot{animation:dotPulse 1s ease-in-out infinite}
+@keyframes dotPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.75)}}
+.timer{font:13px Consolas,monospace;min-width:48px;text-align:center}
+.btn{
+  min-width:32px;height:32px;border:none;border-radius:16px;background:transparent;
+  color:#dfe3ea;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  font-size:13px;transition:background .15s ease;
+}
+.btn:hover{background:rgba(255,255,255,0.14)}
+.btn.rec{background:#e94560}
+.btn.rec:hover{background:#ff5b78}
+.meter{display:flex;gap:2px;align-items:flex-end;height:16px}
+.meter-bar{width:3px;height:5px;background:rgba(255,255,255,0.25);border-radius:1px;transition:height .08s,background .08s}
+.meter-bar.on{height:14px;background:#4ecdc4}
+.meter-bar.warn{background:#ffd93d}
+.meter-bar.hot{background:#e94560}
+[hidden]{display:none !important}
+</style>
+</head>
+<body>
+<div class="island" id="island">
+  <span class="rec-dot"></span>
+  <span class="timer" id="timer">00:00</span>
+  <button class="btn" id="micBtn" title="麦克风">🎙</button>
+  <div class="meter" id="micMeter"></div>
+  <button class="btn" id="camBtn" title="摄像头">📷</button>
+  <button class="btn" id="startBtn" title="开始">●</button>
+  <button class="btn" id="stopBtn" title="停止" hidden>■</button>
+  <button class="btn" id="pauseBtn" title="暂停" hidden>⏸</button>
+  <button class="btn" id="resumeBtn" title="继续" hidden>▶</button>
+  <button class="btn" id="closeBtn" title="关闭">✕</button>
+</div>
+<div class="tip-strip"></div>
+<script>
+const { emit } = window.__TAURI__
+
+const METER_BARS = 8
+const meterEl = document.getElementById('micMeter')
+const bars = []
+for (let i = 0; i < METER_BARS; i++) {
+  const bar = document.createElement('div')
+  bar.className = 'meter-bar'
+  meterEl.appendChild(bar)
+  bars.push(bar)
+}
+
+let state = 'idle'
+let elapsed = 0
+let timerInterval = null
+
+function formatTime(sec) {
+  const m = Math.floor(sec / 60)
+  const s = sec % 60
+  return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0')
+}
+function renderTimer() { document.getElementById('timer').textContent = formatTime(elapsed) }
+function setButtons(s) {
+  document.getElementById('startBtn').hidden = s !== 'idle'
+  document.getElementById('stopBtn').hidden = s === 'idle'
+  document.getElementById('pauseBtn').hidden = s !== 'recording'
+  document.getElementById('resumeBtn').hidden = s !== 'paused'
+}
+function startTicking() {
+  if (timerInterval) return
+  timerInterval = setInterval(() => { elapsed++; renderTimer() }, 1000)
+}
+function stopTicking() { if (timerInterval) { clearInterval(timerInterval); timerInterval = null } }
+
+/** Rust 推送入口：state = idle|recording|paused|show|hide（show/hide 仅控显隐） */
+function applyIslandState(s, seconds) {
+  if (s === 'show') { document.body.classList.remove('hidden-island'); return }
+  if (s === 'hide') { document.body.classList.add('hidden-island'); return }
+  state = s
+  if (typeof seconds === 'number') elapsed = seconds
+  document.body.classList.toggle('recording', s === 'recording')
+  if (s === 'recording') { renderTimer(); startTicking() }
+  else if (s === 'paused') { renderTimer(); stopTicking() }
+  else { elapsed = 0; renderTimer(); stopTicking() }
+  setButtons(s)
+}
+window.applyIslandState = applyIslandState
+
+window.updateMeter = function (level) {
+  const active = level <= 0 ? 0 : Math.round(level * METER_BARS)
+  bars.forEach((bar, i) => {
+    bar.classList.toggle('on', i < active)
+    bar.classList.toggle('warn', i >= 5 && i < active)
+    bar.classList.toggle('hot', i >= 6 && i < active)
+  })
+}
+
+const actions = {
+  micBtn: 'toggle-mic',
+  camBtn: 'toggle-camera',
+  startBtn: 'start',
+  stopBtn: 'stop',
+  pauseBtn: 'pause',
+  resumeBtn: 'resume',
+  closeBtn: 'close',
+}
+for (const [id, action] of Object.entries(actions)) {
+  document.getElementById(id)?.addEventListener('click', () => emit('island-action', action))
+}
+
+applyIslandState('idle', 0)
+</script>
+</body>
+</html>

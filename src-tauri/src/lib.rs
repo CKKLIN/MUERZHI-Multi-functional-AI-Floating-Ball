@@ -81,17 +81,22 @@ pub fn run() {
             modules::commands::stubs::show_window,
             modules::commands::stubs::maximize_window,
             modules::commands::stubs::close_window,
-            modules::commands::stubs::show_region_border,
-            modules::commands::stubs::hide_region_border,
-            modules::commands::stubs::hide_border_only,
-            modules::commands::stubs::show_floating_island,
-            modules::commands::stubs::hide_floating_island,
+            modules::windows::region::show_region_border,
+            modules::windows::region::hide_region_border,
+            modules::windows::region::hide_border_only,
+            modules::windows::region::show_floating_island,
+            modules::windows::region::hide_floating_island,
             modules::commands::stubs::show_ai_island,
             modules::commands::stubs::hide_ai_island,
-            modules::commands::stubs::hide_camera_preview,
-            modules::commands::stubs::toggle_camera_preview,
-            modules::commands::stubs::set_island_state,
-            modules::commands::stubs::update_toolbar_state,
+            modules::windows::region::hide_camera_preview,
+            modules::windows::region::toggle_camera_preview,
+            modules::windows::region::set_island_state,
+            modules::windows::region::update_toolbar_state,
+            modules::windows::region::start_region_select,
+            modules::windows::region::region_selected,
+            modules::windows::region::region_cancelled,
+            modules::windows::region::camera_drag_start,
+            modules::windows::region::camera_drag_end,
             modules::commands::stubs::update_audio_levels,
             // 悬浮球（P2 实装）
             modules::windows::floating_ball::show_floating_ball,
@@ -154,6 +159,9 @@ pub fn run() {
 
             // 悬浮球动作转发（对齐 floating-ball-action → clawd-show-* 窗口）
             setup_ball_events(app.handle());
+
+            // 录制工具条/悬浮岛事件（close → 关边框；其余动作由 event 广播到主窗口）
+            setup_region_events(app.handle());
 
             Ok(())
         })
@@ -250,6 +258,28 @@ fn setup_ball_events(app: &tauri::AppHandle) {
         // P3 todo 模块接入后由 todo-badge 推送真实计数；P2 先推 0（隐藏徽标）
         if let Some(win) = app_owned2.get_webview_window("floating-ball") {
             let _ = win.eval("if(window.updateBadge) updateBadge(0,false,false)");
+        }
+    });
+}
+
+
+/// 工具条/悬浮岛事件：close → 关对应窗口（对齐 region-selector.ts 的 close 分支）
+fn setup_region_events(app: &tauri::AppHandle) {
+    use tauri::Listener;
+
+    let app_owned = app.clone();
+    app.listen("toolbar-action".to_string(), move |event| {
+        let action = event.payload().trim().trim_matches('"').to_string();
+        if action == "close" {
+            modules::windows::region::hide_region_border(app_owned.clone());
+        }
+    });
+
+    let app_owned2 = app.clone();
+    app.listen("island-action".to_string(), move |event| {
+        let action = event.payload().trim().trim_matches('"').to_string();
+        if action == "close" {
+            modules::windows::region::hide_floating_island(app_owned2.clone());
         }
     });
 }

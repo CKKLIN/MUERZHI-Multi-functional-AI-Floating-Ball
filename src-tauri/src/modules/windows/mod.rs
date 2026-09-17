@@ -1,5 +1,6 @@
 // 窗口体系模块索引：P1 主/AI/设置/关于；P2 悬浮球 + 后续（区域选择/AI岛/便签/提醒/散热面板）
 pub mod floating_ball;
+pub mod region;
 
 // 内部共享符号（命令经 generate_handler 的完整路径 modules::windows::floating_ball::xxx 注册）
 #[allow(unused_imports)]

@@ -1,0 +1,78 @@
+// 区域选择窗口 — Tauri 版（移植自 electron/region-selector.html）
+// 变更点：
+// 1) require('electron') 的 ipcRenderer/desktopCapturer/screen → window.__TAURI__.core.invoke
+// 2) 屏幕底图：Tauri 无 desktopCapturer —— 全屏窗直接看穿桌面（Electron 版用缩略图铺底，
+//    这里保留 canvas 占位，P4 capture 阶段接 WGC 截图后在此绘制）
+// 3) region-selected/region-cancelled → invoke('region_selected' / 'region_cancelled')
+// 4) sourceId 由录制管线在 P4 决定（此处传空串，Rust 侧 Option<String> 接收）
+
+const { invoke } = window.__TAURI__
+
+let startX = 0
+let startY = 0
+let dragging = false
+
+const rectEl = document.getElementById('rect')
+const sizeEl = document.getElementById('size')
+const hintEl = document.getElementById('hint')
+const bgCanvas = document.getElementById('bg')
+
+function initCanvasSize() {
+  const w = window.innerWidth
+  const h = window.innerHeight
+  bgCanvas.width = w
+  bgCanvas.height = h
+  bgCanvas.style.width = w + 'px'
+  bgCanvas.style.height = h + 'px'
+  // canvas 留空即透明（P4 在此绘制 WGC 桌面截图底图）
+}
+initCanvasSize()
+window.addEventListener('resize', initCanvasSize)
+
+document.addEventListener('mousedown', (e) => {
+  startX = e.screenX
+  startY = e.screenY
+  dragging = true
+  hintEl.style.display = 'none'
+})
+
+document.addEventListener('mousemove', (e) => {
+  if (!dragging) return
+  const x = Math.min(startX, e.screenX)
+  const y = Math.min(startY, e.screenY)
+  const w = Math.abs(e.screenX - startX)
+  const h = Math.abs(e.screenY - startY)
+
+  rectEl.style.left = x + 'px'
+  rectEl.style.top = y + 'px'
+  rectEl.style.width = w + 'px'
+  rectEl.style.height = h + 'px'
+  rectEl.style.display = 'block'
+
+  sizeEl.textContent = Math.round(w) + ' × ' + Math.round(h)
+  sizeEl.style.left = (x + w / 2 - 30) + 'px'
+  sizeEl.style.top = (y + h + 8) + 'px'
+  sizeEl.style.display = 'block'
+})
+
+document.addEventListener('mouseup', (e) => {
+  if (!dragging) return
+  dragging = false
+
+  const x = Math.min(startX, e.screenX)
+  const y = Math.min(startY, e.screenY)
+  const w = Math.abs(e.screenX - startX)
+  const h = Math.abs(e.screenY - startY)
+
+  if (w > 10 && h > 10) {
+    invoke('region_selected', { x, y, width: w, height: h, sourceId: '' })
+  } else {
+    invoke('region_cancelled')
+  }
+})
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    invoke('region_cancelled')
+  }
+})
