@@ -8,6 +8,7 @@ import { loadItems, loadTodoSettings, updateTodoSettings } from './todo-store'
 import { getLogoDataUrl } from './logo'
 import { stripHtml } from './todo-text'
 import { t } from './i18n'
+import { TOOLTIP_CSS } from './tooltip-css'
 
 const BOARD_W = 208
 const BOARD_H = 120
@@ -81,12 +82,12 @@ html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-fam
 .dots{display:flex;gap:4px;align-items:center}
 .dot{width:4px;height:4px;border-radius:999px;background:#d5d7e0;cursor:pointer;transition:width .2s ease,background .2s ease}
 .dot.on{width:14px;background:#4e5cd4}
-</style></head><body><div class="board" id="board">
+</style><style>${TOOLTIP_CSS}</style></head><body><div class="board" id="board">
   <div class="bar">
     <img class="logo" src="${logo}">
     <div class="brand">MUERZHI</div>
     <div class="counter" id="counter"></div>
-    <button class="close" title="${t('todo.unpin')}" onclick="act('unpin')">✕</button>
+    <button class="close" data-tip="${t('todo.unpin')}" data-tip-pos="below" onclick="act('unpin')">✕</button>
   </div>
   <div class="note" id="note" onclick="act('open')">
     <div class="accent" id="accent"></div>

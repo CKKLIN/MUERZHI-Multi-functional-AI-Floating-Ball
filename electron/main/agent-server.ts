@@ -136,6 +136,24 @@ export function createAgentServer(stateMachine: ReturnType<typeof createAgentSta
     } catch { /* 客户端已断开，丢弃写回 */ }
   }
 
+  // 钩子客户端断开兜底：该卡挂起的 /permission 连接已死（hook 进程被杀/崩溃、CLI 退出、
+  // 1860s 客户端超时后 abort——原生界面赢下竞速后旧版 CLI 只"丢弃"hook 结果并不总是立刻断开），
+  // 决策已无处投递 → 把仍在队列里的卡撤掉，避免幽灵卡（悬浮岛挂着一张永远等不到主的卡）。
+  // 卡正常处理（悬浮岛作答/超时/外部完成事件）时已先出队，close 只是响应收尾的正常回调，
+  // indexOf === -1 直接跳过；因此天然幂等，与 PermissionDenied 事件路径互不冲突。
+  function dropCardOnDisconnect(res: http.ServerResponse, item: CardItem, sessionId: string) {
+    res.once("close", () => {
+      const idx = cardQueue.indexOf(item)
+      if (idx === -1) return
+      cardQueue.splice(idx, 1)
+      clearTimeout(headTimer!)
+      headTimer = null
+      startHeadTimer()
+      notifyCard()
+      log.info(`[AgentServer] /permission client gone, card dropped: session=${sessionId}, tool=${item.toolName}`)
+    })
+  }
+
   // === 队列核心 ===
 
   function headCard(): CardItem | null {
@@ -201,20 +219,22 @@ export function createAgentServer(stateMachine: ReturnType<typeof createAgentSta
     notifyCard()
   }
 
-  // 用户已在 Claude Code 原生界面处理某权限：移出对应的权限卡并 reject（回 cancel）。
-  // reject 触发其挂起的 /permission 连接的 .catch → 回 cancel 给 Claude，让挂起的 HTTP 请求不再悬挂。
+  // 用户已在 Claude Code 原生界面处理某张卡：移出对应卡片并 reject（权限→回 cancel，提问→回 deny）。
+  // reject 触发其挂起的 /permission 连接的 .catch → 回包给 Claude，让挂起的 HTTP 请求不再悬挂。
   // 匹配决策（哪张卡、tool_use_id 精确 or 内容签名回退、FIFO 取最先）抽到纯模块 permission-match.ts，
   // 便于纯 Node 单测——这里只做「找到就移除 + reject + 广播」的队列副作用。
+  // 典型来源：原生界面点"允许"后的 PostToolUse(AskUserQuestion)/PostToolUse(Failure)，
+  // 以及原生 Esc 取消提问/权限点"否"后的 PermissionDenied（被拒工具不执行，唯一即时信号）。
   function resolvePermissionByCompletion(sessionId: string, data: any) {
     const idx = findPermissionToResolve(cardQueue, sessionId, data)
     if (idx === -1) return
-    const [card] = cardQueue.splice(idx, 1) as [PermissionCard]
-    card.reject("resolved-in-cli") // 触发 perm.catch → 回 cancel
+    const [card] = cardQueue.splice(idx, 1) as [PermissionCard | QuestionCard]
+    card.reject("resolved-in-cli") // 触发各自 catch → 回 cancel / deny
     clearTimeout(headTimer!)
     headTimer = null
     startHeadTimer()
     notifyCard()
-    log.info(`[AgentServer] permission resolved externally (CLI): session=${sessionId}, tool=${card.toolName}`)
+    log.info(`[AgentServer] card resolved externally (CLI): session=${sessionId}, tool=${card.toolName}`)
   }
 
   // 会话结束：该 session 不可能再执行新工具，整清它全部待审批权限卡并 reject（回 cancel），避免连接悬挂。
@@ -341,6 +361,7 @@ export function createAgentServer(stateMachine: ReturnType<typeof createAgentSta
     })
 
     cardQueue.push(item)
+    dropCardOnDisconnect(res, item, sessionId)
     if (cardQueue.length === 1) startHeadTimer()
     notifyCard()
     log.info(`[AgentServer] /permission queued: session=${sessionId}, queue=${cardQueue.length}`)
@@ -400,6 +421,7 @@ export function createAgentServer(stateMachine: ReturnType<typeof createAgentSta
     })
 
     cardQueue.push(item)
+    dropCardOnDisconnect(res, item, sessionId)
     if (cardQueue.length === 1) startHeadTimer()
     notifyCard()
     log.info(`[AgentServer] AskUserQuestion (answerable) queued: session=${sessionId}, queue=${cardQueue.length}`)
@@ -540,9 +562,9 @@ export function createAgentServer(stateMachine: ReturnType<typeof createAgentSta
   }
 
   function stop() {
-    // 退出时把所有排队中的权限发给 Claude cancel，清空队列
+    // 退出时把所有排队中的权限发 cancel、可作答提问发 deny（干净关闭各自挂起的 /permission 连接），清空队列
     for (const c of cardQueue) {
-      if (c.kind === "permission") c.reject("stopped")
+      if (c.kind === "permission" || (c.kind === "question" && c.answerable)) c.reject("stopped")
     }
     cardQueue = []
     clearTimeout(headTimer!)

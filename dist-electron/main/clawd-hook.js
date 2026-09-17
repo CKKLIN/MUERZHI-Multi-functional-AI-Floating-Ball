@@ -80,6 +80,9 @@ const EVENT_TO_STATE = {
   StopFailure: "error",
   ApiError: "error",
   Notification: "notification",
+  // 原生界面拒绝/取消工具（含 Esc 关闭 AskUserQuestion）：拒绝后模型通常继续回话，
+  // 回合未结束，故回 working 而非 idle（否则岛会闪一下"空闲"再被下一个 PreToolUse 拉回）
+  PermissionDenied: "working",
   PermissionRequest: "notification",
 };
 

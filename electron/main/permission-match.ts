@@ -1,12 +1,17 @@
 // electron/main/permission-match.ts
-// 权限审批「外部完成自动关闭」的纯匹配逻辑（不 import Electron / electron-log，可在纯 Node 单测——
+// 审批/提问卡「外部完成自动关闭」的纯匹配逻辑（不 import Electron / electron-log，可在纯 Node 单测——
 // 与 hw-encoder / conversion-registry 同一测试范式，见 test-permission-match.mjs）。
 //
 // 协作对象是 agent-server.ts：当收到 PostToolUse / PostToolUseFailure / PermissionDenied 完成事件时，
-// 在会话内的待审权限卡里找出「用户已在 Claude Code 原生界面处理」的那张（返回其队列下标），
-// 由 agent-server 负责 reject(回 cancel)、移出队列、广播 UI。
+// 在会话内的待审卡片里找出「用户已在 Claude Code 原生界面处理」的那张（返回其队列下标），
+// 由 agent-server 负责 reject（权限→回 cancel、提问→回 deny）、移出队列、广播 UI。
 //
-// 为什么匹配而非简单整清：同一会话可按 FIFO 排队多张权限卡，按 session 整清会误关用户还没处理的另一张。
+// 卡片匹配对 permission 与 question 两类一视同仁：PermissionDenied(AskUserQuestion) 是
+// "用户在原生界面 Esc 取消提问"的唯一即时信号（被拒的工具不执行、无 PostToolUse，提问卡
+// 只能靠它立即关闭，否则挂到队首超时/Stop）；PermissionDenied(Bash 等) 则对应权限卡。
+// 同 session 的权限卡与提问卡工具名天然不同（AskUserQuestion vs 其他），混在一列也不会串。
+//
+// 为什么匹配而非简单整清：同一会话可按 FIFO 排队多张卡，按 session 整清会误关用户还没处理的另一张。
 // 真实 PermissionRequest 是 HTTP hook，body 不带 tool_use_id（见 claude-code-permissionrequest-spec），
 // 所以 tool_use_id 通常为 null，需退而用「同 session + 同工具名 + 同入参内容签名」判定为同一工具调用。
 
@@ -59,7 +64,9 @@ export function findPermissionToResolve(cards: PendingCardLike[], sessionId: str
   let nameOnlyCount = 0
   for (let i = 0; i < cards.length; i++) {
     const c = cards[i]
-    if (c.kind !== "permission") continue
+    // permission 与 question 卡都参与匹配（见文件头注释：PermissionDenied(AskUserQuestion)
+    // 是原生取消提问的唯一即时信号；两类卡按工具名天然可分，不会串）
+    if (c.kind !== "permission" && c.kind !== "question") continue
     if (c.sessionId !== sessionId) continue
     if (toolUseId && c.toolUseId && c.toolUseId === toolUseId) return i
     if (name != null && c.toolName === name) {

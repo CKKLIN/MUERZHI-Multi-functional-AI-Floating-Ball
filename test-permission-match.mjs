@@ -73,10 +73,18 @@ function evt(session, toolName, toolInput, toolUseId = null) {
   eq(findPermissionToResolve(cards, 's1', evt('s1', 'Bash', { command: 'a' }, 'tu-real')), 0, '卡片无 ID、事件带 ID → 内容回退命中')
 }
 
-// === 提问卡不参与匹配 ===
+// === 提问卡参与匹配（原生 Esc 取消提问 → PermissionDenied(AskUserQuestion)，唯一即时关闭信号）===
 {
-  const cards = [perm('s1', 'AskUserQuestion', { questions: [] }, null, 'question'), perm('s1', 'Bash', { command: 'a' })]
-  eq(findPermissionToResolve(cards, 's1', evt('s1', 'Bash', { command: 'a' })), 1, '跳过提问卡，命中其后权限卡')
+  const cards = [perm('s1', 'AskUserQuestion', { questions: [{ q: '部署到哪?' }] }, null, 'question')]
+  eq(findPermissionToResolve(cards, 's1', evt('s1', 'AskUserQuestion', { questions: [{ q: '部署到哪?' }] })), 0, 'PermissionDenied 内容签名命中提问卡')
+}
+{
+  const cards = [perm('s1', 'AskUserQuestion', { questions: [{ q: 'A' }] }, null, 'question'), perm('s1', 'Bash', { command: 'a' })]
+  eq(findPermissionToResolve(cards, 's1', evt('s1', 'Bash', { command: 'a' })), 1, '权限事件仍命中权限卡（两类卡按工具名天然可分，不串）')
+}
+{
+  const cards = [perm('s1', 'Bash', { command: 'a' }), perm('s1', 'AskUserQuestion', { questions: [{ q: 'A' }] }, null, 'question')]
+  eq(findPermissionToResolve(cards, 's1', evt('s1', 'AskUserQuestion', { questions: [{ q: 'B' }] })), 1, '提问卡入参漂移 + 唯一同名 → 惰性对账按名命中')
 }
 
 // === FIFO：同会话重复相同调用，取最先入队者 ===

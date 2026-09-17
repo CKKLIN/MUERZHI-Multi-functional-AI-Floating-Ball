@@ -5,7 +5,6 @@ import { registerIpcHandlers } from './ipc-handlers'
 import { setMainWindow, hideRegionBorder, hideFloatingIsland, hideCameraPreview } from './region-selector'
 import { registerGlobalShortcuts, unregisterGlobalShortcuts } from './global-shortcuts'
 import { createTray, destroyTray } from './tray'
-import { reportIP, retryPending } from './ip-reporter'
 import { hideFloatingBall, showFloatingBallIfVisible, getBallSettings } from './floating-ball'
 import { createAgentBridge, type AgentBridge } from './agent-bridge'
 import { hideAiIsland } from './ai-island'
@@ -49,7 +48,6 @@ let mainWindow: BrowserWindow | null = null
 let aiWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
 let agentBridge: AgentBridge | null = null
-let retryPendingTimer: NodeJS.Timeout | null = null
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 
 function getIcon() {
@@ -154,7 +152,6 @@ app.whenReady().then(() => {
   createTray()
   registerGlobalShortcuts(mainWindow!)
   showFloatingBallIfVisible()
-  reportIP()
   // 待办便签：启动提醒调度；并给悬浮球补推一次气泡计数（DOM 就绪后由 badge-ready 再补推）
   registerTodoBadgeHandlers()
   startTodoScheduler()
@@ -203,7 +200,6 @@ app.whenReady().then(() => {
     showTodoWindow()
   })
 
-  retryPendingTimer = setInterval(retryPending, 30_000)
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow(preloadPath)
@@ -244,10 +240,6 @@ app.on('before-quit', () => {
   closeAllStickyNotes()
   unregisterGlobalShortcuts()
   destroyTray()
-  if (retryPendingTimer) {
-    clearInterval(retryPendingTimer)
-    retryPendingTimer = null
-  }
   mainWindow = null
   aiWindow = null
   settingsWindow = null

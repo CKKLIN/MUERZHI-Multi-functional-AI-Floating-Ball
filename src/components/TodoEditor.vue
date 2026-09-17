@@ -243,7 +243,7 @@ defineExpose({ save })
 
     <!-- 次要信息（类型/优先级/提醒）收进“更多选项”，默认不抢占主次 -->
     <div class="meta">
-      <button class="meta-toggle" :title="showMore ? t('todo.collapseOptions') : t('todo.moreTitle')"
+      <button class="meta-toggle" v-tip="showMore ? t('todo.collapseOptions') : t('todo.moreTitle')"
         @click="showMore = !showMore"><span class="dot">⋯</span> {{ showMore ? t('todo.collapseOptions') : t('todo.moreOptions') }}</button>
       <div class="meta-body" v-if="showMore">
         <label class="field">
@@ -266,10 +266,10 @@ defineExpose({ save })
           <label ref="reminderFieldEl" class="field reminder">
             <span>{{ t('todo.reminder') }}</span>
             <input type="datetime-local" v-model="reminderLocal" @click="openPicker" />
-            <button class="pick-btn" :title="t('todo.reminder')" @click="openPicker">
+            <button class="pick-btn" v-tip="t('todo.reminder')" @click="openPicker">
               <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4"/><path d="M16 3v4"/><path d="M3 10h18"/></svg>
             </button>
-            <button class="clear-sm" v-if="reminderLocal" @click.stop="reminderLocal = ''" :title="t('todo.clearReminder')">✕</button>
+            <button class="clear-sm" v-if="reminderLocal" @click.stop="reminderLocal = ''" v-tip="t('todo.clearReminder')">✕</button>
           </label>
           <!-- 自绘日期时间弹层：固定定位于视口（openPicker 按字段位置夹取），backdrop 点击外部关闭 -->
           <div v-if="pickerOpen" class="dt-backdrop" @click="pickerOpen = false"></div>

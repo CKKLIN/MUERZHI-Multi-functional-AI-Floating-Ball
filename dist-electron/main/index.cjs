@@ -45,7 +45,7 @@ let node_util = require("node:util");
 let node_stream = require("node:stream");
 //#region node_modules/electron-log/src/node/packageJson.js
 var require_packageJson = /* @__PURE__ */ __commonJSMin(((exports, module) => {
-	var fs$6 = require("fs");
+	var fs$5 = require("fs");
 	var path$7 = require("path");
 	module.exports = {
 		findAndReadPackageJson,
@@ -69,7 +69,7 @@ var require_packageJson = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		try {
 			const fileName = findUp("package.json", path$7.join(...searchPaths));
 			if (!fileName) return;
-			const json = JSON.parse(fs$6.readFileSync(fileName, "utf8"));
+			const json = JSON.parse(fs$5.readFileSync(fileName, "utf8"));
 			const name = json?.productName || json?.name;
 			if (!name || name.toLowerCase() === "electron") return;
 			if (name) return {
@@ -92,7 +92,7 @@ var require_packageJson = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 			const parsedPath = path$7.parse(currentPath);
 			const root = parsedPath.root;
 			const dir = parsedPath.dir;
-			if (fs$6.existsSync(path$7.join(currentPath, fileName))) return path$7.resolve(path$7.join(currentPath, fileName));
+			if (fs$5.existsSync(path$7.join(currentPath, fileName))) return path$7.resolve(path$7.join(currentPath, fileName));
 			if (currentPath === root) return null;
 			currentPath = dir;
 		}
@@ -470,7 +470,7 @@ var require_electron_log_preload = /* @__PURE__ */ __commonJSMin(((exports, modu
 //#endregion
 //#region node_modules/electron-log/src/main/initialize.js
 var require_initialize = /* @__PURE__ */ __commonJSMin(((exports, module) => {
-	var fs$5 = require("fs");
+	var fs$4 = require("fs");
 	var os$4 = require("os");
 	var path$4 = require("path");
 	var preloadInitializeFn = require_electron_log_preload();
@@ -505,7 +505,7 @@ var require_initialize = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		try {
 			preloadPath = path$4.resolve(__dirname, "../renderer/electron-log-preload.js");
 		} catch {}
-		if (!preloadPath || !fs$5.existsSync(preloadPath)) {
+		if (!preloadPath || !fs$4.existsSync(preloadPath)) {
 			preloadPath = path$4.join(externalApi.getAppUserDataPath() || os$4.tmpdir(), "electron-log-preload.js");
 			const preloadCode = `
       try {
@@ -514,7 +514,7 @@ var require_initialize = /* @__PURE__ */ __commonJSMin(((exports, module) => {
         console.error(e);
       }
     `;
-			fs$5.writeFileSync(preloadPath, preloadCode, "utf8");
+			fs$4.writeFileSync(preloadPath, preloadCode, "utf8");
 		}
 		externalApi.setPreloadFileForSessions({
 			filePath: preloadPath,
@@ -1363,7 +1363,7 @@ var require_console = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 //#region node_modules/electron-log/src/node/transports/file/File.js
 var require_File = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	var EventEmitter$1 = require("events");
-	var fs$4 = require("fs");
+	var fs$3 = require("fs");
 	var os$3 = require("os");
 	var File = class extends EventEmitter$1 {
 		asyncWriteQueue = [];
@@ -1388,7 +1388,7 @@ var require_File = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		}
 		clear() {
 			try {
-				fs$4.writeFileSync(this.path, "", {
+				fs$3.writeFileSync(this.path, "", {
 					mode: this.writeOptions.mode,
 					flag: "w"
 				});
@@ -1411,7 +1411,7 @@ var require_File = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		}
 		getSize() {
 			if (this.initialSize === void 0) try {
-				const stats = fs$4.statSync(this.path);
+				const stats = fs$3.statSync(this.path);
 				this.initialSize = stats.size;
 			} catch (e) {
 				this.initialSize = 0;
@@ -1430,7 +1430,7 @@ var require_File = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 			const text = this.asyncWriteQueue.join("");
 			this.asyncWriteQueue = [];
 			this.hasActiveAsyncWriting = true;
-			fs$4.writeFile(this.path, text, this.writeOptions, (e) => {
+			fs$3.writeFile(this.path, text, this.writeOptions, (e) => {
 				file.hasActiveAsyncWriting = false;
 				if (e) file.emit("error", /* @__PURE__ */ new Error(`Couldn't write to ${file.path}. ${e.message}`), this);
 				else file.increaseBytesWrittenCounter(text);
@@ -1452,7 +1452,7 @@ var require_File = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 				return;
 			}
 			try {
-				fs$4.writeFileSync(this.path, text, this.writeOptions);
+				fs$3.writeFileSync(this.path, text, this.writeOptions);
 				this.increaseBytesWrittenCounter(text);
 			} catch (e) {
 				this.emit("error", /* @__PURE__ */ new Error(`Couldn't write to ${this.path}. ${e.message}`), this);
@@ -1462,12 +1462,12 @@ var require_File = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = File;
 	function readFileSyncFromEnd(filePath, bytesCount) {
 		const buffer = Buffer.alloc(bytesCount);
-		const stats = fs$4.statSync(filePath);
+		const stats = fs$3.statSync(filePath);
 		const readLength = Math.min(stats.size, bytesCount);
 		const offset = Math.max(0, stats.size - bytesCount);
-		const fd = fs$4.openSync(filePath, "r");
-		const totalBytes = fs$4.readSync(fd, buffer, 0, readLength, offset);
-		fs$4.closeSync(fd);
+		const fd = fs$3.openSync(filePath, "r");
+		const totalBytes = fs$3.readSync(fd, buffer, 0, readLength, offset);
+		fs$3.closeSync(fd);
 		return buffer.toString("utf8", 0, totalBytes);
 	}
 }));
@@ -1492,7 +1492,7 @@ var require_NullFile = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 //#region node_modules/electron-log/src/node/transports/file/FileRegistry.js
 var require_FileRegistry = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	var EventEmitter = require("events");
-	var fs$3 = require("fs");
+	var fs$2 = require("fs");
 	var path$3 = require("path");
 	var File = require_File();
 	var NullFile = require_NullFile();
@@ -1559,8 +1559,8 @@ var require_FileRegistry = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		* @private
 		*/
 		testFileWriting({ filePath, writeOptions }) {
-			fs$3.mkdirSync(path$3.dirname(filePath), { recursive: true });
-			fs$3.writeFileSync(filePath, "", {
+			fs$2.mkdirSync(path$3.dirname(filePath), { recursive: true });
+			fs$2.writeFileSync(filePath, "", {
 				flag: "a",
 				mode: writeOptions.mode
 			});
@@ -1571,7 +1571,7 @@ var require_FileRegistry = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 //#endregion
 //#region node_modules/electron-log/src/node/transports/file/index.js
 var require_file = /* @__PURE__ */ __commonJSMin(((exports, module) => {
-	var fs$2 = require("fs");
+	var fs$1 = require("fs");
 	var os$2 = require("os");
 	var path$2 = require("path");
 	var FileRegistry = require_FileRegistry();
@@ -1611,7 +1611,7 @@ var require_file = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 				const oldPath = file.toString();
 				const inf = path$2.parse(oldPath);
 				try {
-					fs$2.renameSync(oldPath, path$2.join(inf.dir, `${inf.name}.old${inf.ext}`));
+					fs$1.renameSync(oldPath, path$2.join(inf.dir, `${inf.name}.old${inf.ext}`));
 				} catch (e) {
 					logConsole("Could not rotate log", e);
 					const quarterOfMaxSize = Math.round(transport.maxSize / 4);
@@ -1679,12 +1679,12 @@ var require_file = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		function readAllLogs({ fileFilter = (f) => f.endsWith(".log") } = {}) {
 			initializeOnFirstAccess();
 			const logsPath = path$2.dirname(transport.resolvePathFn(pathVariables));
-			if (!fs$2.existsSync(logsPath)) return [];
-			return fs$2.readdirSync(logsPath).map((fileName) => path$2.join(logsPath, fileName)).filter(fileFilter).map((logPath) => {
+			if (!fs$1.existsSync(logsPath)) return [];
+			return fs$1.readdirSync(logsPath).map((fileName) => path$2.join(logsPath, fileName)).filter(fileFilter).map((logPath) => {
 				try {
 					return {
 						path: logPath,
-						lines: fs$2.readFileSync(logPath, "utf8").split(os$2.EOL)
+						lines: fs$1.readFileSync(logPath, "utf8").split(os$2.EOL)
 					};
 				} catch {
 					return null;
@@ -2665,8 +2665,8 @@ var init_i18n = __esmMin((() => {
 		"todo.done": "完成",
 		"todo.undone": "恢复",
 		"todo.delete": "删除",
-		"todo.pin": "置顶",
-		"todo.unpin": "取消置顶",
+		"todo.pin": "贴屏",
+		"todo.unpin": "取消贴屏",
 		"todo.edit": "编辑",
 		"todo.save": "保存",
 		"todo.cancel": "取消",
@@ -2958,7 +2958,7 @@ var init_i18n = __esmMin((() => {
 		"todo.done": "Done",
 		"todo.undone": "Restore",
 		"todo.delete": "Delete",
-		"todo.pin": "Pin",
+		"todo.pin": "Pin to screen",
 		"todo.unpin": "Unpin",
 		"todo.edit": "Edit",
 		"todo.save": "Save",
@@ -3063,11 +3063,70 @@ var init_i18n = __esmMin((() => {
 	currentLocale = "zh";
 }));
 //#endregion
+//#region electron/main/tooltip-css.ts
+var TOOLTIP_CSS;
+var init_tooltip_css = __esmMin((() => {
+	TOOLTIP_CSS = `
+[data-tip]{position:relative}
+[data-tip]::after{
+  content:attr(data-tip);
+  position:absolute;bottom:calc(100% + 7px);left:50%;
+  transform:translateX(-50%) translateY(3px);
+  padding:5px 10px;border-radius:8px;
+  background:rgba(29,29,31,0.94);color:#fff;
+  font-size:12px;line-height:1.5;font-family:'Segoe UI',system-ui,sans-serif;
+  white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.25);
+  opacity:0;pointer-events:none;z-index:9999;
+  transition:opacity .12s ease 0s,transform .12s ease 0s;
+}
+/* 箭头：border-top 上色 = 尖朝下的三角，底边贴住气泡下缘、尖端指向锚点 */
+[data-tip]::before{
+  content:'';position:absolute;bottom:calc(100% + 2px);left:50%;
+  transform:translateX(-50%);
+  border:5px solid transparent;border-top-color:rgba(29,29,31,0.94);
+  opacity:0;pointer-events:none;z-index:9999;
+  transition:opacity .12s ease 0s;
+}
+/* 延迟写在 hover 态：CSS 过渡参数取目标态的值——移入用 .35s 延迟防扫过频闪，移出立即消失 */
+[data-tip]:hover::after{opacity:1;transform:translateX(-50%) translateY(0);transition-delay:.35s}
+[data-tip]:hover::before{opacity:1;transition-delay:.35s}
+[data-tip-pos="below"]::after{bottom:auto;top:calc(100% + 7px);transform:translateX(-50%) translateY(-3px)}
+[data-tip-pos="below"]::before{bottom:auto;top:calc(100% + 2px);border-top-color:transparent;border-bottom-color:rgba(29,29,31,0.94)}
+[data-tip-pos="below"]:hover::after{transform:translateX(-50%) translateY(0)}
+`;
+}));
+//#endregion
 //#region electron/main/region-selector.ts
 var require_region_selector = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	init_logger();
 	init_i18n();
+	init_tooltip_css();
 	var mainWindow = null;
+	/** 内容矩形光标穿透轮询（仿 ai-island 的几何判定，不依赖事件转发）。
+	*  工具条/悬浮岛窗口底部留了 TIP_STRIP 气泡带、宽度上原有 +20 透明缓冲，这些透明区若不穿透
+	*  会拦截录制区域内/下方应用的点击。改为每 120ms 轮询全局光标：光标在 contentRect 内 → 可交互，
+	*  否则 → setIgnoreMouseEvents(true,{forward:true}) 穿透。forward 让穿透时仍能收到 mousemove，
+	*  移回内容即恢复。contentRect 由调用方按窗口实时 getBounds 计算，天然跟随窗口变化。 */
+	function startCursorPassThrough(win, contentRect) {
+		let ignored = false;
+		const poll = () => {
+			if (!win || win.isDestroyed()) return;
+			const r = contentRect();
+			const cp = electron.screen.getCursorScreenPoint();
+			const inside = cp.x >= r.x && cp.x <= r.x + r.width && cp.y >= r.y && cp.y <= r.y + r.height;
+			if (inside === ignored) {
+				ignored = !inside;
+				try {
+					win.setIgnoreMouseEvents(ignored, { forward: true });
+				} catch (e) {
+					logger_default.warn("Cursor pass-through setIgnoreMouseEvents failed:", e?.message ?? e);
+				}
+			}
+		};
+		poll();
+		const timer = setInterval(poll, 120);
+		win.once("closed", () => clearInterval(timer));
+	}
 	/** 录制悬浮岛/工具栏内联 HTML 的 i18n 词条（label/title）。JS 内联部分在脚本头部注入 I18N JSON。 */
 	function recorderI18n() {
 		return {
@@ -3260,11 +3319,12 @@ var require_region_selector = /* @__PURE__ */ __commonJSMin(((exports, module) =
 		const bounds = display.bounds;
 		islandTargetBounds = bounds;
 		const islandW = 340;
+		const islandH = 72;
 		floatingIsland = new electron.BrowserWindow({
 			x: Math.round(bounds.x + (bounds.width - islandW) / 2),
 			y: bounds.y + 4,
 			width: islandW,
-			height: 44,
+			height: islandH,
 			frame: false,
 			transparent: true,
 			resizable: true,
@@ -3278,14 +3338,23 @@ var require_region_selector = /* @__PURE__ */ __commonJSMin(((exports, module) =
 			}
 		});
 		floatingIsland.setVisibleOnAllWorkspaces(true);
-		floatingIsland.setMinimumSize(100, 44);
+		floatingIsland.setMinimumSize(100, islandH);
 		floatingIsland.setAlwaysOnTop(true, "screen-saver");
+		startCursorPassThrough(floatingIsland, () => {
+			const b = floatingIsland.getBounds();
+			return {
+				x: b.x,
+				y: b.y,
+				width: Math.max(0, b.width - 20),
+				height: Math.max(0, b.height - 28)
+			};
+		});
 		const html = `<!DOCTYPE html>
 <html><head><style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif}
 .island{
-  width:fit-content;height:100%;
+  width:fit-content;height:44px;
   background:rgba(20,20,40,0.96);
   border-radius:22px;
   display:flex;align-items:center;justify-content:center;gap:8px;
@@ -3353,12 +3422,12 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
 .perm-btn.deny:hover{background:rgba(233,69,96,0.3);color:#e94560}
 .perm-btn.always{background:rgba(78,205,196,0.15);color:#4ecdc4;border:1px solid rgba(78,205,196,0.3)}
 .perm-btn.always:hover{background:rgba(78,205,196,0.25)}
-</style></head><body>
+</style><style>${TOOLTIP_CSS}</style></head><body>
 <div class="island" id="island">
   <span class="recording-dot" id="dot" style="display:none"></span>
   <span class="timer" id="timer">00:00</span>
   <div class="btn-group">
-    <button id="micBtn" title="${t("record.toggleMic")}" onclick="doToggleMic()">
+    <button id="micBtn" data-tip="${t("record.toggleMic")}" data-tip-pos="below" onclick="doToggleMic()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
     </button>
     <div class="meter-group" id="micMeter"></div>
@@ -3370,7 +3439,7 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
     <div class="meter-group" id="sysMeter"></div>
   </div> -->
   <div class="btn-group">
-    <button id="camBtn" title="${t("record.toggleCamera")}" onclick="doToggleCam()">
+    <button id="camBtn" data-tip="${t("record.toggleCamera")}" data-tip-pos="below" onclick="doToggleCam()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
     </button>
   </div>
@@ -3379,21 +3448,21 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-seri
     <svg width="10" height="10" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="currentColor"/></svg>
     <span>${t("record.recBtn")}</span>
   </button>
-  <button class="stop-btn" id="stopBtn" style="display:none" onclick="doStop()" title="${t("record.stop")}">
+  <button class="stop-btn" id="stopBtn" style="display:none" onclick="doStop()" data-tip="${t("record.stop")}" data-tip-pos="below">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
   </button>
-  <button class="pause-btn" id="pauseBtn" style="display:none" onclick="doPause()" title="${t("record.pause")}">
+  <button class="pause-btn" id="pauseBtn" style="display:none" onclick="doPause()" data-tip="${t("record.pause")}" data-tip-pos="below">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
   </button>
-  <button id="resumeBtn" style="display:none" onclick="doResume()" title="${t("record.resume")}">
+  <button id="resumeBtn" style="display:none" onclick="doResume()" data-tip="${t("record.resume")}" data-tip-pos="below">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
   </button>
-  <button class="close-btn" onclick="doClose()" title="${t("common.cancel")}">
+  <button class="close-btn" onclick="doClose()" data-tip="${t("common.cancel")}" data-tip-pos="below">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
   </button>
 </div>
 <div class="sep" id="aiSep" style="display:none"></div>
-<div class="ai-indicator" id="aiIndicator" style="display:none" onclick="showAiDetail()" title="${t("aiIsland.viewDetail")}">
+<div class="ai-indicator" id="aiIndicator" style="display:none" onclick="showAiDetail()" data-tip="${t("aiIsland.viewDetail")}" data-tip-pos="below">
   <span class="ai-dot idle" id="aiDot"></span>
   <span class="ai-label" id="aiLabel">${t("aiIsland.idle")}</span>
 </div>
@@ -3604,7 +3673,7 @@ function showAiDetail(){}
 			x: tbX,
 			y: tbY,
 			width: tbW,
-			height: TOOLBAR_HEIGHT,
+			height: TOOLBAR_HEIGHT + 28,
 			frame: false,
 			transparent: true,
 			resizable: false,
@@ -3619,6 +3688,15 @@ function showAiDetail(){}
 		});
 		toolbarWindow.setVisibleOnAllWorkspaces(true);
 		toolbarWindow.setAlwaysOnTop(true, "screen-saver");
+		startCursorPassThrough(toolbarWindow, () => {
+			const b = toolbarWindow.getBounds();
+			return {
+				x: b.x,
+				y: b.y,
+				width: b.width,
+				height: Math.max(0, b.height - 28)
+			};
+		});
 		const toolbarHtml = `<!DOCTYPE html>
 <html><head><style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -3666,11 +3744,11 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Segoe UI',system-u
 .toolbar[data-pos="inside"]{border-radius:8px}
 .toolbar.minimal{width:fit-content;height:40px!important;border-radius:22px;background:rgba(20,20,40,0.96);border:1px solid rgba(255,255,255,0.08);padding:0 10px}
 .toolbar.minimal .audio-toggle,.toolbar.minimal .meter-group,.toolbar.minimal .sep,.toolbar.minimal .size-label,.toolbar.minimal .close-btn{display:none!important}
-</style></head><body>
+</style><style>${TOOLTIP_CSS}</style></head><body>
 <div class="toolbar" id="toolbar" data-pos="${tbPos}">
   <span class="recording-dot" id="dot"></span>
   <span class="timer" id="timer">00:00</span>
-  <button class="audio-toggle" id="micBtn" title="${t("record.toggleMic")}" onclick="doToggleMic()">
+  <button class="audio-toggle" id="micBtn" data-tip="${t("record.toggleMic")}" data-tip-pos="below" onclick="doToggleMic()">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
   </button>
   <div class="meter-group" id="micMeter"></div>
@@ -3678,25 +3756,25 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Segoe UI',system-u
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
   </button>
   <div class="meter-group" id="sysMeter"></div> -->
-  <button class="audio-toggle" id="camBtn" title="${t("record.toggleCamera")}" onclick="doToggleCam()">
+  <button class="audio-toggle" id="camBtn" data-tip="${t("record.toggleCamera")}" data-tip-pos="below" onclick="doToggleCam()">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
   </button>
   <div class="sep"></div>
-  <button class="rec" id="startBtn" onclick="doStart()" title="${t("record.start")}">
+  <button class="rec" id="startBtn" onclick="doStart()" data-tip="${t("record.start")}" data-tip-pos="below">
     <svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="currentColor"/></svg>
     <span>${t("record.recBtn")}</span>
   </button>
-  <button class="stop-btn" id="stopBtn" style="display:none" onclick="doStop()" title="${t("record.stop")}">
+  <button class="stop-btn" id="stopBtn" style="display:none" onclick="doStop()" data-tip="${t("record.stop")}" data-tip-pos="below">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
   </button>
-  <button class="pause-btn" id="pauseBtn" style="display:none" onclick="doPause()" title="${t("record.pause")}">
+  <button class="pause-btn" id="pauseBtn" style="display:none" onclick="doPause()" data-tip="${t("record.pause")}" data-tip-pos="below">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
   </button>
-  <button id="resumeBtn" style="display:none" onclick="doResume()" title="${t("record.resume")}">
+  <button id="resumeBtn" style="display:none" onclick="doResume()" data-tip="${t("record.resume")}" data-tip-pos="below">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
   </button>
   <span class="size-label" id="sizeLabel">${region.width}×${region.height}</span>
-  <button class="close-btn" onclick="doClose()" title="${t("record.closeAndStop")}">
+  <button class="close-btn" onclick="doClose()" data-tip="${t("record.closeAndStop")}" data-tip-pos="below">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
   </button>
 </div>
@@ -3925,12 +4003,12 @@ html,body{width:100%;height:100%;overflow:hidden}
 				const bounds = islandTargetBounds || electron.screen.getPrimaryDisplay().bounds;
 				const totalW = contentWidth + 20;
 				const newX = Math.round(bounds.x + (bounds.width - totalW) / 2);
-				const h = Number.isFinite(contentHeight) ? contentHeight : 44;
+				const h = typeof contentHeight === "number" && Number.isFinite(contentHeight) ? contentHeight : 44;
 				floatingIsland.setBounds({
 					x: newX,
 					y: bounds.y + 4,
 					width: totalW,
-					height: h
+					height: h + 28
 				});
 			}
 		});
@@ -3976,6 +4054,7 @@ function getLogoDataUrl(size = 32) {
 //#region electron/main/ai-island.ts
 init_logger();
 init_i18n();
+init_tooltip_css();
 var aiIsland = null;
 /** AI 岛拖动的基准（绝对增量 + setBounds，仿悬浮球）；用户拖过后锁定位置不再被 resize 拉回 */
 var aiDragOrigin = null;
@@ -4197,10 +4276,10 @@ body.flat .island-row{height:12px;padding:0 16px;gap:5px}
 body.flat .ai-dot{width:5px;height:5px}
 body.flat .ai-label{font-size:8.5px;letter-spacing:0.5px;color:rgba(255,255,255,0.55)}
 body.flat .ai-label.active{color:#fff}
-</style></head><body${flat ? " class=\"flat\"" : ""}>
+</style><style>${TOOLTIP_CSS}</style></head><body${flat ? " class=\"flat\"" : ""}>
 <div class="island" id="island">
   <div class="island-row" id="islandRow">
-    <div class="ai-indicator" id="aiIndicator" onclick="showAiDetail()" title="${t("aiIsland.viewDetail")}">
+    <div class="ai-indicator" id="aiIndicator" onclick="showAiDetail()" data-tip="${t("aiIsland.viewDetail")}" data-tip-pos="below">
       <span class="ai-dot idle" id="aiDot"></span>
       <span class="ai-label" id="aiLabel">${t("aiIsland.idle")}</span>
     </div>
@@ -4231,7 +4310,7 @@ body.flat .ai-label.active{color:#fff}
       <span class="question-banner-dot"></span>
       <span class="question-banner-text">${t("aiIsland.questionTitle")}</span>
       <span class="question-progress" id="questionProgress"></span>
-      <span class="question-close" id="questionClose" onclick="closeQuestion()" title="${t("common.close")}">✕</span>
+      <span class="question-close" id="questionClose" onclick="closeQuestion()" data-tip="${t("common.close")}" data-tip-pos="below">✕</span>
     </div>
     <div class="question-body" id="questionBody"></div>
     <div class="question-actions">
@@ -4593,7 +4672,7 @@ function registerAiIslandHandlers() {
 				x: newX,
 				y: b.y,
 				width: contentWidth,
-				height: h
+				height: h + 28
 			});
 			updateAiIslandContentScreen(newX, b.y, contentWidth, h);
 		} else if (aiIslandUserMoved) {
@@ -4603,7 +4682,7 @@ function registerAiIslandHandlers() {
 				x,
 				y,
 				width: totalW,
-				height: h
+				height: h + 28
 			});
 			updateAiIslandContentScreen(x, y, contentWidth, h);
 		} else {
@@ -4615,7 +4694,7 @@ function registerAiIslandHandlers() {
 				x: newX,
 				y: newY,
 				width: totalW,
-				height: h
+				height: h + 28
 			});
 			updateAiIslandContentScreen(newX, newY, contentWidth, h);
 		}
@@ -5872,6 +5951,9 @@ function showFloatingBall() {
 	});
 	floatingBallWindow.setVisibleOnAllWorkspaces(true);
 	floatingBallWindow.setAlwaysOnTop(getBallSettings().alwaysOnTop, "screen-saver");
+	ballMouseIgnored = true;
+	floatingBallWindow.setIgnoreMouseEvents(true, { forward: true });
+	startBallMousePolling();
 	const html = buildFloatingBallHtml();
 	floatingBallWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
 	floatingBallWindow.once("ready-to-show", () => {
@@ -5882,6 +5964,7 @@ function showFloatingBall() {
 	const self = floatingBallWindow;
 	floatingBallWindow.on("closed", () => {
 		if (floatingBallWindow === self) floatingBallWindow = null;
+		stopBallMousePolling();
 	});
 	floatingBallWindow.on("move", () => {
 		if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
@@ -5911,6 +5994,7 @@ function hideFloatingBall() {
 			y: Math.round(wy + wh / 2 - BALL_SIZE / 2)
 		};
 		saveBallPosition(ballPos);
+		stopBallMousePolling();
 		const win = floatingBallWindow;
 		floatingBallWindow = null;
 		win.destroy();
@@ -6767,6 +6851,73 @@ function clearSnapVisualOnly() {
 	}
 	if (snappedSide) sendSnapVisual(null);
 }
+var ballMouseIgnored = true;
+var ballMousePollTimer = null;
+/** 可交互半径余量：展开(240 窗)=花瓣外缘 r2=75 +3px；收起(66 窗)=中央 56px 圆半径 28 +2px。
+*  余量宁可略大：光标贴着形状边缘快速点击时，宁可让窗口多接 1-2px 的点击也别穿透露掉。 */
+var PASS_R_EXPANDED = 78;
+var PASS_R_BALL = 30;
+function pollBallPassThrough() {
+	if (!floatingBallWindow || floatingBallWindow.isDestroyed()) return;
+	if (dragOrigin) {
+		if (ballMouseIgnored) {
+			ballMouseIgnored = false;
+			floatingBallWindow.setIgnoreMouseEvents(false);
+		}
+		return;
+	}
+	const [wx, wy] = floatingBallWindow.getPosition();
+	const [ww, wh] = floatingBallWindow.getSize();
+	const cp = electron.screen.getCursorScreenPoint();
+	let inside;
+	if (ww >= RING_SIZE) {
+		const dx = cp.x - (wx + ww / 2);
+		const dy = cp.y - (wy + wh / 2);
+		inside = dx * dx + dy * dy <= PASS_R_EXPANDED * PASS_R_EXPANDED;
+	} else if (snappedSide) {
+		const S = 2;
+		let x0 = 0, y0 = 0, x1 = BALL_SIZE, y1 = BALL_SIZE;
+		if (snappedSide === "left") {
+			x1 = 44 + S;
+			y0 = 4 - S;
+			y1 = 62 + S;
+		} else if (snappedSide === "right") {
+			x0 = 22 - S;
+			y0 = 4 - S;
+			y1 = 62 + S;
+		} else if (snappedSide === "top") {
+			x0 = 4 - S;
+			x1 = 62 + S;
+			y1 = 44 + S;
+		} else {
+			x0 = 4 - S;
+			x1 = 62 + S;
+			y0 = 22 - S;
+		}
+		const lx = cp.x - wx;
+		const ly = cp.y - wy;
+		inside = lx >= x0 && lx <= x1 && ly >= y0 && ly <= y1;
+	} else {
+		const dx = cp.x - (wx + ww / 2);
+		const dy = cp.y - (wy + wh / 2);
+		inside = dx * dx + dy * dy <= PASS_R_BALL * PASS_R_BALL;
+	}
+	const ignore = !inside;
+	if (ignore !== ballMouseIgnored) {
+		ballMouseIgnored = ignore;
+		floatingBallWindow.setIgnoreMouseEvents(ignore, { forward: true });
+	}
+}
+function startBallMousePolling() {
+	stopBallMousePolling();
+	ballMousePollTimer = setInterval(pollBallPassThrough, 100);
+}
+function stopBallMousePolling() {
+	if (ballMousePollTimer) {
+		clearInterval(ballMousePollTimer);
+		ballMousePollTimer = null;
+	}
+}
 function registerFloatingBallHandlers() {
 	electron.ipcMain.handle("show-floating-ball", () => {
 		showFloatingBall();
@@ -7340,6 +7491,7 @@ function broadcastTodoUpdate(items) {
 //#region electron/main/todo-reminder-window.ts
 init_logger();
 init_i18n();
+init_tooltip_css();
 var reminderWindow = null;
 function buildReminderHtml(title, body) {
 	const logo = getLogoDataUrl(32);
@@ -7371,12 +7523,12 @@ html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-fam
 .foot{margin-top:auto;display:flex;justify-content:flex-end;padding-top:8px}
 .open{border:none;border-radius:8px;background:#4e5cd4;color:#fff;font-size:11px;font-weight:600;padding:5px 12px;cursor:pointer}
 .open:hover{background:#404db9}
-</style></head><body><div class="card">
+</style><style>${TOOLTIP_CSS}</style></head><body><div class="card">
   <div class="bar">
     <div class="brand">${logo ? `<img class="logo" src="${logo}">` : "<div class=\"logo\">MU</div>"}<div class="brand-txt">MUERZHI</div></div>
     <div class="bar-right">
       <div class="ring">${t("todo.reminderRing")}</div>
-      <button class="close" title="${t("common.close")}" onclick="ipc.send('todo-reminder-close')">✕</button>
+      <button class="close" data-tip="${t("common.close")}" data-tip-pos="below" onclick="ipc.send('todo-reminder-close')">✕</button>
     </div>
   </div>
   <div class="body">
@@ -7459,6 +7611,7 @@ function stripHtml(html) {
 //#endregion
 //#region electron/main/todo-sticky.ts
 init_i18n();
+init_tooltip_css();
 var BOARD_W = 208;
 var BOARD_H = 120;
 var boardWindow = null;
@@ -7528,12 +7681,12 @@ html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-fam
 .dots{display:flex;gap:4px;align-items:center}
 .dot{width:4px;height:4px;border-radius:999px;background:#d5d7e0;cursor:pointer;transition:width .2s ease,background .2s ease}
 .dot.on{width:14px;background:#4e5cd4}
-</style></head><body><div class="board" id="board">
+</style><style>${TOOLTIP_CSS}</style></head><body><div class="board" id="board">
   <div class="bar">
     <img class="logo" src="${logo}">
     <div class="brand">MUERZHI</div>
     <div class="counter" id="counter"></div>
-    <button class="close" title="${t("todo.unpin")}" onclick="act('unpin')">✕</button>
+    <button class="close" data-tip="${t("todo.unpin")}" data-tip-pos="below" onclick="act('unpin')">✕</button>
   </div>
   <div class="note" id="note" onclick="act('open')">
     <div class="accent" id="accent"></div>
@@ -8168,166 +8321,6 @@ function unregisterGlobalShortcuts() {
 	electron.globalShortcut.unregisterAll();
 }
 //#endregion
-//#region electron/main/ip-reporter.ts
-init_logger();
-var REPORT_URL = "http://8.163.43.7:3000/report-ip";
-function getPendingPath() {
-	return (0, node_path.join)(electron.app.getPath("userData"), "pending-reports.json");
-}
-function savePending(payload) {
-	let pending = [];
-	try {
-		if (node_fs.default.existsSync(getPendingPath())) pending = JSON.parse(node_fs.default.readFileSync(getPendingPath(), "utf-8"));
-	} catch {}
-	pending.push(payload);
-	node_fs.default.writeFileSync(getPendingPath(), JSON.stringify(pending, null, 2), "utf-8");
-	logger_default.info("Saved offline report to local, total pending:", pending.length);
-}
-function loadPending() {
-	try {
-		if (node_fs.default.existsSync(getPendingPath())) return JSON.parse(node_fs.default.readFileSync(getPendingPath(), "utf-8"));
-	} catch {}
-	return [];
-}
-function clearPending() {
-	try {
-		node_fs.default.unlinkSync(getPendingPath());
-	} catch {}
-}
-async function uploadOne(payload) {
-	try {
-		await fetch(REPORT_URL, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(payload)
-		});
-		return true;
-	} catch {
-		return false;
-	}
-}
-async function flushPending() {
-	const pending = loadPending();
-	if (pending.length === 0) return true;
-	const failed = [];
-	for (const record of pending) if (await uploadOne(record)) logger_default.info("Flushed pending report:", record["公网IP"], record["上报时间"]);
-	else failed.push(record);
-	if (failed.length === 0) {
-		clearPending();
-		logger_default.info("All pending reports flushed");
-		return true;
-	}
-	node_fs.default.writeFileSync(getPendingPath(), JSON.stringify(failed, null, 2), "utf-8");
-	return false;
-}
-async function getIPInfo() {
-	const apis = [
-		async () => {
-			const d = (await fetch("https://qifu.baidu.com/opus/api/ip/local", { headers: { "Referer": "https://www.baidu.com" } }).then((r) => r.json()))?.data;
-			if (!d?.ip) throw new Error("empty");
-			return {
-				"公网IP": d.ip,
-				"国家": d.country || "",
-				"省份": d.province || "",
-				"城市": d.city || "",
-				"区县": d.district || d.area || "",
-				"详细地址": [
-					d.country,
-					d.province,
-					d.city,
-					d.district || d.area
-				].filter(Boolean).join(""),
-				"运营商": d.isp || ""
-			};
-		},
-		async () => {
-			const r = await fetch("http://whois.pconline.com.cn/ipJson.jsp").then((r) => r.arrayBuffer());
-			const text = new TextDecoder("gbk").decode(r);
-			const data = JSON.parse(text);
-			if (!data.ip) throw new Error("empty");
-			return {
-				"公网IP": data.ip,
-				"国家": "中国",
-				"省份": data.pro || "",
-				"城市": data.city || "",
-				"区县": data.region || "",
-				"详细地址": data.addr || "",
-				"运营商": data.addr?.split(" ")?.[1] || ""
-			};
-		},
-		async () => {
-			const r = await fetch("http://ip-api.com/json/?lang=zh-CN").then((r) => r.json());
-			if (!r.query) throw new Error("empty");
-			return {
-				"公网IP": r.query,
-				"国家": r.country,
-				"省份": r.regionName,
-				"城市": r.city,
-				"区县": "",
-				"详细地址": `${r.country}${r.regionName}${r.city}`,
-				"运营商": r.isp,
-				"纬度": String(r.lat ?? ""),
-				"经度": String(r.lon ?? "")
-			};
-		}
-	];
-	for (const api of apis) try {
-		return await api();
-	} catch {
-		continue;
-	}
-	return {
-		"公网IP": "",
-		"国家": "",
-		"省份": "",
-		"城市": "",
-		"区县": "",
-		"详细地址": "",
-		"运营商": ""
-	};
-}
-function getLocalIP() {
-	const nets = (0, node_os.networkInterfaces)();
-	for (const name of Object.keys(nets)) for (const net of nets[name]) if (net.family === "IPv4" && !net.internal) return net.address;
-	return "127.0.0.1";
-}
-async function reportIP() {
-	const localIP = getLocalIP();
-	const payload = {
-		"电脑名": (0, node_os.hostname)(),
-		"局域网IP": localIP,
-		"上报时间": (/* @__PURE__ */ new Date()).toISOString()
-	};
-	let ipInfo;
-	try {
-		ipInfo = await getIPInfo();
-	} catch {
-		ipInfo = {
-			"公网IP": "",
-			"国家": "",
-			"省份": "",
-			"城市": "",
-			"区县": "",
-			"详细地址": "",
-			"运营商": ""
-		};
-	}
-	const fullPayload = {
-		...payload,
-		...ipInfo
-	};
-	if (await uploadOne(fullPayload)) {
-		logger_default.info("IP reported:", ipInfo["公网IP"], ipInfo["省份"], ipInfo["城市"]);
-		flushPending();
-	} else {
-		logger_default.info("Network unavailable, saving report locally");
-		savePending(fullPayload);
-	}
-}
-function retryPending() {
-	if (loadPending().length > 0) flushPending();
-}
-//#endregion
 //#region electron/main/agent-state-machine.ts
 var logger = {
 	info: () => {},
@@ -8505,7 +8498,7 @@ function findPermissionToResolve(cards, sessionId, evt) {
 	let nameOnlyCount = 0;
 	for (let i = 0; i < cards.length; i++) {
 		const c = cards[i];
-		if (c.kind !== "permission") continue;
+		if (c.kind !== "permission" && c.kind !== "question") continue;
 		if (c.sessionId !== sessionId) continue;
 		if (toolUseId && c.toolUseId && c.toolUseId === toolUseId) return i;
 		if (name != null && c.toolName === name) {
@@ -8592,6 +8585,18 @@ function createAgentServer(stateMachine, options = {}) {
 			}
 		} catch {}
 	}
+	function dropCardOnDisconnect(res, item, sessionId) {
+		res.once("close", () => {
+			const idx = cardQueue.indexOf(item);
+			if (idx === -1) return;
+			cardQueue.splice(idx, 1);
+			clearTimeout(headTimer);
+			headTimer = null;
+			startHeadTimer();
+			notifyCard();
+			logger_default.info(`[AgentServer] /permission client gone, card dropped: session=${sessionId}, tool=${item.toolName}`);
+		});
+	}
 	function headCard() {
 		return cardQueue[0] ?? null;
 	}
@@ -8650,7 +8655,7 @@ function createAgentServer(stateMachine, options = {}) {
 		headTimer = null;
 		startHeadTimer();
 		notifyCard();
-		logger_default.info(`[AgentServer] permission resolved externally (CLI): session=${sessionId}, tool=${card.toolName}`);
+		logger_default.info(`[AgentServer] card resolved externally (CLI): session=${sessionId}, tool=${card.toolName}`);
 	}
 	function removePermissionsForSession(sessionId) {
 		const before = cardQueue.length;
@@ -8744,6 +8749,7 @@ function createAgentServer(stateMachine, options = {}) {
 			tryRespond(res, responseBody);
 		});
 		cardQueue.push(item);
+		dropCardOnDisconnect(res, item, sessionId);
 		if (cardQueue.length === 1) startHeadTimer();
 		notifyCard();
 		logger_default.info(`[AgentServer] /permission queued: session=${sessionId}, queue=${cardQueue.length}`);
@@ -8792,6 +8798,7 @@ function createAgentServer(stateMachine, options = {}) {
 			tryRespond(res, responseBody);
 		});
 		cardQueue.push(item);
+		dropCardOnDisconnect(res, item, sessionId);
 		if (cardQueue.length === 1) startHeadTimer();
 		notifyCard();
 		logger_default.info(`[AgentServer] AskUserQuestion (answerable) queued: session=${sessionId}, queue=${cardQueue.length}`);
@@ -8922,7 +8929,7 @@ function createAgentServer(stateMachine, options = {}) {
 		});
 	}
 	function stop() {
-		for (const c of cardQueue) if (c.kind === "permission") c.reject("stopped");
+		for (const c of cardQueue) if (c.kind === "permission" || c.kind === "question" && c.answerable) c.reject("stopped");
 		cardQueue = [];
 		clearTimeout(headTimer);
 		headTimer = null;
@@ -8966,6 +8973,7 @@ var HOOK_EVENTS = [
 	"StopFailure",
 	"ApiError",
 	"Notification",
+	"PermissionDenied",
 	"PermissionRequest"
 ];
 function createClaudeHookManager(agentPort) {
@@ -9560,7 +9568,6 @@ var mainWindow = null;
 var aiWindow = null;
 var settingsWindow = null;
 var agentBridge = null;
-var retryPendingTimer = null;
 var VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 function getIcon() {
 	const iconPath = electron.app.isPackaged ? (0, node_path.join)(process.resourcesPath, "logo.ico") : (0, node_path.join)(__dirname, "../../public/logo.ico");
@@ -9632,7 +9639,6 @@ electron.app.whenReady().then(() => {
 	(0, import_tray.createTray)();
 	registerGlobalShortcuts(mainWindow);
 	showFloatingBallIfVisible();
-	reportIP();
 	registerTodoBadgeHandlers();
 	startTodoScheduler();
 	refreshTodoBadge();
@@ -9671,7 +9677,6 @@ electron.app.whenReady().then(() => {
 	process.on("clawd-show-todo-window", () => {
 		showTodoWindow();
 	});
-	retryPendingTimer = setInterval(retryPending, 3e4);
 	electron.app.on("activate", () => {
 		if (electron.BrowserWindow.getAllWindows().length === 0) createWindow(preloadPath);
 	});
@@ -9697,10 +9702,6 @@ electron.app.on("before-quit", () => {
 	closeAllStickyNotes();
 	unregisterGlobalShortcuts();
 	(0, import_tray.destroyTray)();
-	if (retryPendingTimer) {
-		clearInterval(retryPendingTimer);
-		retryPendingTimer = null;
-	}
 	mainWindow = null;
 	aiWindow = null;
 	settingsWindow = null;
