@@ -1,24 +1,15 @@
-// 窗口体系 — P1 先落 AI/设置/关于窗口与主窗口关闭语义
-// P2 补悬浮球/选区/悬浮岛/AI岛/便签等特殊窗口（透明/穿透/贴边）
+// 窗口体系模块索引：P1 主/AI/设置/关于；P2 悬浮球 + 后续（区域选择/AI岛/便签/提醒/散热面板）
+pub mod floating_ball;
+
+// 内部共享符号（命令经 generate_handler 的完整路径 modules::windows::floating_ball::xxx 注册）
+#[allow(unused_imports)]
+pub use floating_ball::{
+    animate_snap_to_edge, ball_center_for_overlay, clear_ball_position, clear_snap,
+    load_ball_position, restore_snap_if_needed, show_ball, hide_ball, BALL_SIZE, BallState,
+    SnapSide,
+};
 
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl};
-
-/// 主窗口关闭语义（对齐 index.ts L95-103）：通知渲染层释放录制资源 → 隐藏不销毁。
-/// 用 CloseRequested 拦截实现（Electron 的 close 事件 preventDefault + hide 等价）。
-pub fn setup_main_window_close_guard(app: &tauri::AppHandle) {
-    let Some(main) = app.get_webview_window("main") else { return };
-    let app = app.clone();
-    main.on_window_event(move |event| {
-        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-            // 非退出路径的关闭：通知渲染层 → 隐藏窗口
-            api.prevent_close();
-            let _ = app.emit("app-main-window-close", ());
-            if let Some(win) = app.get_webview_window("main") {
-                let _ = win.hide();
-            }
-        }
-    });
-}
 
 /// 打开或聚焦 Vue hash 路由窗口（对齐 index.ts showAiWindow/showSettingsWindow）
 /// 窗口在 tauri.conf.json app.windows 预定义（builder External 在 Windows dev 下不加载），
@@ -89,4 +80,19 @@ pub async fn open_external(app: AppHandle, url: String) {
     if let Err(e) = app.opener().open_url(target, None::<&str>) {
         log::error!("open_external({url}) failed: {e}");
     }
+}
+
+/// 主窗口关闭语义（对齐 index.ts L95-103）：通知渲染层释放录制资源 → 隐藏不销毁。
+pub fn setup_main_window_close_guard(app: &tauri::AppHandle) {
+    let Some(main) = app.get_webview_window("main") else { return };
+    let app = app.clone();
+    main.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            let _ = app.emit("app-main-window-close", ());
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.hide();
+            }
+        }
+    });
 }

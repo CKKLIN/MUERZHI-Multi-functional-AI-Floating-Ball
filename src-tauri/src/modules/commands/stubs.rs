@@ -113,15 +113,7 @@ pub fn update_toolbar_state(_state: String) {}
 #[tauri::command]
 pub fn update_audio_levels(_micLevel: f64, _sysLevel: f64) {}
 
-// ===== 悬浮球（P2 迁移）=====
-#[tauri::command]
-pub fn show_floating_ball() {}
-
-#[tauri::command]
-pub fn hide_floating_ball() {}
-
-#[tauri::command]
-pub fn toggle_floating_ball() {}
+// ===== 悬浮球（P2 已实装于 windows/floating_ball.rs）=====
 
 // ===== Agent（P3 迁移；设置类已实装于 app_settings.rs）=====
 #[tauri::command]

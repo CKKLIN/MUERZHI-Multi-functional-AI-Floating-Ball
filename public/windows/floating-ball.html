@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<!-- 悬浮球 UI — 移植自 electron/main/floating-ball.ts buildFloatingBallHtml()
+     Electron 版是 data:URL 内联（i18n/菜单在构建期插值）；Tauri 改为真实文件，
+     菜单项与词条经 window.__BALL_DATA__ 注入（Rust 端 eval 注入或 URL 参数），
+     交互经 window.__TAURI__（withGlobalTauri）的 invoke/emit。
+     几何常量与 Rust 侧 floating_ball.rs 强耦合：66/240 窗、56 圆、44×58 水滴胶囊。 -->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;user-select:none}
+html,body{
+  width:100%;height:100%;overflow:clip;
+  font-family:'Segoe UI',system-ui,sans-serif;
+  background:transparent;
+}
+html::-webkit-scrollbar, body::-webkit-scrollbar{display:none}
+body{display:flex;align-items:center;justify-content:center}
+
+#ball{position:relative;width:66px;height:66px;display:flex;align-items:center;justify-content:center}
+body.expanded #ball{width:240px;height:240px}
+
+.ring-svg{position:absolute;width:240px;height:240px;pointer-events:none}
+body.expanded .ring-svg{pointer-events:none}
+
+/* 花瓣：开花式绽放（scale(0)+摆动 → scale(1)），无缝铺满 */
+.arc-item{
+  fill:url(#cardGrad);stroke:none;cursor:pointer;pointer-events:none;
+  opacity:0;transform:scale(0) rotate(var(--swing,0deg));
+  transform-origin:120px 120px;
+  transition:transform 0.5s cubic-bezier(0.34,1.56,0.64,1),opacity 0.3s ease,fill 0.2s ease;
+}
+body.expanded .arc-item{opacity:1;transform:scale(1) rotate(0deg);pointer-events:auto}
+.arc-item:hover{fill:url(#cardGradHover)}
+body.no-anim .arc-item,body.no-anim .arc-shadow,body.no-anim .arc-label{transition:none !important}
+
+.arc-shadow{
+  fill:rgba(40,50,80,0.32);stroke:none;filter:blur(2px);pointer-events:none;
+  opacity:0;transform:scale(0) rotate(var(--swing,0deg));transform-origin:120px 120px;
+  transition:transform 0.5s cubic-bezier(0.34,1.56,0.64,1),opacity 0.3s ease;
+}
+body.expanded .arc-shadow{opacity:1;transform:scale(1) rotate(0deg)}
+
+.arc-label{
+  pointer-events:none;text-anchor:middle;dominant-baseline:central;
+  font-family:'Segoe UI',system-ui,sans-serif;
+  opacity:0;transform:scale(0);transform-origin:120px 120px;
+  transition:transform 0.35s cubic-bezier(0.34,1.56,0.64,1),opacity 0.25s ease;
+}
+body.expanded .arc-label{opacity:1;transform:scale(1)}
+.arc-label .icon{font-size:15px;fill:#4a6cf7;font-weight:700;filter:drop-shadow(0 1px 0 rgba(255,255,255,0.55))}
+.arc-label .label{font-size:9px;font-weight:600;fill:#3a4156;stroke:rgba(255,255,255,0.75);stroke-width:2px;paint-order:stroke}
+
+#trigger{
+  position:absolute;z-index:10;
+  left:5px;top:5px;width:56px;height:56px;border-radius:50%;border:none;
+  background:linear-gradient(90deg, #f2f4f8, #dfe3ea);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:
+    left .5s cubic-bezier(.34,1.3,.64,1),top .5s cubic-bezier(.34,1.3,.64,1),
+    width .5s cubic-bezier(.34,1.3,.64,1),height .5s cubic-bezier(.34,1.3,.64,1),
+    border-radius .5s ease,background .6s ease,box-shadow .6s ease,transform .2s ease;
+}
+#trigger:hover{transform:scale(1.08)}
+.logo-img{
+  width:40px;height:40px;border-radius:50%;object-fit:cover;pointer-events:none;
+  transition:width .5s ease,height .5s ease,border-radius .5s ease;
+}
+#trigger:active{transform:scale(0.95)}
+
+/* 散热模式：圆圈冷光静止，花瓣旋转（38 圈整，时长 --spin-dur 由主进程传入） */
+body.cooling #trigger{
+  background:linear-gradient(135deg,#eaf7ff,#d2ecff);
+  box-shadow:0 0 0 3px rgba(96,182,255,0.35),0 0 16px rgba(96,182,255,0.45);
+}
+body.cooling #trigger,body.cooling #trigger:hover{transform:none}
+body.cooling .ring-svg{animation:coolingMenuSpin var(--spin-dur,20s) linear 1 both}
+@keyframes coolingMenuSpin{
+  0%{transform:rotate(0deg)}
+  2.5%{transform:rotate(-108deg)}
+  5%{transform:rotate(-360deg)}
+  95%{transform:rotate(-13320deg)}
+  97.5%{transform:rotate(-13572deg)}
+  100%{transform:rotate(-13680deg)}
+}
+body.cooling .arc-item{pointer-events:none !important}
+
+/* 水滴吸附：贴边侧 29px 圆头抵屏幕边，外侧两端全圆；trigger 推到对应边缘 */
+body.snap-left #trigger{
+  width:44px;height:58px;left:0;top:4px;
+  border-radius:29px 999px 999px 29px;
+  background:linear-gradient(90deg, rgba(244,248,255,0.96) 0%, rgba(230,233,242,0.92) 100%);
+  opacity:1;
+  box-shadow:-3px 0 8px rgba(0,0,0,0.10),3px 0 6px rgba(0,0,0,0.05),inset 1px 0 5px rgba(255,255,255,0.5);
+}
+body.snap-right #trigger{
+  width:44px;height:58px;left:22px;top:4px;
+  border-radius:999px 29px 29px 999px;
+  background:linear-gradient(270deg, rgba(244,248,255,0.96) 0%, rgba(230,233,242,0.92) 100%);
+  opacity:1;
+  box-shadow:3px 0 8px rgba(0,0,0,0.10),-3px 0 6px rgba(0,0,0,0.05),inset -1px 0 5px rgba(255,255,255,0.5);
+}
+body.snap-top #trigger{
+  width:58px;height:44px;left:4px;top:0;
+  border-radius:29px 29px 999px 999px;
+  background:linear-gradient(180deg, rgba(244,248,255,0.96) 0%, rgba(230,233,242,0.92) 100%);
+  opacity:1;
+  box-shadow:0 -3px 8px rgba(0,0,0,0.10),0 3px 6px rgba(0,0,0,0.05),inset 0 1px 5px rgba(255,255,255,0.5);
+}
+body.snap-bottom #trigger{
+  width:58px;height:44px;left:4px;top:22px;
+  border-radius:999px 999px 29px 29px;
+  background:linear-gradient(0deg, rgba(244,248,255,0.96) 0%, rgba(230,233,242,0.92) 100%);
+  opacity:1;
+  box-shadow:0 3px 8px rgba(0,0,0,0.10),0 -3px 6px rgba(0,0,0,0.05),inset 0 -1px 5px rgba(255,255,255,0.5);
+}
+body.snap-left .logo-img,body.snap-right .logo-img,
+body.snap-top .logo-img,body.snap-bottom .logo-img{
+  width:26px;height:26px;border-radius:13px;object-fit:cover;
+}
+body.snap-bottom #trigger:hover,body.snap-top #trigger:hover,
+body.snap-left #trigger:hover,body.snap-right #trigger:hover{transform:none}
+
+/* 恒 66px 球心容器：trigger 与气泡都锚在这 */
+.core{
+  position:relative;width:66px;height:66px;flex:0 0 auto;
+  display:flex;align-items:center;justify-content:center;
+  pointer-events:none;
+}
+.core #trigger{pointer-events:auto}
+
+/* 待办数量气泡 */
+#ballBadge{
+  position:absolute;top:0;right:0;z-index:20;
+  min-width:15px;height:15px;padding:0 3px;border-radius:999px;
+  background:#4e5cd4;color:#fff;font-size:9px;font-weight:700;line-height:15px;text-align:center;
+  display:none;align-items:center;justify-content:center;
+  box-shadow:0 1px 3px rgba(0,0,0,0.35);
+}
+#ballBadge.flash{animation:badgeFlash 1s ease-in-out infinite}
+@keyframes badgeFlash{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.35;transform:scale(0.8)}}
+body.expanded #ballBadge{display:none}
+body.snap-left #ballBadge{top:2px;right:20px}
+body.snap-right #ballBadge{top:2px;right:0}
+body.snap-top #ballBadge{top:0;right:6px}
+body.snap-bottom #ballBadge{top:24px;right:4px}
+</style>
+</head>
+<body>
+<div id="ball">
+  <svg class="ring-svg" id="ringSvg" viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg"></svg>
+  <div class="core">
+    <button id="trigger"><img id="logoImg" class="logo-img" src="/logo.png" alt="logo" /></button>
+    <span id="ballBadge"></span>
+  </div>
+</div>
+
+<script>
+// Tauri 环境：invoke/emit 走 window.__TAURI__（withGlobalTauri）
+const { invoke, emit, listen } = window.__TAURI__
+
+// 菜单项由 Rust 侧启动时注入（花瓣数/弧度随可见项变化）
+const ITEMS = window.__BALL_DATA__ || []
+
+let isExpanded = false
+let menuCreated = false
+
+function updateBadge(count, flash, visible){
+  var el = document.getElementById('ballBadge')
+  if(!el) return
+  el.textContent = count > 99 ? '99+' : String(count)
+  el.style.display = (visible && count > 0) ? 'flex' : 'none'
+  el.classList.toggle('flash', !!flash)
+}
+
+function setCoolingVisual(on, sec){
+  document.body.classList.toggle('cooling', !!on)
+  if(on) document.body.style.setProperty('--spin-dur', (sec || 20) + 's')
+}
+
+function arcPath(cx, cy, r1, r2, sa, ea){
+  const sr = sa*Math.PI/180, er = ea*Math.PI/180
+  const x1i=cx+r1*Math.cos(sr), y1i=cy+r1*Math.sin(sr)
+  const x1o=cx+r2*Math.cos(sr), y1o=cy+r2*Math.sin(sr)
+  const x2o=cx+r2*Math.cos(er), y2o=cy+r2*Math.sin(er)
+  const x2i=cx+r1*Math.cos(er), y2i=cy+r1*Math.sin(er)
+  const laf=(ea-sa)>180?1:0
+  return 'M'+x1i+','+y1i+' L'+x1o+','+y1o+' A'+r2+','+r2+' 0 '+laf+',1 '+x2o+','+y2o+' L'+x2i+','+y2i+' A'+r1+','+r1+' 0 '+laf+',0 '+x1i+','+y1i+' Z'
+}
+
+function fullRingPath(cx, cy, r1, r2){
+  return 'M'+(cx+r2)+','+cy+
+    ' A'+r2+','+r2+' 0 1,1 '+(cx-r2)+','+cy+
+    ' A'+r2+','+r2+' 0 1,1 '+(cx+r2)+','+cy+' Z'+
+    ' M'+(cx+r1)+','+cy+
+    ' A'+r1+','+r1+' 0 1,1 '+(cx-r1)+','+cy+
+    ' A'+r1+','+r1+' 0 1,1 '+(cx+r1)+','+cy+' Z'
+}
+
+function makeGradient(id, c1, c2){
+  const g = document.createElementNS('http://www.w3.org/2000/svg','linearGradient')
+  g.setAttribute('id',id)
+  g.setAttribute('x1','20%'); g.setAttribute('y1','0%')
+  g.setAttribute('x2','80%'); g.setAttribute('y2','100%')
+  ;[['0%',c1],['100%',c2]].forEach(function(p){
+    const s = document.createElementNS('http://www.w3.org/2000/svg','stop')
+    s.setAttribute('offset',p[0]); s.setAttribute('stop-color',p[1])
+    g.appendChild(s)
+  })
+  return g
+}
+
+function ensureMenu(){
+  if(menuCreated) return
+  menuCreated = true
+  const svg = document.getElementById('ringSvg')
+  const cx=120, cy=120, r1=34, r2=75
+  const total = ITEMS.length
+  if(!total) return
+  const segArc = 360 / total
+  const startOff = -90 - segArc / 2
+  const SHADOW_ROT = 4
+
+  const defs = document.createElementNS('http://www.w3.org/2000/svg','defs')
+  defs.appendChild(makeGradient('cardGrad', '#ffffff', '#f2f4f9'))
+  defs.appendChild(makeGradient('cardGradHover', '#eef1ff', '#dbe2ff'))
+  svg.appendChild(defs)
+
+  ITEMS.forEach(function(item, i){
+    const sa = startOff + i * segArc
+    const ea = sa + segArc
+    const d = total === 1 ? fullRingPath(120, 120, 34, 75) : arcPath(120, 120, 34, 75, sa, ea)
+    const path = document.createElementNS('http://www.w3.org/2000/svg','path')
+    path.setAttribute('class','arc-item')
+    path.setAttribute('d',d)
+    if(total === 1) path.setAttribute('fill-rule','evenodd')
+    path.setAttribute('data-action',item.action)
+    path.style.transitionDelay = (i*0.10)+'s'
+    path.style.setProperty('--swing', ((i%2?-1:1) * (6 + i)) + 'deg')
+    path.addEventListener('click',function(){
+      emit('floating-ball-action', this.getAttribute('data-action'))
+    })
+    svg.appendChild(path)
+  })
+
+  if(total > 1) ITEMS.forEach(function(item, i){
+    const NS = 'http://www.w3.org/2000/svg'
+    const sa = startOff + i * segArc
+    const ea = sa + segArc
+    const dOwn = arcPath(120, 120, 34, 75, sa, ea)
+
+    const maskId = 'shadowMask' + i
+    const mask = document.createElementNS(NS,'mask')
+    mask.setAttribute('id', maskId)
+    const mRect = document.createElementNS(NS,'rect')
+    mRect.setAttribute('x','0'); mRect.setAttribute('y','0')
+    mRect.setAttribute('width','240'); mRect.setAttribute('height','240')
+    mRect.setAttribute('fill','#fff')
+    const mCut = document.createElementNS(NS,'path')
+    mCut.setAttribute('d', dOwn)
+    mCut.setAttribute('fill','#000')
+    mask.appendChild(mRect); mask.appendChild(mCut)
+    defs.appendChild(mask)
+
+    const sh = document.createElementNS(NS,'path')
+    sh.setAttribute('class','arc-shadow')
+    sh.setAttribute('d', arcPath(120, 120, 34, 75, sa + SHADOW_ROT, ea + SHADOW_ROT))
+    sh.setAttribute('mask','url(#'+maskId+')')
+    sh.style.transitionDelay = (i*0.10)+'s'
+    sh.style.setProperty('--swing', ((i%2?-1:1) * (6 + i)) + 'deg')
+    svg.appendChild(sh)
+  })
+
+  ITEMS.forEach(function(item, i){
+    const sa = startOff + i * segArc
+    const ea = sa + segArc
+    const ma = (sa+ea)/2
+    const mr = (34+75)/2
+    const lx = 120 + mr*Math.cos(ma*Math.PI/180)
+    const ly = 120 + mr*Math.sin(ma*Math.PI/180)
+    const txt = document.createElementNS('http://www.w3.org/2000/svg','text')
+    txt.setAttribute('class','arc-label')
+    txt.setAttribute('x',lx)
+    txt.setAttribute('y',ly)
+    txt.style.transitionDelay = (i*0.10+0.08)+'s'
+    const iconSpan = document.createElementNS('http://www.w3.org/2000/svg','tspan')
+    iconSpan.setAttribute('class','icon')
+    iconSpan.setAttribute('x',lx)
+    iconSpan.setAttribute('dy','-7')
+    iconSpan.textContent = item.icon
+    const labelSpan = document.createElementNS('http://www.w3.org/2000/svg','tspan')
+    labelSpan.setAttribute('class','label')
+    labelSpan.setAttribute('x',lx)
+    labelSpan.setAttribute('dy','14')
+    labelSpan.textContent = item.label
+    txt.appendChild(iconSpan); txt.appendChild(labelSpan)
+    svg.appendChild(txt)
+  })
+}
+
+function restartBloom(){
+  var svg = document.getElementById('ringSvg')
+  document.body.classList.remove('expanded')
+  document.body.classList.add('no-anim')
+  ensureMenu()
+  void svg.getBoundingClientRect()
+  document.body.classList.remove('no-anim')
+  void svg.getBoundingClientRect()
+  document.body.classList.add('expanded')
+  isExpanded = true
+}
+
+// === 手动拖拽（pointer 事件 → emit 到 Rust）===
+let dsX = 0, dsY = 0, dragging = false
+const trigger = document.getElementById('trigger')
+
+trigger.addEventListener('pointerdown', function(e){
+  if(e.button !== 0) return
+  dsX = e.screenX; dsY = e.screenY
+  dragging = false
+  trigger.setPointerCapture(e.pointerId)
+  invoke('ball_drag_start', { sx: e.screenX, sy: e.screenY })
+})
+
+trigger.addEventListener('contextmenu', function(e){
+  e.preventDefault()
+  emit('floating-ball-cooling')
+})
+
+trigger.addEventListener('pointermove', function(e){
+  if(e.buttons !== 1) return
+  if(!dragging){
+    if(Math.abs(e.screenX - dsX) <= 4 && Math.abs(e.screenY - dsY) <= 4) return
+    dragging = true
+    invoke('ball_drag_clear', { sx: e.screenX, sy: e.screenY })
+  }
+  invoke('ball_move', { sx: e.screenX, sy: e.screenY })
+})
+
+trigger.addEventListener('pointerup', function(e){
+  if(e.button !== 0) return
+  if(document.body.classList.contains('cooling')){
+    if(dragging){ dragging = false; invoke('ball_drag_end') }
+    return
+  }
+  trigger.releasePointerCapture(e.pointerId)
+  if(dragging){
+    invoke('ball_drag_end')
+    dragging = false
+    return
+  }
+  if(isExpanded){
+    isExpanded = false
+    invoke('ball_collapse')
+  } else {
+    isExpanded = true
+    invoke('ball_expand')
+  }
+})
+
+listen('ball-state', function(ev){
+  const state = ev.payload
+  if(state === 'expanded'){
+    if(!document.body.classList.contains('expanded')) restartBloom()
+  } else {
+    document.body.classList.remove('expanded')
+    var svg = document.getElementById('ringSvg')
+    while(svg.firstChild){ svg.removeChild(svg.firstChild) }
+    menuCreated = false
+    isExpanded = false
+  }
+})
+
+listen('ball-snap', function(ev){
+  document.body.classList.remove('snap-left','snap-right','snap-top','snap-bottom')
+  if(ev.payload) document.body.classList.add('snap-'+ev.payload)
+})
+
+// 点外部（透明区）收起
+document.addEventListener('click',function(e){
+  if(!isExpanded) return
+  if(document.body.classList.contains('cooling')) return
+  if(e.target.closest('#trigger') || e.target.closest('.arc-item')) return
+  invoke('ball_collapse')
+})
+
+// 页面就绪上报：主进程补推一次徽标计数（对齐 floating-ball-badge-ready）
+emit('floating-ball-badge-ready')
+</script>
+</body>
+</html>

@@ -44,12 +44,7 @@ pub fn set_floating_ball_settings(app: AppHandle, patch: Value) -> Value {
 
     serde_json::to_value(next).unwrap_or(Value::Null)
 }
-
-#[tauri::command]
-pub fn reset_floating_ball_position() {
-    // P2 悬浮球窗口落地时实装（清 pos 文件 + 回主屏中心）
-    log::info!("reset_floating_ball_position: P2 待实装");
-}
+// reset_floating_ball_position 已实装于 windows/floating_ball.rs（P2）
 
 // ---------- agent-settings ----------
 

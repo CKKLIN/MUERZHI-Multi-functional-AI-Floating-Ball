@@ -243,7 +243,7 @@ const electronAPI = {
   loadRecordings: () => cmd<unknown[]>('load_recordings'),
   saveRecordings: (recordings: unknown[]) => cmd<boolean>('save_recordings', { recordings }),
 
-  // ===== Floating ball（P2 迁移）=====
+  // ===== Floating ball（P2 已实装：ball_* 命令 + floating-ball.html）=====
   showFloatingBall: () => cmd<void>('show_floating_ball'),
   hideFloatingBall: () => cmd<void>('hide_floating_ball'),
   toggleFloatingBall: () => cmd<void>('toggle_floating_ball'),

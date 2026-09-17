@@ -54,7 +54,7 @@ pub fn run() {
             modules::commands::screen::get_all_displays,
             modules::commands::app_settings::get_floating_ball_settings,
             modules::commands::app_settings::set_floating_ball_settings,
-            modules::commands::app_settings::reset_floating_ball_position,
+            modules::commands::app_settings::set_ai_island_settings,
             modules::commands::app_settings::agent_get_auto_allow,
             modules::commands::app_settings::agent_set_auto_allow,
             modules::commands::app_settings::agent_get_auto_allow_sessions,
@@ -62,7 +62,6 @@ pub fn run() {
             modules::commands::app_settings::agent_get_card_expiry,
             modules::commands::app_settings::agent_set_card_expiry,
             modules::commands::app_settings::get_ai_island_settings,
-            modules::commands::app_settings::set_ai_island_settings,
             modules::commands::app_settings::show_ai_window,
             modules::commands::app_settings::show_settings_window,
             modules::commands::app_settings::show_main_window,
@@ -94,9 +93,17 @@ pub fn run() {
             modules::commands::stubs::set_island_state,
             modules::commands::stubs::update_toolbar_state,
             modules::commands::stubs::update_audio_levels,
-            modules::commands::stubs::show_floating_ball,
-            modules::commands::stubs::hide_floating_ball,
-            modules::commands::stubs::toggle_floating_ball,
+            // 悬浮球（P2 实装）
+            modules::windows::floating_ball::show_floating_ball,
+            modules::windows::floating_ball::hide_floating_ball,
+            modules::windows::floating_ball::toggle_floating_ball,
+            modules::windows::floating_ball::ball_expand,
+            modules::windows::floating_ball::ball_collapse,
+            modules::windows::floating_ball::ball_drag_start,
+            modules::windows::floating_ball::ball_drag_clear,
+            modules::windows::floating_ball::ball_move,
+            modules::windows::floating_ball::ball_drag_end,
+            modules::windows::floating_ball::reset_floating_ball_position,
             modules::commands::stubs::agent_get_status,
             modules::commands::stubs::agent_install_hooks,
             modules::commands::stubs::agent_uninstall_hooks,
@@ -139,6 +146,14 @@ pub fn run() {
                 let _ = win.show();
                 let _ = win.set_focus();
             }
+
+            // 悬浮球：按设置显隐启动（对齐 showFloatingBallIfVisible）
+            if settings.visible {
+                modules::windows::floating_ball::show_ball(app.handle());
+            }
+
+            // 悬浮球动作转发（对齐 floating-ball-action → clawd-show-* 窗口）
+            setup_ball_events(app.handle());
 
             Ok(())
         })
@@ -187,6 +202,56 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     }
     tray.build(app)?;
     Ok(())
+}
+
+/// 悬浮球事件：花瓣动作转发到对应窗口（对齐 forwardAction）+ badge-ready 补推徽标
+fn setup_ball_events(app: &tauri::AppHandle) {
+    use tauri::{Emitter, Listener};
+
+    let app_owned = app.clone();
+    app.listen("floating-ball-action".to_string(), move |event| {
+        let action = event.payload().trim().trim_matches('"');
+        log::info!("Floating ball action: {action}");
+        let app = app_owned.clone();
+        match action {
+            "record" => {
+                if let Some(win) = app.get_webview_window("main") {
+                    let _ = win.show();
+                    let _ = win.set_focus();
+                }
+            }
+            "ai" => {
+                if let Some(win) = app.get_webview_window("ai") {
+                    let _ = win.show();
+                    let _ = win.set_focus();
+                }
+            }
+            "todo" => {
+                if let Some(win) = app.get_webview_window("todo") {
+                    let _ = win.show();
+                    let _ = win.set_focus();
+                }
+            }
+            "settings" => {
+                if let Some(win) = app.get_webview_window("settings") {
+                    let _ = win.show();
+                    let _ = win.set_focus();
+                }
+            }
+            other => {
+                let _ = app.emit("on-floating-ball-action", other);
+            }
+        }
+        modules::windows::floating_ball::collapse_ball(&app);
+    });
+
+    let app_owned2 = app.clone();
+    app.listen("floating-ball-badge-ready".to_string(), move |_event| {
+        // P3 todo 模块接入后由 todo-badge 推送真实计数；P2 先推 0（隐藏徽标）
+        if let Some(win) = app_owned2.get_webview_window("floating-ball") {
+            let _ = win.eval("if(window.updateBadge) updateBadge(0,false,false)");
+        }
+    });
 }
 
 fn register_global_shortcuts(app: &tauri::AppHandle) {

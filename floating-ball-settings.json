@@ -1,1 +1,13 @@
-{"visible":true,"alwaysOnTop":true,"openAtLogin":false,"locale":"zh","snapGutter":0,"menuItems":{"record":true,"ai":true,"todo":true,"settings":true}}
+{
+  "visible": true,
+  "alwaysOnTop": true,
+  "openAtLogin": false,
+  "locale": "zh",
+  "snapGutter": 0.0,
+  "menuItems": {
+    "record": true,
+    "ai": true,
+    "settings": true,
+    "todo": true
+  }
+}
