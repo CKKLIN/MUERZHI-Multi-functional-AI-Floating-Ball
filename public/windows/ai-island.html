@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<!-- AI 悬浮岛 — 移植自 electron/main/ai-island.ts buildAiIslandHtml()
+     Electron 版是 data:URL 内联（require('electron') + 运行时 require question-card-utils.js）；
+     Tauri 改为真实文件 + ES module import（同一个 question-card-utils.js 走模块导入）。
+     状态经 window.applyState/applyCard/setFlat（Rust eval 推送）+ listen 事件双通道。 -->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:transparent}
+.island{
+  width:fit-content;height:fit-content;
+  background:rgba(20,20,40,0.96);
+  border-radius:22px;
+  display:flex;flex-direction:column;
+  border:1px solid rgba(255,255,255,0.1);
+  transition:opacity 0.3s,transform 0.3s,border-radius 0.3s,background 0.3s;
+  overflow:hidden;
+}
+.island.hidden{opacity:0;transform:translateY(-8px) scaleY(0.5);pointer-events:none}
+.island-row{display:flex;align-items:center;gap:8px;height:40px;padding:0 14px;justify-content:center;cursor:grab;-webkit-user-select:none;user-select:none;touch-action:none;transition:height 0.3s ease}
+.ai-indicator{display:flex;align-items:center;gap:7px;flex-shrink:0;padding:0 4px;cursor:pointer;border-radius:6px;transition:background 0.15s}
+.ai-indicator:hover{background:rgba(255,255,255,0.08)}
+.ai-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;transition:all 0.3s}
+.ai-dot.idle{background:#6b7280}
+.ai-dot.thinking{background:#fbbf24;animation:ai-breathe 1.5s ease-in-out infinite;box-shadow:0 0 6px rgba(251,191,36,0.6)}
+.ai-dot.working{background:#34d399;animation:ai-pulse 0.8s ease-in-out infinite;box-shadow:0 0 6px rgba(52,211,153,0.6)}
+.ai-dot.error{background:#f87171;box-shadow:0 0 6px rgba(248,113,113,0.6)}
+.ai-dot.notification{background:#a78bfa;animation:ai-pulse 0.6s ease-in-out infinite;box-shadow:0 0 8px rgba(167,139,250,0.8)}
+.ai-dot.done{background:#66bb6a;animation:ai-flash 0.3s ease 3}
+@keyframes ai-breathe{0%,100%{opacity:0.4;transform:scale(0.8)}50%{opacity:1;transform:scale(1.1)}}
+@keyframes ai-pulse{0%,100%{opacity:0.5;transform:scale(0.9)}50%{opacity:1;transform:scale(1.15)}}
+@keyframes ai-flash{0%,100%{opacity:1}50%{opacity:0.2;transform:scale(1.3)}}
+.ai-label{font-size:11px;color:rgba(255,255,255,0.75);white-space:nowrap;font-weight:500;letter-spacing:0.3px}
+.ai-label.active{color:#fff}
+
+/* 权限卡片：宽按内容自适应 [300,420]，长参数在 .perm-body 内纵向滚动 */
+.perm-card{width:max-content;min-width:300px;max-width:420px;padding:0;display:none;flex-direction:column;word-break:break-word}
+.perm-card.show{display:flex;animation:perm-in 0.22s cubic-bezier(0.4,0,0.2,1)}
+@keyframes perm-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.perm-banner{display:flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(255,255,255,0.04);border-top:1px solid rgba(255,255,255,0.1);border-bottom:1px solid rgba(255,255,255,0.06)}
+.perm-banner-dot{width:7px;height:7px;border-radius:50%;background:#e8e8f0;animation:ai-pulse 0.9s ease-in-out infinite;box-shadow:0 0 8px rgba(232,232,240,0.5);flex-shrink:0}
+.perm-banner-text{font-size:11px;font-weight:600;color:#e8e8f0;letter-spacing:0.4px}
+.perm-body{display:flex;flex-direction:column;gap:10px;padding:12px 14px 10px;max-height:300px;overflow-y:auto}
+.perm-row{display:flex;flex-direction:column;gap:4px}
+.perm-row-label{font-size:9px;color:rgba(255,255,255,0.38);text-transform:uppercase;letter-spacing:0.6px;font-weight:600}
+.perm-tool{font-size:13px;color:#34d399;font-weight:600;font-family:Consolas,'Courier New',monospace}
+.perm-input{font-size:10.5px;color:rgba(255,255,255,0.78);font-family:Consolas,'Courier New',monospace;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.06);border-radius:5px;padding:6px 8px;word-break:normal;overflow-wrap:anywhere;line-height:1.5;white-space:pre-wrap}
+.perm-actions{display:flex;gap:6px;padding:0 14px 12px}
+.perm-btn{flex:1;padding:7px 8px;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.15s;letter-spacing:0.3px}
+.perm-btn.allow{background:#34d399;color:#0a0a14}
+.perm-btn.allow:hover{background:#10b981;box-shadow:0 2px 8px rgba(52,211,153,0.35)}
+.perm-btn.deny{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.8);border:1px solid rgba(255,255,255,0.1)}
+.perm-btn.deny:hover{background:rgba(248,113,113,0.18);color:#fca5a5;border-color:rgba(248,113,113,0.4)}
+.perm-btn.always{background:rgba(52,211,153,0.1);color:#6ee7b7;border:1px solid rgba(52,211,153,0.28)}
+.perm-btn.always:hover{background:rgba(52,211,153,0.18);border-color:rgba(52,211,153,0.5)}
+
+/* 提问卡片 */
+.question-card{width:max-content;min-width:300px;max-width:420px;padding:0;display:none;flex-direction:column;word-break:break-word}
+.question-card.show{display:flex;animation:perm-in 0.22s cubic-bezier(0.4,0,0.2,1)}
+.question-banner{display:flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(255,255,255,0.04);border-top:1px solid rgba(255,255,255,0.1);border-bottom:1px solid rgba(255,255,255,0.06)}
+.question-banner-dot{width:7px;height:7px;border-radius:50%;background:#fbbf24;animation:ai-breathe 1.2s ease-in-out infinite;box-shadow:0 0 8px rgba(251,191,36,0.6);flex-shrink:0}
+.question-banner-text{font-size:11px;font-weight:600;color:#fde68a;letter-spacing:0.4px}
+.question-progress{margin-left:auto;font-size:10px;font-weight:600;color:rgba(253,230,138,0.9);letter-spacing:0.3px}
+.question-body{display:flex;flex-direction:column;gap:8px;padding:12px 14px 10px;max-height:300px;overflow-y:auto}
+.question-text{font-size:12px;color:#fff;font-weight:600;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.question-opt{display:flex;flex-direction:column;gap:3px;padding:6px 8px;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.06);border-radius:6px}
+.question-opt.selectable{cursor:pointer;border:1px solid rgba(255,255,255,0.08);transition:all 0.12s}
+.question-opt.selectable:hover{border-color:rgba(251,191,36,0.4);background:rgba(251,191,36,0.07)}
+.question-opt.selectable.selected{border-color:rgba(52,211,153,0.65);background:rgba(52,211,153,0.12)}
+.qmark{display:inline-flex;align-items:center;justify-content:center;width:11px;height:11px;border-radius:50%;margin-right:6px;font-size:8px;color:rgba(255,255,255,0.55);border:1px solid rgba(255,255,255,0.35);flex-shrink:0}
+.qmark.multi{border-radius:3px}
+.question-opt.selectable.selected .qmark{background:#34d399;border-color:#34d399;color:#0a0a14}
+.question-other{width:100%;margin-top:6px;padding:6px 8px;border:none;border-radius:6px;background:rgba(0,0,0,0.4);color:#fff;font-size:11px;outline:none;border:1px solid rgba(251,191,36,0.35)}
+.question-close{margin-left:auto;cursor:pointer;font-size:13px;color:rgba(255,255,255,0.55);padding:0 4px;line-height:1;display:none}
+.question-close:hover{color:#fca5a5}
+.question-opt-label{font-size:11.5px;color:#6ee7b7;font-weight:600}
+.question-opt-desc{font-size:10.5px;color:rgba(255,255,255,0.72);line-height:1.4;white-space:pre-wrap;word-break:break-word}
+.question-hint{font-size:9.5px;color:rgba(255,255,255,0.4);line-height:1.4}
+.question-actions{display:flex;padding:0 14px 12px}
+.question-btn{flex:1;padding:7px 8px;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.15s;letter-spacing:0.3px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.8);border:1px solid rgba(255,255,255,0.1)}
+.question-btn:hover{background:rgba(251,191,36,0.14);color:#fde68a;border-color:rgba(251,191,36,0.4)}
+.question-btn:disabled{opacity:0.35;cursor:default}
+.question-btn:disabled:hover{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.8);border-color:rgba(255,255,255,0.1)}
+.perm-body::-webkit-scrollbar,.question-body::-webkit-scrollbar{width:7px}
+.perm-body::-webkit-scrollbar-thumb,.question-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.16);border-radius:4px}
+.perm-body::-webkit-scrollbar-thumb:hover,.question-body::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.3)}
+.perm-body::-webkit-scrollbar-track,.question-body::-webkit-scrollbar-track{background:transparent}
+
+/* 横条态：贴边细胶囊 */
+body.flat .island{
+  min-width:200px;justify-content:center;background:#14141e;
+  border:1px solid rgba(255,255,255,0.08);border-top:none;border-radius:0 0 8px 8px;
+}
+body.flat .island-row{height:12px;padding:0 16px;gap:5px}
+body.flat .ai-dot{width:5px;height:5px}
+body.flat .ai-label{font-size:8.5px;letter-spacing:0.5px;color:rgba(255,255,255,0.55)}
+body.flat .ai-label.active{color:#fff}
+</style>
+</head>
+<body>
+<div class="island" id="island">
+  <div class="island-row" id="islandRow">
+    <div class="ai-indicator" id="aiIndicator">
+      <span class="ai-dot idle" id="aiDot"></span>
+      <span class="ai-label" id="aiLabel">空闲</span>
+    </div>
+  </div>
+  <div class="perm-card" id="permCard">
+    <div class="perm-banner">
+      <span class="perm-banner-dot"></span>
+      <span class="perm-banner-text" id="permBannerText">权限请求</span>
+    </div>
+    <div class="perm-body">
+      <div class="perm-row">
+        <span class="perm-row-label" id="permToolLabel">工具</span>
+        <span class="perm-tool" id="permTool">—</span>
+      </div>
+      <div class="perm-row" id="permInputRow" style="display:none">
+        <span class="perm-row-label" id="permInputLabel">参数</span>
+        <div class="perm-input" id="permInput"></div>
+      </div>
+    </div>
+    <div class="perm-actions">
+      <button class="perm-btn allow" id="permAllowBtn">允许</button>
+      <button class="perm-btn always" id="permAlwaysBtn">始终允许</button>
+      <button class="perm-btn deny" id="permDenyBtn">拒绝</button>
+    </div>
+  </div>
+  <div class="question-card" id="questionCard">
+    <div class="question-banner">
+      <span class="question-banner-dot"></span>
+      <span class="question-banner-text" id="questionBannerText">AI 提问</span>
+      <span class="question-progress" id="questionProgress"></span>
+      <span class="question-close" id="questionClose">✕</span>
+    </div>
+    <div class="question-body" id="questionBody"></div>
+    <div class="question-actions">
+      <button class="question-btn" id="questionPrevBtn">上一题</button>
+      <button class="question-btn" id="questionBtn">知道了</button>
+    </div>
+  </div>
+</div>
+<script type="module">
+import {
+  resolveQuestionList, toQuestionItem, questionKey, multiSelectOf,
+  withOther, toggleOption, buildAnswers,
+} from './question-card-utils.js'
+
+const invoke = window.__TAURI__.core.invoke
+const emit = window.__TAURI__.event.emit
+const listen = window.__TAURI__.event.listen
+
+// 词条（Rust 侧构建时经 invoke('get_app_i18n') 拉全量；此处只用 aiIsland.* 子集）
+let S = {
+  idle: '空闲', thinking: '思考中', working: '工作中', error: '出错',
+  notification: '通知', done: '完成',
+  permTitle: '权限请求', permTool: '工具', permInput: '参数',
+  allow: '允许', alwaysAllow: '始终允许', deny: '拒绝',
+  questionTitle: 'AI 提问', prev: '上一题', next: '下一题',
+  submit: '提交答案', know: '知道了', otherPlaceholder: '请输入…',
+  otherHint: '多选：可与其他选项同时提交', answerInClaude: '请在 Claude 界面作答',
+  unknown: '未知', other: '其他', progress: '第 {n}/{t} 题',
+}
+invoke('get_app_i18n').then((b) => {
+  const m = b.messages || {}
+  S = {
+    ...S,
+    idle: m['aiIsland.idle'] || S.idle,
+    thinking: m['aiIsland.thinking'] || S.thinking,
+    working: m['aiIsland.working'] || S.working,
+    error: m['aiIsland.error'] || S.error,
+    notification: m['aiIsland.notification'] || S.notification,
+    done: m['aiIsland.done'] || S.done,
+    permTitle: m['aiIsland.permTitle'] || S.permTitle,
+    permTool: m['aiIsland.permTool'] || S.permTool,
+    permInput: m['aiIsland.permInput'] || S.permInput,
+    allow: m['common.allow'] || S.allow,
+    alwaysAllow: m['common.alwaysAllow'] || S.alwaysAllow,
+    deny: m['common.deny'] || S.deny,
+    questionTitle: m['aiIsland.questionTitle'] || S.questionTitle,
+    prev: m['aiIsland.prevQuestion'] || S.prev,
+    next: m['aiIsland.nextQuestion'] || S.next,
+    submit: m['aiIsland.submitAnswer'] || S.submit,
+    know: m['aiIsland.know'] || S.know,
+    otherPlaceholder: m['aiIsland.otherPlaceholder'] || S.otherPlaceholder,
+    otherHint: m['aiIsland.otherHint'] || S.otherHint,
+    answerInClaude: m['aiIsland.answerInClaude'] || S.answerInClaude,
+    unknown: m['aiIsland.unknown'] || S.unknown,
+    other: m['aiIsland.other'] || S.other,
+    progress: m['aiIsland.progress'] || S.progress,
+  }
+  applyI18nText()
+}).catch(() => {})
+
+function applyI18nText() {
+  document.getElementById('permBannerText').textContent = S.permTitle
+  document.getElementById('permToolLabel').textContent = S.permTool
+  document.getElementById('permInputLabel').textContent = S.permInput
+  document.getElementById('permAllowBtn').textContent = S.allow
+  document.getElementById('permAlwaysBtn').textContent = S.alwaysAllow
+  document.getElementById('permDenyBtn').textContent = S.deny
+  document.getElementById('questionBannerText').textContent = S.questionTitle
+  document.getElementById('questionPrevBtn').textContent = S.prev
+  document.getElementById('aiLabel').textContent = S.idle
+}
+
+const OTHER = () => S.other
+
+// ===== 尺寸自适应 =====
+function resizeIsland() {
+  const island = document.getElementById('island')
+  const w = island.scrollWidth
+  // offsetHeight 含边框（scrollHeight 不含，会让窗口比胶囊矮 2px 裁掉底边框）
+  const h = island.offsetHeight
+  invoke('resize_ai_island', { contentWidth: w, contentHeight: h })
+}
+
+function fitIslandWidth() {
+  const island = document.getElementById('island')
+  const q = document.getElementById('questionCard')
+  const p = document.getElementById('permCard')
+  const card = q.classList.contains('show') ? q : (p.classList.contains('show') ? p : null)
+  if (!card) { island.style.width = ''; return }
+  let w = card.scrollWidth
+  if (w < 300) w = 300
+  if (w > 420) w = 420
+  island.style.width = w + 'px'
+}
+
+new ResizeObserver(() => resizeIsland()).observe(document.getElementById('island'))
+
+// ===== 状态渲染 =====
+const aiLabels = () => ({
+  idle: S.idle, thinking: S.thinking, working: S.working,
+  error: S.error, notification: S.notification, done: S.done,
+})
+
+function applyState(data) {
+  const ind = document.getElementById('aiIndicator')
+  const dot = document.getElementById('aiDot')
+  const lb = document.getElementById('aiLabel')
+  if (!data || (data.state === 'idle' && (!data.sessions || !data.sessions.length))) {
+    ind.style.display = 'flex'
+    dot.className = 'ai-dot idle'
+    lb.textContent = S.idle
+    lb.classList.remove('active')
+    setTimeout(resizeIsland, 50)
+    return
+  }
+  ind.style.display = 'flex'
+  dot.className = 'ai-dot ' + data.state
+  lb.textContent = aiLabels()[data.state] || S.idle
+  lb.classList.toggle('active', data.state !== 'idle')
+  setTimeout(resizeIsland, 50)
+}
+window.applyState = applyState
+
+function formatToolInput(input) {
+  try {
+    const priorityKeys = ['file_path', 'path', 'command', 'url', 'pattern', 'query']
+    const lines = []
+    for (const k of priorityKeys) {
+      if (input[k] !== undefined) lines.push(k + ': ' + String(input[k]))
+    }
+    for (const k of Object.keys(input)) {
+      if (priorityKeys.includes(k)) continue
+      const v = input[k]
+      lines.push(k + ': ' + (typeof v === 'object' ? JSON.stringify(v) : String(v)))
+    }
+    return lines.join('\n')
+  } catch { return JSON.stringify(input) }
+}
+
+function applyPermission(data) {
+  document.getElementById('questionCard').classList.remove('show')
+  document.getElementById('permCard').classList.add('show')
+  document.getElementById('permTool').textContent = data.toolName || S.unknown
+  const inputRow = document.getElementById('permInputRow')
+  const inputEl = document.getElementById('permInput')
+  const ti = data.toolInput
+  if (ti && typeof ti === 'object' && Object.keys(ti).length > 0) {
+    inputEl.textContent = formatToolInput(ti)
+    inputRow.style.display = 'flex'
+  } else if (typeof ti === 'string' && ti.length > 0) {
+    inputEl.textContent = String(ti)
+    inputRow.style.display = 'flex'
+  } else {
+    inputRow.style.display = 'none'
+  }
+  fitIslandWidth()
+  setTimeout(resizeIsland, 50)
+}
+
+// ===== 提问卡逐题推进 =====
+let qList = []
+let qIndex = 0
+let qAnswerable = false
+let qSessionId = ''
+let qDrafts = []
+
+function currentDraft() {
+  return qDrafts[qIndex] || (qDrafts[qIndex] = { selected: new Set(), otherText: '' })
+}
+
+function renderCurrentQuestion() {
+  const body = document.getElementById('questionBody')
+  body.innerHTML = ''
+  const total = qList.length
+  const view = toQuestionItem(qList[qIndex] || qList[0], qIndex)
+  const prog = document.getElementById('questionProgress')
+  const pt = total > 1
+    ? S.progress.replace('{n}', String(qIndex + 1)).replace('{t}', String(total))
+    : null
+  prog.style.display = pt ? 'inline' : 'none'
+  prog.textContent = pt || ''
+  const closeEl = document.getElementById('questionClose')
+
+  const title = document.createElement('div')
+  title.className = 'question-text'
+  title.textContent = view.text
+  body.appendChild(title)
+
+  if (qAnswerable) {
+    const item = qList[qIndex]
+    const multi = multiSelectOf(item)
+    const opts = withOther(view.options, OTHER())
+    const draft = currentDraft()
+    opts.forEach((opt) => {
+      const row = document.createElement('div')
+      row.className = 'question-opt selectable' + (draft.selected.has(opt.label) ? ' selected' : '')
+      const lab = document.createElement('div')
+      lab.className = 'question-opt-label'
+      const mark = document.createElement('span')
+      mark.className = 'qmark' + (multi ? ' multi' : '')
+      mark.textContent = multi ? '✓' : ''
+      lab.appendChild(mark)
+      lab.appendChild(document.createTextNode(opt.label))
+      row.appendChild(lab)
+      if (opt.desc) {
+        const d = document.createElement('div')
+        d.className = 'question-opt-desc'
+        d.textContent = opt.desc
+        row.appendChild(d)
+      }
+      row.addEventListener('click', () => {
+        const r = toggleOption(draft.selected, opt.label, multi, OTHER())
+        draft.selected = r.selected
+        renderCurrentQuestion()
+      })
+      body.appendChild(row)
+      if (opt.isOther && draft.selected.has(OTHER())) {
+        const inp = document.createElement('input')
+        inp.className = 'question-other'
+        inp.placeholder = S.otherPlaceholder
+        inp.value = draft.otherText || ''
+        inp.addEventListener('click', (e) => e.stopPropagation())
+        inp.addEventListener('input', () => { draft.otherText = inp.value })
+        body.appendChild(inp)
+        if (multi) {
+          const h = document.createElement('div')
+          h.className = 'question-hint'
+          h.textContent = S.otherHint
+          body.appendChild(h)
+        }
+      }
+    })
+    closeEl.style.display = 'inline-block'
+    document.getElementById('questionBtn').textContent = (qIndex < total - 1) ? S.next : S.submit
+  } else {
+    view.options.forEach((opt) => {
+      const row = document.createElement('div')
+      row.className = 'question-opt'
+      const lab = document.createElement('div')
+      lab.className = 'question-opt-label'
+      lab.textContent = opt.label
+      row.appendChild(lab)
+      if (opt.desc) {
+        const d = document.createElement('div')
+        d.className = 'question-opt-desc'
+        d.textContent = opt.desc
+        row.appendChild(d)
+      }
+      body.appendChild(row)
+    })
+    const hint = document.createElement('div')
+    hint.className = 'question-hint'
+    hint.textContent = S.answerInClaude
+    body.appendChild(hint)
+    closeEl.style.display = 'none'
+    document.getElementById('questionBtn').textContent = (qIndex < total - 1) ? S.next : S.know
+  }
+  document.getElementById('questionPrevBtn').disabled = qIndex <= 0
+  fitIslandWidth()
+  resizeIsland()
+}
+
+function resetQuestion() {
+  qList = []
+  qIndex = 0
+  qAnswerable = false
+  qSessionId = ''
+  qDrafts = []
+  document.getElementById('questionClose').style.display = 'none'
+}
+
+function applyQuestion(q) {
+  const card = document.getElementById('questionCard')
+  if (!q) {
+    resetQuestion()
+    card.classList.remove('show')
+    setTimeout(resizeIsland, 50)
+    return
+  }
+  document.getElementById('permCard').classList.remove('show')
+  qList = resolveQuestionList(q)
+  qIndex = 0
+  qAnswerable = !!q.answerable
+  qSessionId = q.sessionId || ''
+  qDrafts = qList.map(() => ({ selected: new Set(), otherText: '' }))
+  renderCurrentQuestion()
+  card.classList.add('show')
+  fitIslandWidth()
+  setTimeout(resizeIsland, 50)
+}
+
+function stepQuestion() {
+  if (qIndex < qList.length - 1) { qIndex++; renderCurrentQuestion(); return }
+  if (qAnswerable) {
+    const payload = buildAnswers(qList, qDrafts, OTHER())
+    invoke('agent_submit_question', { sessionId: qSessionId, answers: payload })
+    document.getElementById('questionCard').classList.remove('show')
+    resetQuestion()
+    setTimeout(resizeIsland, 50)
+  } else {
+    dismissQuestion()
+  }
+}
+function prevQuestion() { if (qIndex > 0) { qIndex--; renderCurrentQuestion() } }
+function dismissQuestion() {
+  invoke('agent_dismiss_question')
+  document.getElementById('questionCard').classList.remove('show')
+  setTimeout(resizeIsland, 50)
+}
+
+function applyCard(card) {
+  if (!card) {
+    document.getElementById('permCard').classList.remove('show')
+    document.getElementById('questionCard').classList.remove('show')
+    resetQuestion()
+    fitIslandWidth()
+    setTimeout(resizeIsland, 50)
+    return
+  }
+  if (card.kind === 'permission') { applyPermission(card); return }
+  applyQuestion(card)
+}
+window.applyCard = applyCard
+
+function resolvePerm(b) {
+  invoke('agent_resolve_permission', { behavior: b })
+  document.getElementById('permCard').classList.remove('show')
+  setTimeout(resizeIsland, 50)
+}
+
+// ===== 横条态 =====
+function setFlat(flat) {
+  document.body.classList.toggle('flat', !!flat)
+  fitIslandWidth()
+  setTimeout(resizeIsland, 320)
+}
+window.setFlat = setFlat
+
+// ===== 事件接线 =====
+listen('agent-state-update', (ev) => applyState(ev.payload))
+listen('agent-card-update', (ev) => applyCard(ev.payload))
+listen('ai-island-set-flat', (ev) => setFlat(ev.payload))
+
+document.getElementById('aiIndicator').addEventListener('click', () => invoke('show_ai_window'))
+document.getElementById('permAllowBtn').addEventListener('click', () => resolvePerm('allow'))
+document.getElementById('permAlwaysBtn').addEventListener('click', () => resolvePerm('always'))
+document.getElementById('permDenyBtn').addEventListener('click', () => resolvePerm('deny'))
+document.getElementById('questionPrevBtn').addEventListener('click', prevQuestion)
+document.getElementById('questionBtn').addEventListener('click', stepQuestion)
+document.getElementById('questionClose').addEventListener('click', dismissQuestion)
+
+// ===== 拖拽（只水平，4px 阈值区分点击/拖动）=====
+const row = document.getElementById('islandRow')
+let dsX = 0, dsY = 0, dragging = false
+row.addEventListener('pointerdown', (e) => {
+  dsX = e.screenX; dsY = e.screenY; dragging = false
+  row.setPointerCapture(e.pointerId)
+  invoke('ai_island_drag_start', { sx: e.screenX, sy: e.screenY })
+})
+row.addEventListener('pointermove', (e) => {
+  if (e.buttons !== 1) return
+  if (!dragging) {
+    if (Math.abs(e.screenX - dsX) <= 4 && Math.abs(e.screenY - dsY) <= 4) return
+    dragging = true
+  }
+  invoke('ai_island_drag_move', { sx: e.screenX, sy: e.screenY })
+})
+const endDrag = (e) => {
+  if (row.hasPointerCapture && row.hasPointerCapture(e.pointerId)) row.releasePointerCapture(e.pointerId)
+  if (dragging) { dragging = false; invoke('ai_island_drag_end') }
+}
+row.addEventListener('pointerup', endDrag)
+row.addEventListener('pointercancel', endDrag)
+
+// ===== 透明空白区穿透兜底（主通道是 Rust 120ms 轮询）=====
+function updateMouseMode(e) {
+  const onIsland = e.target && e.target.closest && !!e.target.closest('.island')
+  invoke('set_ai_island_mouse_mode', { interactive: onIsland })
+}
+document.addEventListener('mousemove', updateMouseMode)
+document.addEventListener('pointerdown', updateMouseMode)
+
+// ===== 初始化：横条态 + 主动拉状态（避免错过创建前广播）=====
+applyI18nText()
+if (typeof window.__AI_FLAT__ === 'boolean') setFlat(window.__AI_FLAT__)
+invoke('agent_get_status').then((s) => {
+  if (!s) return
+  applyState({ state: s.displayState, sessions: [] })
+  if (s.currentCard) applyCard(s.currentCard)
+}).catch(() => {})
+resizeIsland()
+</script>
+</body>
+</html>

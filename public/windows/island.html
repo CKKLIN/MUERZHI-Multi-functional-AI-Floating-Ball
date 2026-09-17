@@ -54,7 +54,7 @@ body.recording .rec-dot{animation:dotPulse 1s ease-in-out infinite}
 </div>
 <div class="tip-strip"></div>
 <script>
-const { emit } = window.__TAURI__
+const emit = window.__TAURI__.event.emit
 
 const METER_BARS = 8
 const meterEl = document.getElementById('micMeter')

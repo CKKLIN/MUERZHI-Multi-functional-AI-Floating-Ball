@@ -86,8 +86,8 @@ pub fn run() {
             modules::windows::region::hide_border_only,
             modules::windows::region::show_floating_island,
             modules::windows::region::hide_floating_island,
-            modules::commands::stubs::show_ai_island,
-            modules::commands::stubs::hide_ai_island,
+            modules::windows::ai_island::show_ai_island,
+            modules::windows::ai_island::hide_ai_island,
             modules::windows::region::hide_camera_preview,
             modules::windows::region::toggle_camera_preview,
             modules::windows::region::set_island_state,
@@ -97,6 +97,12 @@ pub fn run() {
             modules::windows::region::region_cancelled,
             modules::windows::region::camera_drag_start,
             modules::windows::region::camera_drag_end,
+            // AI 岛（P2 实装）
+            modules::windows::ai_island::resize_ai_island,
+            modules::windows::ai_island::ai_island_drag_start,
+            modules::windows::ai_island::ai_island_drag_move,
+            modules::windows::ai_island::ai_island_drag_end,
+            modules::windows::ai_island::set_ai_island_mouse_mode,
             modules::commands::stubs::update_audio_levels,
             // 悬浮球（P2 实装）
             modules::windows::floating_ball::show_floating_ball,

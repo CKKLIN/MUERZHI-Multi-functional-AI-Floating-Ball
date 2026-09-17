@@ -6,7 +6,7 @@
 // 3) region-selected/region-cancelled → invoke('region_selected' / 'region_cancelled')
 // 4) sourceId 由录制管线在 P4 决定（此处传空串，Rust 侧 Option<String> 接收）
 
-const { invoke } = window.__TAURI__
+const invoke = window.__TAURI__.core.invoke
 
 let startX = 0
 let startY = 0

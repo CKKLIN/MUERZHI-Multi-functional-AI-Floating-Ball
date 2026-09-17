@@ -157,7 +157,9 @@ body.snap-bottom #ballBadge{top:24px;right:4px}
 
 <script>
 // Tauri 环境：invoke/emit 走 window.__TAURI__（withGlobalTauri）
-const { invoke, emit, listen } = window.__TAURI__
+const invoke = window.__TAURI__.core.invoke
+const emit = window.__TAURI__.event.emit
+const listen = window.__TAURI__.event.listen
 
 // 菜单项由 Rust 侧启动时注入（花瓣数/弧度随可见项变化）
 const ITEMS = window.__BALL_DATA__ || []

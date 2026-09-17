@@ -78,12 +78,6 @@ pub fn close_window(window: tauri::Window, app: tauri::AppHandle) {
 
 // ===== 区域选择/悬浮岛/摄像头（P2 迁移）=====
 #[tauri::command]
-pub fn show_ai_island() {}
-
-#[tauri::command]
-pub fn hide_ai_island() {}
-
-#[tauri::command]
 pub fn update_audio_levels(_micLevel: f64, _sysLevel: f64) {}
 
 // ===== 悬浮球（P2 已实装于 windows/floating_ball.rs）=====

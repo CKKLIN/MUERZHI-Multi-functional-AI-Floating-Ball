@@ -178,6 +178,11 @@ impl AiIslandSettings {
     }
 }
 
+/// 供窗口模块读取横条态（避免各自解析文件）
+pub fn ai_island_flat(app: &AppHandle) -> bool {
+    AiIslandSettings::load(app).flat
+}
+
 #[tauri::command]
 pub fn get_ai_island_settings(app: AppHandle) -> Value {
     let s = AiIslandSettings::load(&app);
@@ -190,6 +195,8 @@ pub fn set_ai_island_settings(app: AppHandle, patch: Value) -> Value {
     if let Some(v) = patch.get("flat").and_then(|v| v.as_bool()) {
         s.flat = v;
         s.save(&app);
+        // 作用到活动岛（对齐 applyAiIslandSettings）
+        crate::modules::windows::ai_island::push_flat(&app, v);
     }
     json!({ "flat": s.flat })
 }
