@@ -43,7 +43,7 @@ base64 = "0.22"
 
 # 截图文件名用本地时间（std 只给 UTC）：取时区偏移，避免文件名差几个小时
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_System_Time"] }
+windows-sys = { version = "0.61", features = ["Win32_System_Time", "Win32_Foundation", "Win32_Graphics_Gdi"] }
 
 # P4 录制管线开关（WGC + WASAPI）
 # 默认开启：录制是核心功能，出厂构建（含 NSIS 安装包）必须带采集管线；

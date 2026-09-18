@@ -36,7 +36,7 @@ npm run build:web    # 仅 vite build（tauri build 的 beforeCommand）
 `src-tauri/src/modules/recording/`：
 - `capture.rs`：WGC 帧泵（`windows-capture`）→ MediaFoundation 编码器直出 mp4。**暂停 = 分段**：一张会话只认一个输出文件、且编码器时间轴来自捕获时钟，中途跳帧会在成品里留时间黑洞；改为暂停结束当前段、恢复起新段，停止后 ffmpeg `concat -c copy` 无损拼接（与 Electron 版 `MediaRecorder.pause()` 语义一致）。编码器用 **H264 而非 HEVC**：精简 ffmpeg 有 h264 解码器没有 hevc，裁剪/GIF/多屏都要解码。
 - `audio.rs`：WASAPI 麦克风（Capture 设备）+ 系统声（Render 设备 + loopback 标志）各录 48k/16bit 立体声 WAV，**不做 Rust 内实时混音**（两路时钟漂移 + 重采样交给 ffmpeg 的 `amix/aresample`，录制阶段零混音 CPU）；每块 PCM 算 RMS 写全局 atomics。
-- `grab.rs`：**WGC 单帧抓取**（缩略图 340×200 盒式降采样 → PNG data URL / 全分辨率截图存桌面 / 选区窗底图）。两个必须记住的坑：① DXGI 复制那条路在本机实测**首帧全黑**、后续超时，故改走 WGC（起会话→等有效帧→停会话，几十毫秒）；② WGC/DXGI 帧的 **alpha 恒为 0**，不显式置 255 编出来的 PNG 是全透明的（data URL 有内容、页面上什么都看不到）。
+- `grab.rs`：单帧抓取走 **GDI `BitBlt`**（缩略图 340×200 盒式降采样 → PNG data URL / 全分辨率截图存桌面 / 选区窗底图）。三个必须记住的坑：① DXGI 复制本机实测**首帧全黑**、后续超时；② WGC 是脏区驱动，静止/待机屏可能整段会话只投 1 帧且全黑 —— 所以单帧抓图用 GDI（同步取当前屏幕内容，没有"等帧"这回事），WGC 单帧路径降级为诊断通道；③ GDI/WGC/DXGI 的 32bpp 输出 **alpha 恒为 0**，不显式置 255 编出来的 PNG 是全透明的（data URL 有内容、页面上什么都看不到）；④ GDI 的 `CreateDCW(设备名,设备名,…)` 拿到的是**该显示器自己的 DC**，`BitBlt` 源坐标必须是 `(0,0)` —— 传虚拟桌面坐标只有主屏（0,0）碰巧对，副屏会整块取到界外 → 黑图。
 - `mod.rs`：会话编排。停止流程 = 逐显示器分段 concat → 区域 crop（可选）或多屏 overlay 合并 → `mux_audio`（麦克风/系统声各可能多段：多段先 `concat` 滤镜接起来，两路再 `amix`）→ 清理临时文件。电平由 20Hz ticker 推给原生窗口（`win.eval('window.updateMeter')`）与渲染层（`audio-levels` 事件）。
 
 **设备 id 域**：麦克风下拉走 `list_audio_devices`（WASAPI endpoint id），与 `navigator.mediaDevices` 的 deviceId **不通用**（列表用旧值会静默落到默认设备）。摄像头仍走 WebView2（预览窗 getUserMedia）。
@@ -65,9 +65,9 @@ npm run build:web    # 仅 vite build（tauri build 的 beforeCommand）
 - 画笔标注合成：渲染层 `useDrawingCanvas` 能画，但笔迹未进成品（需 ffmpeg overlay 合成 strokes）
 - 摄像头画中画合成：主窗口预览窗与录制合成未接线（录制时画面里没有摄像头小窗）
 - 窗口捕获（`types:['window']`）：`get_sources` 只支持 `screen`，窗口源返回空
-- 副屏缩略图偶发全黑：单帧抓取在副显示器（如 `\.\DISPLAY2`）上可能等不到有效帧，
-  回退为黑图。**不影响录制**（副屏连续采集实测正常），也不影响 getSources 的源列举，
-  只是选择器里的预览图偏黑
+- 副屏缩略图全黑：若副显示器处于**待机/关闭**状态，抓到的就是黑图（GDI 与 WGC 一致，
+  连 .NET `CopyFromScreen` 抓整块虚拟桌面也是黑的）—— 属系统真实状态，不是缺陷。
+  排查方法：`cargo test --test unit -- --ignored --nocapture probe_gdi_paths`
 
 ## 详细文档
 
