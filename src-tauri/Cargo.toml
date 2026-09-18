@@ -35,10 +35,13 @@ serde_json = "1"
 log = "0.4"
 tokio = { version = "1", features = ["time", "rt-multi-thread", "net", "io-util", "sync"] }
 axum = "0.8"
+# P4 录制管线依赖（screen-capture feature 隔离；WGC + WASAPI）
+windows-capture = { version = "2", optional = true }
+wasapi = { version = "0.24", optional = true }
 
-# P4 录制管线开关（WGC + WASAPI）；启用前 capture.rs 骨架返回明确错误
+# P4 录制管线开关（WGC + WASAPI）
 [features]
-screen-capture = []
+screen-capture = ["dep:windows-capture", "dep:wasapi"]
 
 [profile.release]
 # 与 electron-builder 的 compression: maximum 对齐，安装包尽量小

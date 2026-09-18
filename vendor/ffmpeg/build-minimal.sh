@@ -119,10 +119,10 @@ echo "[2/4] configuring (minimal feature set)..."
   --enable-swresample \
   --enable-zlib \
   --enable-encoder=libx264,aac,h264_nvenc,h264_qsv,h264_amf,png \
-  --enable-decoder=vp8,vp9,h264,aac,opus,vorbis,png \
-  --enable-demuxer=matroska,mov,gif,image2 \
+  --enable-decoder=vp8,vp9,h264,aac,opus,vorbis,png,pcm_s16le \
+  --enable-demuxer=matroska,mov,gif,image2,rawvideo,s16le,wav \
   --enable-muxer=mov,mp4,matroska,gif,image2 \
-  --enable-filter=crop,pad,format,scale,setsar,overlay,fps,palettegen,paletteuse,color,hwupload,null,anull \
+  --enable-filter=crop,pad,format,scale,setsar,overlay,fps,palettegen,paletteuse,color,hwupload,null,anull,amix,aresample \
   --enable-protocol=file \
   --enable-small \
   --pkg-config-flags=--static \
