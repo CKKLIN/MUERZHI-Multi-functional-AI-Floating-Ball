@@ -65,6 +65,9 @@ npm run build:web    # 仅 vite build（tauri build 的 beforeCommand）
 - 画笔标注合成：渲染层 `useDrawingCanvas` 能画，但笔迹未进成品（需 ffmpeg overlay 合成 strokes）
 - 摄像头画中画合成：主窗口预览窗与录制合成未接线（录制时画面里没有摄像头小窗）
 - 窗口捕获（`types:['window']`）：`get_sources` 只支持 `screen`，窗口源返回空
+- 副屏缩略图偶发全黑：单帧抓取在副显示器（如 `\.\DISPLAY2`）上可能等不到有效帧，
+  回退为黑图。**不影响录制**（副屏连续采集实测正常），也不影响 getSources 的源列举，
+  只是选择器里的预览图偏黑
 
 ## 详细文档
 
