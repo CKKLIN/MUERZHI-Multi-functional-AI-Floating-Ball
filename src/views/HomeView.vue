@@ -486,8 +486,6 @@ onMounted(() => {
     audio.sysLevel.value = sys
   })
   onUnmounted(() => cleanupAudioLevels())
-})
-
   // 暴露清理函数供 onUnmounted 使用
   onUnmounted(() => cleanupBallAction())
 })

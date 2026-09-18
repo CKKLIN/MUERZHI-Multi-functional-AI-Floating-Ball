@@ -739,6 +739,33 @@ mod tests {
         let info = String::from_utf8_lossy(&probe.stderr);
         assert!(info.contains("Audio:"), "成品没有音轨:\n{info}");
         assert!(info.contains("Video:"), "成品没有视频轨:\n{info}");
+
+        // 「有音轨」≠「有声音」：amix 输入链没接上或参数写错时，产物会是一条纯静音
+        // 音轨，容器面板看不出来。用 volumedetect 校验实际电平（内置 ffmpeg 已编入该滤镜）。
+        let probe_sink = mk("vol_probe.mp4");
+        let _ = std::fs::remove_file(&probe_sink);
+        let vol = String::from_utf8_lossy(
+            &std::process::Command::new(&bin)
+                .args([
+                    "-i", &out.to_string_lossy(),
+                    "-af", "volumedetect",
+                    "-vn",
+                    // 精简 ffmpeg 没编 null muxer，用 mp4 落个临时文件当"丢弃输出"
+                    "-f", "mp4", &probe_sink.to_string_lossy(),
+                ])
+                .output()
+                .unwrap()
+                .stderr,
+        )
+        .to_string();
+        let mean = vol
+            .lines()
+            .find_map(|l| l.split("mean_volume:").nth(1))
+            .map(|s| s.trim().split(' ').next().unwrap_or("").to_string())
+            .unwrap_or_default();
+        let mean_db: f64 = mean.parse().unwrap_or(-999.0);
+        println!("音轨平均电平：{mean} dB");
+        assert!(mean_db > -60.0, "成品音轨接近静音（mean_volume={mean} dB）");
         // concat 两段各 1 秒 → 时长应约 2 秒（允许 ±0.4s）
         let dur = info
             .lines()
@@ -783,7 +810,7 @@ mod tests {
         assert!(minfo.contains("640x240"), "合并画布应为 640x240:
 {minfo}");
 
-        for p in [&seg1, &seg2, &mic, &sys, &joined, &out, &merged, &mk("m1.mp4"), &mk("m2.mp4")] {
+        for p in [&seg1, &seg2, &mic, &sys, &joined, &out, &merged, &probe_sink, &mk("m1.mp4"), &mk("m2.mp4")] {
             let _ = std::fs::remove_file(p);
         }
     }

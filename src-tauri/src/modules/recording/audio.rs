@@ -417,6 +417,23 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// 读 16bit WAV 的采样峰值（0..1）——用于区分「采到声音」与「只收到静音填充」
+    #[cfg(feature = "screen-capture")]
+    pub fn wav_peak(path: &str) -> f32 {
+        let Ok(bytes) = std::fs::read(path) else {
+            return 0.0;
+        };
+        if bytes.len() <= 44 {
+            return 0.0;
+        }
+        let mut peak = 0i32;
+        for chunk in bytes[44..].chunks_exact(2) {
+            let s = i16::from_le_bytes([chunk[0], chunk[1]]) as i32;
+            peak = peak.max(s.abs());
+        }
+        peak as f32 / 32768.0
+    }
+
     /// 诊断用：同步跑某一路采集 1 秒，把真实错误字符串返回（不进日志，直接可见）
     #[cfg(all(test, feature = "screen-capture"))]
     pub fn probe_source(source: Source, seconds: u64) -> Result<usize, String> {
@@ -443,32 +460,41 @@ mod tests {
     #[test]
     #[ignore = "需要真实音频设备；手动用 --ignored 跑"]
     fn wasapi_smoke_captures_audio() {
-        // 系统声 loopback 的语义是「有音频流活动才有数据」——静音时 Windows 根本不推包，
-        // 所以探测前先播一段系统提示音做激励，否则只会拿到 44 字节的空 WAV 头。
-        let stim = std::process::Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-Command",
-                r"$p=New-Object Media.SoundPlayer 'C:\Windows\Media\Windows Ding.wav'; 1..3 | ForEach-Object { $p.PlaySync() }",
-            ])
-            .spawn();
-        println!("Sys 探测: {:?}", probe_source(Source::System, 3));
-        if let Ok(mut child) = stim {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
-        println!("Mic 探测: {:?}", probe_source(Source::Mic, 1));
+        // 系统声 loopback 的语义是「有音频流活动才有数据」——完全静音时 Windows 不推包，
+        // 只会拿到 44 字节的空 WAV 头。所以必须在**采集进行中**播放声音做激励。
+        let play = || {
+            std::process::Command::new("powershell")
+                .args([
+                    "-NoProfile",
+                    "-Command",
+                    r"$p=New-Object Media.SoundPlayer 'C:\Windows\Media\Windows Ding.wav'; 1..8 | ForEach-Object { $p.PlaySync() }",
+                ])
+                .spawn()
+        };
 
+        let stim = play().expect("起提示音播放进程");
         let session = start("smoke", true, true, None, None).expect("音频会话应能启动");
-        std::thread::sleep(std::time::Duration::from_secs(2));
+        std::thread::sleep(std::time::Duration::from_secs(4));
         let files = session.stop();
+        let mut child = stim;
+        let _ = child.kill();
+        let _ = child.wait();
+
         assert!(!files.is_empty(), "两路都没产出音频");
+        let mut sys_peak = 0.0f32;
         for (src, path) in &files {
             let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-            // 2 秒 48k/16bit 立体声 ≈ 384KB；阈值放到 32KB（容忍设备起流延迟）
-            assert!(size > 32_000, "{src:?} 音频数据过少（{size} 字节）");
-            println!("音频冒烟：{src:?} → {path}（{size} 字节）");
+            // 4 秒 48k/16bit 立体声 ≈ 768KB；阈值放到 64KB（容忍设备起流延迟）
+            assert!(size > 64_000, "{src:?} 音频数据过少（{size} 字节）");
+            // 光看字节数不够：loopback 无音频活动时也推静音填充，"有数据"≠"采到声音"。
+            // 峰值才能证明链路真的采到了声波。
+            let peak = wav_peak(path);
+            println!("音频冒烟：{src:?} → {path}（{size} 字节，峰值 {peak:.4}）");
+            if *src == Source::System {
+                sys_peak = peak;
+            }
             let _ = std::fs::remove_file(path);
         }
+        assert!(sys_peak > 0.01, "系统声采到的是静音（峰值 {sys_peak:.4}）");
     }
 }

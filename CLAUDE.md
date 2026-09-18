@@ -36,12 +36,16 @@ npm run build:web    # 仅 vite build（tauri build 的 beforeCommand）
 `src-tauri/src/modules/recording/`：
 - `capture.rs`：WGC 帧泵（`windows-capture`）→ MediaFoundation 编码器直出 mp4。**暂停 = 分段**：一张会话只认一个输出文件、且编码器时间轴来自捕获时钟，中途跳帧会在成品里留时间黑洞；改为暂停结束当前段、恢复起新段，停止后 ffmpeg `concat -c copy` 无损拼接（与 Electron 版 `MediaRecorder.pause()` 语义一致）。编码器用 **H264 而非 HEVC**：精简 ffmpeg 有 h264 解码器没有 hevc，裁剪/GIF/多屏都要解码。
 - `audio.rs`：WASAPI 麦克风（Capture 设备）+ 系统声（Render 设备 + loopback 标志）各录 48k/16bit 立体声 WAV，**不做 Rust 内实时混音**（两路时钟漂移 + 重采样交给 ffmpeg 的 `amix/aresample`，录制阶段零混音 CPU）；每块 PCM 算 RMS 写全局 atomics。
-- `grab.rs`：DXGI 复制抓单帧（缩略图 340×200 盒式降采样 → PNG data URL / 全分辨率截图存桌面）。缩略图不用 WGC——抓一帧要起会话等首帧，DXGI `AcquireNextFrame` 本身就是「取当前桌面一帧」。
+- `grab.rs`：**WGC 单帧抓取**（缩略图 340×200 盒式降采样 → PNG data URL / 全分辨率截图存桌面 / 选区窗底图）。两个必须记住的坑：① DXGI 复制那条路在本机实测**首帧全黑**、后续超时，故改走 WGC（起会话→等有效帧→停会话，几十毫秒）；② WGC/DXGI 帧的 **alpha 恒为 0**，不显式置 255 编出来的 PNG 是全透明的（data URL 有内容、页面上什么都看不到）。
 - `mod.rs`：会话编排。停止流程 = 逐显示器分段 concat → 区域 crop（可选）或多屏 overlay 合并 → `mux_audio`（麦克风/系统声各可能多段：多段先 `concat` 滤镜接起来，两路再 `amix`）→ 清理临时文件。电平由 20Hz ticker 推给原生窗口（`win.eval('window.updateMeter')`）与渲染层（`audio-levels` 事件）。
 
 **设备 id 域**：麦克风下拉走 `list_audio_devices`（WASAPI endpoint id），与 `navigator.mediaDevices` 的 deviceId **不通用**（列表用旧值会静默落到默认设备）。摄像头仍走 WebView2（预览窗 getUserMedia）。
 
+**定速补帧（关键）**：WGC 只在画面**变化**时投帧（脏区驱动），静置桌面可能几秒才来一帧，而 MF 编码器时间戳完全取自帧到达时刻 —— 直接送帧会「录 6 秒得 0.03 秒视频」（实测）。现在帧到达只更新共享缓冲，另一个 pacing 线程按目标 fps 用墙钟时间戳反复推最后一帧，于是动静皆有真实帧率、时长与界面计时器一致。**帧序**：WGC 的 BGRA 是自下而上，送编码器前必须翻转行序。
+
 **录制辅助窗口不进画面**：边框/工具条/悬浮岛/摄像头预览窗都设了 `set_content_protected(true)`（tao → `WDA_EXCLUDEFROMCAPTURE`），人在屏幕上看得到、WGC 录不到。**未接线**：画笔标注（`setDrawAnnotations` 是空实现，笔迹不进成品）。
+
+**选区页必须是完整 HTML**：`public/windows/region-selector.html` 曾只有 CSS+JS 片段（缺 `<!DOCTYPE>/<body>`），浏览器当纯文本渲染 → 内联脚本永不执行 → 点「区域录制」毫无反应。改动该文件时务必保持完整文档结构。
 
 ### cargo test 注意（Windows）
 

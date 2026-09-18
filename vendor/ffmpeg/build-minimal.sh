@@ -98,6 +98,7 @@ make distclean >/dev/null 2>&1 || true
 #                                     （concat demuxer 逐段要求 Annex-B 码流，少了这个 bsf
 #                                      报 "Bitstream filter not found"；同参数段 -c copy 无损拼接）
 #   音频多段拼接 / 混音              : filter concat + amix + aresample（WAV 同格式，仅重采样开销）
+#   音量校验 (volumedetect)          : 单测断言成品音轨非静音（"有音轨"≠"有声音"）
 #   测试素材自造                    : decoder rawvideo（单测用 stdin 管道喂纯色帧造视频；
 #                                     音频素材由 Rust 直接写 WAV，不依赖 lavfi/avdevice）
                                      #   hw 探测 (-encoders)             : CLI 内建
@@ -128,7 +129,7 @@ echo "[2/4] configuring (minimal feature set)..."
   --enable-decoder=vp8,vp9,h264,aac,opus,vorbis,png,pcm_s16le,rawvideo \
   --enable-demuxer=matroska,mov,gif,image2,rawvideo,s16le,wav,concat   --enable-bsf=h264_mp4toannexb \
   --enable-muxer=mov,mp4,matroska,gif,image2 \
-  --enable-filter=crop,pad,format,scale,setsar,overlay,fps,palettegen,paletteuse,color,hwupload,null,anull,amix,aresample,concat,apad \
+  --enable-filter=crop,pad,format,scale,setsar,overlay,fps,palettegen,paletteuse,color,hwupload,null,anull,amix,aresample,concat,apad,volumedetect \
   --enable-protocol=file \
   --enable-small \
   --pkg-config-flags=--static \

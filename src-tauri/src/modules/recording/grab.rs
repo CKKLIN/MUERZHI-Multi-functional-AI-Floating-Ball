@@ -1,58 +1,148 @@
-// 单帧抓取 — DXGI Desktop Duplication（windows-capture crate）
+// 单帧抓取 — Windows Graphics Capture（与录制管线同一套机制）
 //
 // 用途（对齐 Electron 的 desktopCapturer.getSources）：
 //   1. get_sources / get_all_displays 的显示器缩略图（340×200 级）
 //   2. take_screenshot 全分辨率截图存桌面
-//   3. 区域选择窗的全屏底图（P4 后续在 region-selector.html 里绘制）
+//   3. 区域选择窗的全屏底图（region-selector.html 铺 canvas）
 //
-// 为什么不用 WGC：WGC 面向持续帧泵，抓一帧要起会话 + 等首帧 + 停会话，开销大；
-// DXGI 复制的 AcquireNextFrame 本身就是「取当前桌面一帧」的语义，更适合单次抓图。
-// 另外 DXGI 复制拿到的首帧可能还是上一帧内容，这里最多重试 3 次取最新的。
+// **为什么不是 DXGI 复制**：DXGI 的 `AcquireNextFrame` 看着更像「取当前桌面一帧」，
+// 但本机实测首帧**全黑**（平均亮度 0/255、alpha 也全 0），后续帧直接超时 —— 混合显卡
+// 笔记本上这条路不可靠。WGC 是进程内已验证可用的通道（录制管线就跑在它上面）：起会话
+// → 等首帧 → 停会话，代价几十毫秒，对「点一下抓一张」完全够用。
+//
+// **alpha 必须显式拉满**：WGC/DXGI 的 BGRA 帧 alpha 常为 0（桌面没有透明概念），直接
+// 编码 PNG 会得到一张全透明图 —— data URL 看着有内容，页面上却什么都看不到（实测缩略图
+// 与选区底图都曾是这样）。抓帧后统一置 255。
 //
 // feature 开关：无 screen-capture 时降级为明确错误（渲染层缩略图为空、截图报错提示）。
-// 该路径下 WGC/DXGI 实现整体不可达，但接口与时间戳工具保留（单测仍覆盖）→ 抑制告警。
+// 该路径下 WGC 实现整体不可达，但接口与时间戳工具保留（单测仍覆盖）→ 抑制告警。
 #![cfg_attr(not(feature = "screen-capture"), allow(dead_code))]
 
 #[cfg(feature = "screen-capture")]
 mod imp {
     use base64::Engine;
-    use windows_capture::dxgi_duplication_api::{DxgiDuplicationApi, DxgiDuplicationFormat};
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+    use windows_capture::capture::{CaptureControl, Context, GraphicsCaptureApiHandler};
     use windows_capture::encoder::{ImageEncoder, ImageEncoderPixelFormat, ImageFormat};
+    use windows_capture::frame::Frame;
+    use windows_capture::graphics_capture_api::InternalCaptureControl;
     use windows_capture::monitor::Monitor;
+    use windows_capture::settings::{
+        ColorFormat, CursorCaptureSettings, DirtyRegionSettings, DrawBorderSettings,
+        MinimumUpdateIntervalSettings, SecondaryWindowSettings, Settings,
+    };
 
-    /// 抓一帧的通用入口：返回 (BGRA 紧凑缓冲, 宽, 高)
-    fn grab_bgra(index0: usize) -> Result<(Vec<u8>, u32, u32), String> {
-        // windows-capture 的 Monitor::from_index 是 1-based；本工程对外一律 0-based（对齐
-        // Tauri available_monitors 下标），故此处 +1 换算。
-        let monitor = Monitor::from_index(index0 + 1)
-            .map_err(|e| format!("显示器 #{index0} 不存在: {e}"))?;
-        // 只声明 Bgra8 一种格式，让复制接口输出的 ModeDesc.Format 可预期（crate 内部会
-        // 保证 Bgra8 在候选列表里），避免拿到 Rgba16F 之类没法直接喂 PNG 编码器的格式。
-        let mut dup = DxgiDuplicationApi::new_options(monitor, &[DxgiDuplicationFormat::Bgra8])
-            .map_err(|e| format!("DXGI 复制初始化失败: {e}"))?;
-
-        // 首次 AcquireNextFrame 常返回「上一帧」或超时；最多轮询 3 次，拿到就画。
-        let mut last_err = String::new();
-        for _ in 0..3 {
-            match dup.acquire_next_frame(500) {
-                Ok(mut frame) => {
-                    let buf = frame.buffer().map_err(|e| format!("帧映射失败: {e}"))?;
-                    if buf.format() != DxgiDuplicationFormat::Bgra8 {
-                        return Err("显示器像素格式不是 BGRA8".into());
-                    }
-                    let (w, h) = (buf.width(), buf.height());
-                    // as_nopadding_buffer 返回借用 buf 的切片，须先拷出来再让 buf 析构
-                    let mut scratch = Vec::new();
-                    let packed = buf.as_nopadding_buffer(&mut scratch).to_vec();
-                    return Ok((packed, w, h));
-                }
-                Err(e) => last_err = format!("{e}"),
-            }
-        }
-        Err(format!("抓帧失败: {last_err}"))
+    /// 帧收集器：**每帧都存**，由抓取方决定何时收会话。
+    ///
+    /// 不能「拿到第一帧就停」：WGC 会话刚起来的头一帧可能是**全黑**（实测副屏首帧亮度
+    /// 0/255）。也不能「固定丢 N 帧再停」：屏静止时 WGC 按脏区投递，可能只来一帧，
+    /// 丢完就再也等不到下一帧（实测超时失败）。所以这里持续更新最新帧，由 grab_bgra
+    /// 综合「拿到一帧了(=有兜底)」与「帧不是全黑(=更可信)」两个条件决定何时收工。
+    struct FrameCollectorHandler {
+        slot: Arc<Mutex<Option<(Vec<u8>, u32, u32)>>>,
     }
 
-    /// 枚举显示器（0-based 下标 → 设备名），下标与 `Monitor::from_index(i+1)` 一致
+    impl GraphicsCaptureApiHandler for FrameCollectorHandler {
+        type Flags = Arc<Mutex<Option<(Vec<u8>, u32, u32)>>>;
+        type Error = Box<dyn std::error::Error + Send + Sync>;
+
+        fn new(ctx: Context<Self::Flags>) -> Result<Self, Self::Error> {
+            Ok(Self { slot: ctx.flags })
+        }
+
+        fn on_frame_arrived(
+            &mut self,
+            frame: &mut Frame,
+            _capture_control: InternalCaptureControl,
+        ) -> Result<(), Self::Error> {
+            let fb = frame.buffer()?;
+            let (w, h) = (fb.width(), fb.height());
+            let mut scratch = Vec::new();
+            let mut packed = fb.as_nopadding_buffer(&mut scratch).to_vec();
+            force_opaque_bgra(&mut packed);
+            *self.slot.lock().unwrap() = Some((packed, w, h));
+            Ok(())
+        }
+    }
+
+    /// 帧平均亮度（0..255）
+    fn brightness_of(buf: &[u8]) -> f64 {
+        let mut sum = 0u64;
+        let mut n = 0u64;
+        for px in buf.chunks_exact(4) {
+            sum += px[0] as u64 + px[1] as u64 + px[2] as u64;
+            n += 3;
+        }
+        if n == 0 {
+            0.0
+        } else {
+            sum as f64 / n as f64
+        }
+    }
+
+    /// BGRA 缓冲 alpha 统一置 255（见文件头说明：不置不透明就编不出可见图）
+    fn force_opaque_bgra(buf: &mut [u8]) {
+        for px in buf.chunks_exact_mut(4) {
+            px[3] = 255;
+        }
+    }
+
+    /// 抓一帧：返回 (BGRA 紧凑缓冲, 宽, 高)
+    pub fn grab_bgra(index0: usize) -> Result<(Vec<u8>, u32, u32), String> {
+        // windows-capture 的 Monitor::from_index 是 1-based；本工程对外一律 0-based
+        let monitor = Monitor::from_index(index0 + 1)
+            .map_err(|e| format!("显示器 #{index0} 不存在: {e}"))?;
+        let slot: Arc<Mutex<Option<(Vec<u8>, u32, u32)>>> = Arc::new(Mutex::new(None));
+        let settings = Settings::new(
+            monitor,
+            CursorCaptureSettings::WithoutCursor,
+            DrawBorderSettings::WithoutBorder,
+            SecondaryWindowSettings::Default,
+            MinimumUpdateIntervalSettings::Default,
+            DirtyRegionSettings::Default,
+            ColorFormat::Bgra8,
+            slot.clone(),
+        );
+        let control: CaptureControl<
+            FrameCollectorHandler,
+            Box<dyn std::error::Error + Send + Sync>,
+        > = FrameCollectorHandler::start_free_threaded(settings)
+            .map_err(|e| format!("单帧捕获会话启动失败: {e}"))?;
+
+        // 收工条件：拿到过帧 + （帧非全黑 或 已经等够了）
+        //   静止屏：第一帧就是有效画面 → 立即返回，不必空等；
+        //   首帧全黑：继续等下一帧（最多 800ms），期间保留黑帧作兜底，绝不空手而归。
+        let start = std::time::Instant::now();
+        let black_grace = Duration::from_millis(2500);
+        let hard_deadline = start + Duration::from_millis(3000);
+        let mut fallback: Option<(Vec<u8>, u32, u32)> = None;
+        let mut chosen: Option<(Vec<u8>, u32, u32)> = None;
+        while std::time::Instant::now() < hard_deadline {
+            if let Some(f) = slot.lock().unwrap().take() {
+                let bright = brightness_of(&f.0);
+                if bright > 1.0 {
+                    chosen = Some(f);
+                    break;
+                }
+                if fallback.is_none() {
+                    fallback = Some(f);
+                }
+                // 黑帧：给足宽限等下一帧（副屏从待机唤醒可能要 1~2 秒），超了就认账
+                if std::time::Instant::now().duration_since(start) > black_grace {
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(15));
+        }
+        // 无论拿到没有都要收会话，避免留下悬挂的捕获线程
+        let _ = std::thread::spawn(move || control.stop()).join();
+        chosen
+            .or(fallback)
+            .ok_or_else(|| "3 秒内未取到画面帧".to_string())
+    }
+
+    /// 枚举显示器（0-based 下标 → 设备名），与 `Monitor::from_index(i+1)` 对齐
     pub fn monitor_device_names() -> Vec<String> {
         match Monitor::enumerate() {
             Ok(list) => list
@@ -119,6 +209,13 @@ mod imp {
         encode_png(&small, tw, th)
     }
 
+    /// 帧平均亮度（0..255）——用于单测确认抓到的**不是全黑帧**
+    #[allow(dead_code)] // 仅真机冒烟用；生产路径不调用
+    pub fn frame_brightness(index0: usize) -> Result<f64, String> {
+        let (buf, _w, _h) = grab_bgra(index0)?;
+        Ok(brightness_of(&buf))
+    }
+
     /// PNG 字节 → data URL（`<img src>` 直接用，免二次 invoke）
     pub fn grab_data_url(index0: usize, max_w: u32, max_h: u32) -> Result<String, String> {
         let png = grab_png(index0, max_w, max_h)?;
@@ -138,6 +235,9 @@ mod imp {
         Err("屏幕采集管线未编译（用 --features screen-capture 构建）".into())
     }
     pub fn grab_data_url(_index0: usize, _max_w: u32, _max_h: u32) -> Result<String, String> {
+        Err("屏幕采集管线未编译".into())
+    }
+    pub fn frame_brightness(_index0: usize) -> Result<f64, String> {
         Err("屏幕采集管线未编译".into())
     }
 }
@@ -166,6 +266,17 @@ pub fn screenshot_to_desktop(app: &tauri::AppHandle) -> Result<String, String> {
 #[cfg(not(feature = "screen-capture"))]
 pub fn screenshot_to_desktop(_app: &tauri::AppHandle) -> Result<String, String> {
     Err("截图功能需要屏幕采集管线（用 --features screen-capture 构建）".into())
+}
+
+// ===== 区域选择窗底图（grab_screen_thumbnail 命令）=====
+
+/// 主屏一帧 → PNG data URL（供 region-selector.html 铺底）
+///
+/// maxWidth/maxHeight 传 0 表示原始分辨率（选区底图要清晰，只有缩略图才限制尺寸）。
+#[tauri::command]
+#[allow(non_snake_case)]
+pub fn grab_screen_thumbnail(maxWidth: u32, maxHeight: u32) -> Result<String, String> {
+    grab_data_url(0, maxWidth, maxHeight)
 }
 
 /// 本地时间 `YYYYMMDD_HHmmss`（对齐 Electron 截图文件名）
@@ -220,7 +331,6 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 
 #[cfg(test)]
 mod tests {
-    // downsample_box 属 imp 私有；这里只验证 feature 开关与错误路径的类型契约
     #[test]
     fn stamp_compact_shape() {
         let s = super::stamp_compact();
@@ -244,5 +354,38 @@ mod tests {
         assert!(super::grab_png(0, 340, 200).is_err());
         assert!(super::grab_data_url(0, 340, 200).is_err());
         assert!(super::monitor_device_names().is_empty());
+    }
+
+    /// 真机冒烟：抓一帧后校验**画面真的不是全黑**。
+    ///
+    /// 这条断言是本文件最重要的回归：DXGI 路径曾经做到的就是「编码成功但全黑」，
+    /// 只看「有没有 PNG 字节」根本发现不了。
+    /// 手动执行：`cargo test --test unit -- --ignored --nocapture grab_smoke`
+    #[cfg(feature = "screen-capture")]
+    #[test]
+    #[ignore = "需要真实桌面；手动用 --ignored 跑"]
+    fn grab_smoke_frame_is_visible() {
+        let full = super::grab_png(0, 0, 0).expect("应能抓到全分辨率帧");
+        assert!(full.len() > 20_000, "全分辨率 PNG 过小（{} 字节）", full.len());
+        let small = super::grab_png(0, 340, 200).expect("应能抓到缩略图");
+        assert!(small.len() > 1_000, "缩略图 PNG 过小（{} 字节）", small.len());
+
+        let url = super::grab_data_url(0, 340, 200).expect("data URL");
+        assert!(url.starts_with("data:image/png;base64,"));
+
+        // 每个显示器都抓一张（副屏可能物理关闭 → 全黑属正常，只打印不判定）
+        for i in 0..super::monitor_device_names().len() {
+            match super::imp::frame_brightness(i) {
+                Ok(b) => println!("显示器 #{i} 平均亮度 {b:.1}/255"),
+                Err(e) => println!("显示器 #{i} 抓帧失败: {e}"),
+            }
+        }
+        let bright = super::imp::frame_brightness(0).expect("亮度统计");
+        println!(
+            "抓帧冒烟：全分辨率 {} 字节，缩略图 {} 字节，平均亮度 {bright:.1}/255",
+            full.len(),
+            small.len()
+        );
+        assert!(bright > 1.0, "抓到的是全黑帧（平均亮度 {bright:.2}）");
     }
 }

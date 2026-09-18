@@ -80,6 +80,8 @@ pub fn run() {
             modules::commands::screen::get_sources,
             modules::commands::screen::get_system_audio_sources,
             modules::commands::screen::list_audio_devices,
+            // 区域选择窗底图（region-selector.html 启动时拉主屏一帧铺 canvas）
+            modules::recording::grab::grab_screen_thumbnail,
             media_convert_to_mp4,
             media_crop_video,
             media_convert_to_gif,

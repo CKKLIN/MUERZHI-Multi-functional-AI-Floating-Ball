@@ -1,11 +1,18 @@
 // 屏幕采集管线 — Windows Graphics Capture（windows-capture crate）
 //
 // 视频：WGC 帧泵（GraphicsCaptureApiHandler::on_frame_arrived）→ 内置 VideoEncoder
-//       （MediaFoundation）直出 mp4。帧走 DirectX 表面通道，不做 GPU→CPU 回读。
+//       （MediaFoundation）直出 mp4。
 // 音频：不在这里 —— 见 audio.rs（WASAPI 各路录 WAV，停止后 ffmpeg amix），
 //       故 AudioSettingsBuilder 固定 disabled(true)。
 // 停止：置该段 stop 标志 → on_frame_arrived 停止分支 encoder.finish() +
 //       capture_control.stop()（发 WM_QUIT 结束消息循环）→ control.stop() join → mp4 完整。
+//
+// **定速补帧（关键）**：WGC 只在画面**发生变化**时投递帧（脏区驱动），静置桌面可能几秒
+// 才来一帧；而 MF 编码器的时间戳完全来自帧到达时刻 —— 直接送帧的结果是「录 6 秒得到
+// 0.03 秒视频」（实测）。所以这里改走**缓冲帧 + 墙钟定速推送**：帧到达时只把 BGRA 拷进
+// last_frame，另一个 pacing 线程按目标 fps 以「距段开始的时间」为准反复推送最后一帧。
+// 于是无论画面动静都得到真正的定帧率视频，时长与界面计时器一致。
+// 代价是每帧一次 GPU→CPU 回读 + 行序翻转（内存拷贝），1080p@30 约 250MB/s，可忽略。
 //
 // **暂停 = 分段**：一张 WGC 会话只认一个输出文件，且 MF 编码器的时间戳来自捕获时钟，
 // 中途跳帧会在成品里留一个时间黑洞（时长含暂停时间，与界面计时器不符）。所以暂停时
@@ -162,33 +169,32 @@ pub mod imp {
         pub stop: Arc<AtomicBool>,
         pub path: String,
         pub monitor_index: usize,
+        /// 定速补帧线程（帧到达时更新共享缓冲，这里按 fps 推送）
+        pacing: Option<std::thread::JoinHandle<()>>,
+        /// 通知 pacing 线程退出
+        paced_stop: Arc<AtomicBool>,
     }
 
-    /// WGC 采集器：on_frame_arrived 把帧送进编码器写 mp4
+    /// 跨线程共享的「最新一帧」（BGRA 紧凑缓冲，已翻正行序）
+    pub struct SharedFrame {
+        /// (像素缓冲, 宽, 高) —— None 表示还没收到任何帧
+        buf: Mutex<Option<(Vec<u8>, u32, u32)>>,
+    }
+
+    /// WGC 采集器：帧到达只更新共享缓冲，真正的编码推送交给 pacing 线程
     pub struct ScreenCaptureHandler {
-        encoder: Option<VideoEncoder>,
         stop: Arc<AtomicBool>,
         frames: Arc<AtomicU64>,
+        shared: Arc<SharedFrame>,
     }
 
     impl GraphicsCaptureApiHandler for ScreenCaptureHandler {
-        type Flags = SegmentConfig;
+        type Flags = (SegmentConfig, Arc<SharedFrame>);
         type Error = Box<dyn std::error::Error + Send + Sync>;
 
         fn new(ctx: Context<Self::Flags>) -> Result<Self, Self::Error> {
-            let cfg = ctx.flags;
-            let encoder = VideoEncoder::new(
-                VideoSettingsBuilder::new(cfg.width, cfg.height)
-                    .sub_type(VideoSettingsSubType::H264)
-                    .frame_rate(cfg.fps)
-                    .bitrate(cfg.bitrate),
-                // 音频在 audio.rs 里单独录 WAV，最后 ffmpeg 合成 —— 这里必须显式关闭，
-                // 否则 MF 容器会写出一个空音轨，后续 amix 时还要额外丢弃。
-                AudioSettingsBuilder::new().disabled(true),
-                ContainerSettingsBuilder::default(),
-                &cfg.output_path,
-            )?;
-            Ok(Self { encoder: Some(encoder), stop: cfg.stop, frames: cfg.frames })
+            let (cfg, shared) = ctx.flags;
+            Ok(Self { stop: cfg.stop, frames: cfg.frames, shared })
         }
 
         fn on_frame_arrived(
@@ -196,27 +202,90 @@ pub mod imp {
             frame: &mut Frame,
             capture_control: InternalCaptureControl,
         ) -> Result<(), Self::Error> {
-            // stop 信号：finish + 停止消息循环（帧时间戳由捕获时钟给，无需补帧）
             if self.stop.load(Ordering::SeqCst) {
-                if let Some(enc) = self.encoder.take() {
-                    enc.finish()?;
-                }
                 capture_control.stop();
                 return Ok(());
             }
-            if let Some(enc) = self.encoder.as_mut() {
-                enc.send_frame(frame)?;
-                self.frames.fetch_add(1, Ordering::Relaxed);
-            }
+            // 只保留最新一帧：把 GPU 表面拷成 CPU 缓冲并翻正行序（WGC 的 BGRA 是自下而上），
+            // 由 pacing 线程按 fps 反复推送。这里不做任何编码，帧到达多快都不影响输出节奏。
+            let fb = frame.buffer()?;
+            let (w, h) = (fb.width(), fb.height());
+            let mut scratch = Vec::new();
+            let packed = fb.as_nopadding_buffer(&mut scratch);
+            let mut out = packed.to_vec();
+            flip_rows_bgra(&mut out, w, h);
+            *self.shared.buf.lock().unwrap() = Some((out, w, h));
+            self.frames.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }
 
         fn on_closed(&mut self) -> Result<(), Self::Error> {
-            if let Some(enc) = self.encoder.take() {
-                enc.finish()?;
-            }
             Ok(())
         }
+    }
+
+    /// BGRA 行序翻转（WGC 表面是自下而上，MF 编码器要自上而下）
+    fn flip_rows_bgra(buf: &mut [u8], w: u32, h: u32) {
+        let stride = (w * 4) as usize;
+        if stride == 0 || h < 2 || buf.len() < stride * h as usize {
+            return;
+        }
+        let mut tmp = vec![0u8; stride];
+        for y in 0..(h as usize / 2) {
+            let top = y * stride;
+            let bottom = (h as usize - 1 - y) * stride;
+            tmp.copy_from_slice(&buf[top..top + stride]);
+            buf.copy_within(bottom..bottom + stride, top);
+            buf[bottom..bottom + stride].copy_from_slice(&tmp);
+        }
+    }
+
+    /// 定速推送线程：以段开始时刻为基准，按 fps 用墙钟时间戳推最后一帧
+    fn spawn_pacer(
+        mut encoder: VideoEncoder,
+        shared: Arc<SharedFrame>,
+        paced_stop: Arc<AtomicBool>,
+        fps: u32,
+        frames: Arc<AtomicU64>,
+    ) -> std::thread::JoinHandle<()> {
+        std::thread::Builder::new()
+            .name("wgc-pacer".into())
+            .spawn(move || {
+                let period = std::time::Duration::from_nanos(1_000_000_000 / fps.max(1) as u64);
+                let started = std::time::Instant::now();
+                let mut next = started;
+                let mut index: u64 = 0;
+                let mut last: Option<(Vec<u8>, u32, u32)> = None;
+                while !paced_stop.load(Ordering::SeqCst) {
+                    // 取最新帧（有就用新的，没有就复用上一帧——首帧前保持等待）
+                    if let Some(fresh) = shared.buf.lock().unwrap().take() {
+                        last = Some(fresh);
+                    }
+                    let Some((buf, _w, _h)) = last.as_ref() else {
+                        std::thread::sleep(period);
+                        continue;
+                    };
+                    let ts = index as i64 * 10_000_000 / fps.max(1) as i64;
+                    if encoder.send_frame_buffer(buf, ts).is_err() {
+                        break;
+                    }
+                    frames.fetch_add(1, Ordering::Relaxed);
+                    index += 1;
+                    next += period;
+                    // 落后超过 1 帧就不追了（避免追帧时疯狂补推导致时长跑飞）
+                    let now = std::time::Instant::now();
+                    if next > now {
+                        std::thread::sleep(next - now);
+                    } else {
+                        next = now;
+                    }
+                }
+                // 正常路径由结束逻辑 finish；这里兜底释放（Drop 里也会 finish）
+                let _ = encoder.finish();
+            })
+            .ok()
+            .map(|h| h)
+            .unwrap_or_else(|| std::thread::spawn(|| {}))
     }
 
     /// 启动一段采集（同一进程内可并行多段：多屏录制各显示器一段）
@@ -224,6 +293,7 @@ pub mod imp {
         // windows-capture 的 Monitor::from_index 是 1-based；本工程对外一律 0-based
         let monitor = Monitor::from_index(cfg.monitor_index + 1)
             .map_err(|e| format!("显示器 #{} 不存在: {e}", cfg.monitor_index))?;
+        let shared: Arc<SharedFrame> = Arc::new(SharedFrame { buf: Mutex::new(None) });
         let settings = Settings::new(
             monitor,
             if cfg.with_cursor {
@@ -240,25 +310,51 @@ pub mod imp {
             )),
             DirtyRegionSettings::Default,
             ColorFormat::Bgra8,
-            cfg.clone(),
+            (cfg.clone(), shared.clone()),
         );
         let stop = cfg.stop.clone();
         let path = cfg.output_path.clone();
         let monitor_index = cfg.monitor_index;
+        // 编码器先建好交给 pacing 线程（WGC 的 handler 里不再持编码器）
+        let encoder = VideoEncoder::new(
+            VideoSettingsBuilder::new(cfg.width, cfg.height)
+                .sub_type(VideoSettingsSubType::H264)
+                .frame_rate(cfg.fps)
+                .bitrate(cfg.bitrate),
+            // 音频在 audio.rs 里单独录 WAV，最后 ffmpeg 合成 —— 这里必须显式关闭，
+            // 否则 MF 容器会写出一个空音轨，后续 amix 时还要额外丢弃。
+            AudioSettingsBuilder::new().disabled(true),
+            ContainerSettingsBuilder::default(),
+            &cfg.output_path,
+        )
+        .map_err(|e| format!("编码器创建失败: {e}"))?;
+
         let control = ScreenCaptureHandler::start_free_threaded(settings)
             .map_err(|e| format!("WGC 启动失败: {e}"))?;
+        let paced_stop = Arc::new(AtomicBool::new(false));
+        let pacer = spawn_pacer(
+            encoder,
+            shared,
+            paced_stop.clone(),
+            clamp_fps(cfg.fps),
+            cfg.frames.clone(),
+        );
         log::info!("WGC 采集段已启动（monitor #{}, {}x{}@{}）", cfg.monitor_index, cfg.width, cfg.height, cfg.fps);
-        Ok(Active { control, stop, path, monitor_index })
+        Ok(Active { control, stop, path, monitor_index, pacing: Some(pacer), paced_stop })
     }
 
-    /// 结束一段：置 stop → 结束消息循环并 join → 校验产物
+    /// 结束一段：停 pacing → finish 编码器 → 停 WGC 并 join → 校验产物
     ///
-    /// 编码器的收尾走两条路：屏幕还在动 → 下一帧进停止分支，显式 `finish()`；
-    /// 屏幕完全静止（无新帧）→ 直接退消息循环，handler 析构，`VideoEncoder::drop`
-    /// 里同样 `finish()`。两条都产出完整 mp4（实测 4 秒录制 4.86MB 可播放）。
+    /// 顺序不能反：pacing 线程是**唯一**向编码器送帧的人，必须等它退出并 finish 完
+    /// 才能停 WGC —— 否则 WGC 线程退出时 handler 析构，编码器已经被 Drop 掉，
+    /// pacing 线程再送帧就会撞上已关闭的通道。
     pub fn end_segment(active: Active) -> Result<String, String> {
-        let Active { control, stop, path, .. } = active;
+        let Active { control, stop, path, pacing, paced_stop, .. } = active;
         stop.store(true, Ordering::SeqCst);
+        paced_stop.store(true, Ordering::SeqCst);
+        if let Some(h) = pacing {
+            let _ = h.join();
+        }
         // control.stop() 会发 WM_QUIT 并 join（内部已处理线程已退出的竞态）
         let join = std::thread::spawn(move || control.stop().map_err(|e| format!("{e}")));
         match join.join() {
@@ -394,12 +490,35 @@ mod tests {
         };
         let frames = cfg.frames.clone();
         let active = spawn_segment(cfg).expect("WGC 应能启动");
+        let t0 = std::time::Instant::now();
         std::thread::sleep(std::time::Duration::from_secs(3));
         let path = end_segment(active).expect("应产出 mp4");
+        let wall = t0.elapsed().as_secs_f64();
         let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
         assert!(size > 10_000, "mp4 过小（{size} 字节），编码器没真正写入");
-        assert!(frames.load(Ordering::SeqCst) > 0, "一帧都没收到");
-        println!("WGC 冒烟：{path}（{size} 字节，{} 帧）", frames.load(Ordering::SeqCst));
+        let n = frames.load(Ordering::SeqCst);
+        // 定速补帧后帧数应≈fps×秒数（静态桌面也照推）；这条断言就是防「录 3 秒得 1 帧」
+        assert!(n >= 60, "补帧失效：3 秒只有 {n} 帧");
+        assert!(n <= 120, "补帧过头：3 秒推了 {n} 帧");
+
+        // 时长必须贴合墙钟（静置桌面下 WGC 不投帧，靠补帧才对得上）
+        let bin = crate::modules::media::ffmpeg::ffmpeg_bin_fallback();
+        let probe = String::from_utf8_lossy(
+            &std::process::Command::new(&bin)
+                .args(["-i", &path])
+                .output()
+                .unwrap()
+                .stderr,
+        )
+        .to_string();
+        let dur = probe
+            .lines()
+            .find_map(|l| l.trim().strip_prefix("Duration:"))
+            .and_then(|s| s.split(',').next())
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
+        println!("WGC 冒烟：{path}（{size} 字节，{n} 帧，时长 {dur}，墙钟 {wall:.1}s）");
+        assert!(dur.starts_with("00:00:02") || dur.starts_with("00:00:03"), "时长 {dur} 与录制时长 {wall:.1}s 不符");
         let _ = std::fs::remove_file(&path);
     }
 }

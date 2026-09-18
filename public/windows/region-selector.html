@@ -1,11 +1,61 @@
-// 区域选择窗口 — Tauri 版（移植自 electron/region-selector.html）
-// 变更点：
-// 1) require('electron') 的 ipcRenderer/desktopCapturer/screen → window.__TAURI__.core.invoke
-// 2) 屏幕底图：Tauri 无 desktopCapturer —— 全屏窗直接看穿桌面（Electron 版用缩略图铺底，
-//    这里保留 canvas 占位，P4 capture 阶段接 WGC 截图后在此绘制）
-// 3) region-selected/region-cancelled → invoke('region_selected' / 'region_cancelled')
-// 4) sourceId 由录制管线在 P4 决定（此处传空串，Rust 侧 Option<String> 接收）
-
+<!DOCTYPE html>
+<!-- 区域选择窗口 — 移植自 electron/region-selector.html
+     ⚠️ 这个文件必须是完整 HTML：整页由浏览器解析，缺 <!DOCTYPE>/<body> 时文件会被当作纯文本
+     渲染，内联脚本永不执行（表现为「点区域录制没反应、选区窗一片空白」）。
+     底图：经 grab_screen_thumbnail 拿主屏 PNG data URL 铺 canvas —— Tauri 没有 desktopCapturer，
+     但 Rust 侧 DXGI 抓帧等价，不再需要「看穿桌面」这种在 Windows 上做不到的方案。 -->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  cursor: crosshair;
+  user-select: none;
+  background: transparent;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+#bg { position: fixed; inset: 0; z-index: 0; }
+#overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 1; }
+#rect {
+  position: fixed;
+  border: 2px solid #e94560;
+  background: rgba(233, 69, 96, 0.08);
+  z-index: 2;
+  display: none;
+  pointer-events: none;
+}
+#size {
+  position: fixed;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  font: 12px Consolas, monospace;
+  padding: 2px 8px;
+  border-radius: 3px;
+  z-index: 3;
+  pointer-events: none;
+  display: none;
+}
+#hint {
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 16px;
+  z-index: 4;
+  pointer-events: none;
+}
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<div id="overlay"></div>
+<div id="rect"></div>
+<div id="size"></div>
+<div id="hint">点击并拖动选择录制区域 · ESC 取消</div>
+<script>
 const invoke = window.__TAURI__.core.invoke
 
 let startX = 0
@@ -16,18 +66,36 @@ const rectEl = document.getElementById('rect')
 const sizeEl = document.getElementById('size')
 const hintEl = document.getElementById('hint')
 const bgCanvas = document.getElementById('bg')
+const bgCtx = bgCanvas.getContext('2d')
 
-function initCanvasSize() {
+/** 画布铺满窗口（窗口尺寸由 Rust 按主屏物理像素 / 缩放比设定） */
+function sizeCanvas() {
   const w = window.innerWidth
   const h = window.innerHeight
   bgCanvas.width = w
   bgCanvas.height = h
   bgCanvas.style.width = w + 'px'
   bgCanvas.style.height = h + 'px'
-  // canvas 留空即透明（P4 在此绘制 WGC 桌面截图底图）
 }
-initCanvasSize()
-window.addEventListener('resize', initCanvasSize)
+
+/** 主屏底图：DXGI 抓一帧（PNG data URL）后按窗口尺寸拉伸铺满 */
+async function loadBackdrop() {
+  sizeCanvas()
+  try {
+    const url = await invoke('grab_screen_thumbnail', { maxWidth: 0, maxHeight: 0 })
+    if (!url) return
+    const img = new Image()
+    img.onload = () => bgCtx.drawImage(img, 0, 0, bgCanvas.width, bgCanvas.height)
+    img.src = url
+  } catch (err) {
+    // 抓不到底图不致命：仍可凭 overlay 上的光标与尺寸提示完成选区
+    console.error('backdrop failed:', err)
+  }
+}
+
+sizeCanvas()
+window.addEventListener('resize', sizeCanvas)
+loadBackdrop()
 
 document.addEventListener('mousedown', (e) => {
   startX = e.screenX
@@ -64,6 +132,7 @@ document.addEventListener('mouseup', (e) => {
   const w = Math.abs(e.screenX - startX)
   const h = Math.abs(e.screenY - startY)
 
+  // 过小的框视为误触（与 Electron 版阈值一致）
   if (w > 10 && h > 10) {
     invoke('region_selected', { x, y, width: w, height: h, sourceId: '' })
   } else {
@@ -72,7 +141,8 @@ document.addEventListener('mouseup', (e) => {
 })
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    invoke('region_cancelled')
-  }
+  if (e.key === 'Escape') invoke('region_cancelled')
 })
+</script>
+</body>
+</html>
