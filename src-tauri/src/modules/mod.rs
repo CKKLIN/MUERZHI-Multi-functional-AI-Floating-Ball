@@ -6,6 +6,7 @@ pub mod autostart;
 pub mod commands;
 pub mod cooling;
 pub mod i18n;
+pub mod recording;
 pub mod media;
 pub mod settings;
 pub mod todo;

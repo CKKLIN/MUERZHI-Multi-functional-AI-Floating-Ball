@@ -36,6 +36,10 @@ log = "0.4"
 tokio = { version = "1", features = ["time", "rt-multi-thread", "net", "io-util", "sync"] }
 axum = "0.8"
 
+# P4 录制管线开关（WGC + WASAPI）；启用前 capture.rs 骨架返回明确错误
+[features]
+screen-capture = []
+
 [profile.release]
 # 与 electron-builder 的 compression: maximum 对齐，安装包尽量小
 lto = true

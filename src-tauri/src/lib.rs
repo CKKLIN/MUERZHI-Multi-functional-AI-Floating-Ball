@@ -77,6 +77,11 @@ pub fn run() {
             media_crop_video,
             media_convert_to_gif,
             media_merge_multi_screen,
+            // 录制会话（P4 状态机先行；WGC/WASAPI 帧泵 feature 待启用）
+            modules::recording::recording_start,
+            modules::recording::recording_pause,
+            modules::recording::recording_resume,
+            modules::recording::recording_stop,
             modules::commands::stubs::minimize_window,
             modules::commands::stubs::show_window,
             modules::commands::stubs::maximize_window,
