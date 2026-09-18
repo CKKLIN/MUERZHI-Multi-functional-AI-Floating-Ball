@@ -19,29 +19,6 @@ pub fn select_region() -> Value {
 }
 
 // ===== FFmpeg 转换（P3 media 迁移）=====
-fn convert_stub(output_path: String) -> Value {
-    json!({ "success": false, "outputPath": output_path, "error": "转换功能迁移中（P3 阶段实现）" })
-}
-
-#[tauri::command]
-pub fn convert_to_mp4(outputPath: String) -> Value {
-    convert_stub(outputPath)
-}
-
-#[tauri::command]
-pub fn crop_video(outputPath: String) -> Value {
-    convert_stub(outputPath)
-}
-
-#[tauri::command]
-pub fn convert_to_gif(outputPath: String) -> Value {
-    convert_stub(outputPath)
-}
-
-#[tauri::command]
-pub fn merge_multi_screen(outputPath: String) -> Value {
-    convert_stub(outputPath)
-}
 
 // ===== 窗口控制四件（主窗口内自操作，P1 即实装）=====
 #[tauri::command]

@@ -348,3 +348,17 @@ mod tests {
         assert_eq!(sm.resolve_display_state(), "working");
     }
 }
+
+/// 简易唯一 id（时间戳 + 随机盐十六进制），供转换注册表等非持久场景使用
+#[allow(dead_code)]
+pub fn new_uuid_like() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let n = SEQ.fetch_add(1, Ordering::SeqCst);
+    let ms = crate::modules::todo::store::now_ms() as u64;
+    let salt = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos() as u64)
+        .unwrap_or(0);
+    format!("{:x}-{:x}-{:x}", ms, n, salt)
+}

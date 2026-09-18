@@ -73,10 +73,10 @@ pub fn run() {
             // P2-P4 待替换的 stub 命令
             modules::commands::stubs::take_screenshot,
             modules::commands::stubs::select_region,
-            modules::commands::stubs::convert_to_mp4,
-            modules::commands::stubs::crop_video,
-            modules::commands::stubs::convert_to_gif,
-            modules::commands::stubs::merge_multi_screen,
+            media_convert_to_mp4,
+            media_crop_video,
+            media_convert_to_gif,
+            media_merge_multi_screen,
             modules::commands::stubs::minimize_window,
             modules::commands::stubs::show_window,
             modules::commands::stubs::maximize_window,
@@ -425,4 +425,100 @@ fn agent_dismiss_question() {
 #[allow(non_snake_case)]
 fn agent_submit_question(sessionId: String, answers: serde_json::Value) {
     modules::agent::server::AgentServer::global().submit_question(&sessionId, answers);
+}
+
+// ===== ffmpeg 转换族命令（P3；签名对齐 bridge.ts 的 invoke 参数）=====
+
+#[tauri::command]
+#[allow(non_snake_case)]
+async fn media_convert_to_mp4(
+    app: tauri::AppHandle,
+    inputPath: String,
+    outputPath: String,
+    crop: Option<(i32, i32, i32, i32)>,
+) -> serde_json::Value {
+    match modules::media::ffmpeg::convert_webm_to_mp4(&app, &inputPath, &outputPath, crop).await {
+        Ok(()) => json_out(true, &outputPath, None),
+        Err(e) => json_out(false, &outputPath, Some(&e)),
+    }
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+async fn media_crop_video(
+    app: tauri::AppHandle,
+    inputPath: String,
+    outputPath: String,
+    crop: (i32, i32, i32, i32),
+) -> serde_json::Value {
+    match modules::media::ffmpeg::crop_video(&app, &inputPath, &outputPath, crop).await {
+        Ok(()) => json_out(true, &outputPath, None),
+        Err(e) => json_out(false, &outputPath, Some(&e)),
+    }
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+async fn media_convert_to_gif(
+    app: tauri::AppHandle,
+    inputPath: String,
+    outputPath: String,
+    options: Option<serde_json::Value>,
+) -> serde_json::Value {
+    let width = options_width(&options);
+    let fps = options_fps(&options);
+    let duration = options_duration(&options);
+    match modules::media::ffmpeg::convert_to_gif(&app, &inputPath, &outputPath, width, fps, duration).await {
+        Ok(()) => json_out(true, &outputPath, None),
+        Err(e) => json_out(false, &outputPath, Some(&e)),
+    }
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+async fn media_merge_multi_screen(
+    app: tauri::AppHandle,
+    inputs: Vec<serde_json::Value>,
+    outputPath: String,
+) -> serde_json::Value {
+    let parsed: Vec<modules::media::MergeInput> = inputs
+        .iter()
+        .filter_map(|v| {
+            let fp = v.get("filePath")?.as_str()?.to_string();
+            let b = v.get("bounds")?;
+            Some(modules::media::MergeInput {
+                file_path: fp,
+                bounds: (
+                    b.get("x")?.as_i64()? as i32,
+                    b.get("y")?.as_i64()? as i32,
+                    b.get("width")?.as_i64()? as i32,
+                    b.get("height")?.as_i64()? as i32,
+                ),
+            })
+        })
+        .collect();
+    match modules::media::ffmpeg::merge_multi_screen(&app, &parsed, &outputPath).await {
+        Ok(()) => json_out(true, &outputPath, None),
+        Err(e) => json_out(false, &outputPath, Some(&e)),
+    }
+}
+
+fn json_out(success: bool, output_path: &str, error: Option<&str>) -> serde_json::Value {
+    serde_json::json!({
+        "success": success,
+        "outputPath": output_path,
+        "error": error,
+    })
+}
+
+fn options_width(v: &Option<serde_json::Value>) -> u32 {
+    v.as_ref().and_then(|o| o.get("width")).and_then(|w| w.as_u64()).unwrap_or(480) as u32
+}
+
+fn options_fps(v: &Option<serde_json::Value>) -> u32 {
+    v.as_ref().and_then(|o| o.get("fps")).and_then(|f| f.as_u64()).unwrap_or(10) as u32
+}
+
+fn options_duration(v: &Option<serde_json::Value>) -> Option<f64> {
+    v.as_ref().and_then(|o| o.get("duration")).and_then(|d| d.as_f64())
 }
