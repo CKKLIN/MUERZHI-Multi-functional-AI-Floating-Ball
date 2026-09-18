@@ -196,6 +196,9 @@ pub async fn show_region_border(app: AppHandle, region: Region) {
     {
         Ok(win) => {
             let _ = win.set_ignore_cursor_events(true); // 全穿透
+            // 取景框是给用户看的辅助层，不该被录进成品：WDA_EXCLUDEFROMCAPTURE 让窗口
+            // 在屏幕上照常可见（人能看见红框），但任何屏幕捕获（含 WGC）拿到的是空。
+            let _ = win.set_content_protected(true);
             let _ = win.show();
         }
         Err(e) => log::error!("border window failed: {e}"),
@@ -255,6 +258,8 @@ fn show_toolbar_for_region(app: &AppHandle, region: &Region) {
                 "window.__TB_STATE__ = {{ pos: {} }}; void 0;",
                 serde_json::to_string(&inside).unwrap_or_default()
             ));
+            // 工具条与悬浮岛是录制辅助 UI，不该出现在成品画面里（人能看见、录制看不到）
+            let _ = win.set_content_protected(true);
             let _ = win.show();
         }
         Err(e) => log::error!("toolbar window failed: {e}"),
@@ -339,6 +344,7 @@ pub async fn show_floating_island(app: AppHandle, targetDisplayId: Option<u32>) 
     .build()
     {
         Ok(win) => {
+            let _ = win.set_content_protected(true);
             let _ = win.show();
         }
         Err(e) => log::error!("floating island failed: {e}"),
@@ -407,7 +413,9 @@ pub async fn toggle_camera_preview(app: AppHandle, show: bool, cameraDeviceId: O
         .visible(true)
         .build()
     {
-        Ok(_) => {}
+        Ok(win) => {
+            let _ = win.set_content_protected(true);
+        }
         Err(e) => log::error!("camera preview failed: {e}"),
     }
 }

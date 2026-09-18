@@ -5,11 +5,16 @@
 mod modules;
 
 use modules::settings::BallSettings;
+use std::sync::OnceLock;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    AppHandle, Manager,
 };
+
+/// 进程级 AppHandle：少数「没有 app 参数」的辅助函数（如托盘气泡通知）需要它。
+/// 在 setup 里一次性写入；测试进程（cargo test）不会走到这里，调用方按 None 降级。
+static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -70,18 +75,21 @@ pub fn run() {
             modules::windows::show_about_window,
             modules::windows::close_about_window,
             modules::windows::open_external,
-            // P2-P4 待替换的 stub 命令
-            modules::commands::stubs::take_screenshot,
-            modules::commands::stubs::select_region,
+            // P4 实装：截图 / 显示器源（缩略图）/ 音频设备枚举
+            modules::commands::screen::take_screenshot,
+            modules::commands::screen::get_sources,
+            modules::commands::screen::get_system_audio_sources,
+            modules::commands::screen::list_audio_devices,
             media_convert_to_mp4,
             media_crop_video,
             media_convert_to_gif,
             media_merge_multi_screen,
-            // 录制会话（P4 状态机先行；WGC/WASAPI 帧泵 feature 待启用）
+            // 录制会话（P4 全量：WGC 分段采集 + WASAPI 音频 + ffmpeg 合成）
             modules::recording::recording_start,
             modules::recording::recording_pause,
             modules::recording::recording_resume,
             modules::recording::recording_stop,
+            modules::recording::recording_get_status,
             modules::commands::stubs::minimize_window,
             modules::commands::stubs::show_window,
             modules::commands::stubs::maximize_window,
@@ -119,7 +127,6 @@ pub fn run() {
             modules::cooling::is_cooling_active,
             modules::cooling::get_cooling_duration_sec,
             modules::cooling::cancel_cooling,
-            modules::commands::stubs::update_audio_levels,
             // 悬浮球（P2 实装）
             modules::windows::floating_ball::show_floating_ball,
             modules::windows::floating_ball::hide_floating_ball,
@@ -153,6 +160,7 @@ pub fn run() {
         ])
         .setup(|app| {
             log::info!("MUERZHI (Tauri) starting...");
+            let _ = APP_HANDLE.set(app.handle().clone());
 
             setup_tray(app.handle())?;
 
@@ -186,6 +194,9 @@ pub fn run() {
             // 录制工具条/悬浮岛事件（close → 关边框；其余动作由 event 广播到主窗口）
             setup_region_events(app.handle());
             setup_todo_events(app.handle());
+
+            // 录制：音频电平 ticker（20Hz → 原生窗口音量表 + 渲染层事件）
+            modules::recording::spawn_level_ticker(app.handle().clone());
 
             // 待办：启动提醒调度（先补扫再 30s 轮询）+ 整理贴屏便签 + 推一次角标
             modules::todo::scheduler::start(app.handle());

@@ -35,13 +35,27 @@ serde_json = "1"
 log = "0.4"
 tokio = { version = "1", features = ["time", "rt-multi-thread", "net", "io-util", "sync"] }
 axum = "0.8"
-# P4 录制管线依赖（screen-capture feature 隔离；WGC + WASAPI）
+# P4 录制管线依赖（WGC + WASAPI）
 windows-capture = { version = "2", optional = true }
 wasapi = { version = "0.24", optional = true }
+# 缩略图/截图：PNG 字节转 data URL 直接喂渲染层 <img>
+base64 = "0.22"
+
+# 截图文件名用本地时间（std 只给 UTC）：取时区偏移，避免文件名差几个小时
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Time"] }
 
 # P4 录制管线开关（WGC + WASAPI）
+# 默认开启：录制是核心功能，出厂构建（含 NSIS 安装包）必须带采集管线；
+# `--no-default-features` 只用于快速 cargo check 时跳过 WGC/WASAPI 重编译。
 [features]
+default = ["screen-capture"]
 screen-capture = ["dep:windows-capture", "dep:wasapi"]
+# 测试专用：打开 tauri 的 mock 运行时，用于需要 AppHandle 的单元测试。
+# 不能进 default —— mock_app 造出的 AppHandle<MockRuntime> 与生产代码的
+# AppHandle<Wry> 不同型，凡签名写死 Wry 的函数都用不了它；当前单元测试都经过
+# 纯函数化改造，暂未用到，保留开关供后续需要时启用（cargo test --features test）。
+test = ["tauri/test"]
 
 [profile.release]
 # 与 electron-builder 的 compression: maximum 对齐，安装包尽量小

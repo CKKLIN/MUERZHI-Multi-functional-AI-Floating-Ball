@@ -94,7 +94,13 @@ make distclean >/dev/null 2>&1 || true
 #   多屏 overlay 合成               : filters scale/setsar/overlay/color
 #   GIF 两遍 (palettegen/paletteuse): filters fps/palettegen/paletteuse + scale lanczos，
 #                                     palette 走 PNG（demuxer/encoder/decoder png + demuxer/muxer image2）
-#   hw 探测 (-encoders)             : CLI 内建
+#   暂停分段拼接 (-f concat)         : demuxer concat + bsf h264_mp4toannexb
+#                                     （concat demuxer 逐段要求 Annex-B 码流，少了这个 bsf
+#                                      报 "Bitstream filter not found"；同参数段 -c copy 无损拼接）
+#   音频多段拼接 / 混音              : filter concat + amix + aresample（WAV 同格式，仅重采样开销）
+#   测试素材自造                    : decoder rawvideo（单测用 stdin 管道喂纯色帧造视频；
+#                                     音频素材由 Rust 直接写 WAV，不依赖 lavfi/avdevice）
+                                     #   hw 探测 (-encoders)             : CLI 内建
 echo "[2/4] configuring (minimal feature set)..."
 ./configure \
   --arch=x86_64 \
@@ -119,10 +125,10 @@ echo "[2/4] configuring (minimal feature set)..."
   --enable-swresample \
   --enable-zlib \
   --enable-encoder=libx264,aac,h264_nvenc,h264_qsv,h264_amf,png \
-  --enable-decoder=vp8,vp9,h264,aac,opus,vorbis,png,pcm_s16le \
-  --enable-demuxer=matroska,mov,gif,image2,rawvideo,s16le,wav \
+  --enable-decoder=vp8,vp9,h264,aac,opus,vorbis,png,pcm_s16le,rawvideo \
+  --enable-demuxer=matroska,mov,gif,image2,rawvideo,s16le,wav,concat   --enable-bsf=h264_mp4toannexb \
   --enable-muxer=mov,mp4,matroska,gif,image2 \
-  --enable-filter=crop,pad,format,scale,setsar,overlay,fps,palettegen,paletteuse,color,hwupload,null,anull,amix,aresample \
+  --enable-filter=crop,pad,format,scale,setsar,overlay,fps,palettegen,paletteuse,color,hwupload,null,anull,amix,aresample,concat,apad \
   --enable-protocol=file \
   --enable-small \
   --pkg-config-flags=--static \
@@ -136,6 +142,9 @@ echo "[3/4] building..."
 make -j"$(nproc)"
 
 echo "[4/4] strip + install..."
-strip -o "$VENDOR_DIR/ffmpeg.exe" ffmpeg
+# MinGW 下 make 产物名带 .exe 后缀（"ffmpeg.exe"），非 MinGW 平台是 "ffmpeg"
+SRC_BIN="ffmpeg"
+[ -f "ffmpeg.exe" ] && SRC_BIN="ffmpeg.exe"
+strip -o "$VENDOR_DIR/ffmpeg.exe" "$SRC_BIN"
 ls -la "$VENDOR_DIR/ffmpeg.exe"
 echo "DONE: $VENDOR_DIR/ffmpeg.exe"

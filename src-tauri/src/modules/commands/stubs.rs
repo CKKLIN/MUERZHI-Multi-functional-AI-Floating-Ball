@@ -4,19 +4,9 @@
 // 故整体抑制 snake_case 命名告警；替换真实现时同样遵循。
 #![allow(non_snake_case)]
 
-use serde_json::{json, Value};
 use tauri::Emitter;
 
-// ===== 录制/截图（P4 capture 迁移）=====
-#[tauri::command]
-pub fn take_screenshot() -> Value {
-    json!({ "success": false, "error": "截图功能迁移中（P4 阶段实现）" })
-}
-
-#[tauri::command]
-pub fn select_region() -> Value {
-    Value::Null
-}
+// ===== 截图/选区已实装（P4：commands/screen.rs + windows/region.rs），stub 已移除 =====
 
 // ===== FFmpeg 转换（P3 media 迁移）=====
 
@@ -54,8 +44,6 @@ pub fn close_window(window: tauri::Window, app: tauri::AppHandle) {
 }
 
 // ===== 区域选择/悬浮岛/摄像头（P2 迁移）=====
-#[tauri::command]
-pub fn update_audio_levels(_micLevel: f64, _sysLevel: f64) {}
 
 // ===== 悬浮球（P2 已实装于 windows/floating_ball.rs）=====
 

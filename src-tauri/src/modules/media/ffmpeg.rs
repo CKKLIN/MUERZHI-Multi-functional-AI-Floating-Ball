@@ -19,11 +19,21 @@ pub fn ffmpeg_bin(app: &AppHandle) -> PathBuf {
             return p;
         }
     }
+    ffmpeg_bin_fallback()
+}
+
+/// 不依赖 AppHandle 的路径解析（app 不可用时的兜底，也供单元测试直接调用）：
+/// 从当前 exe 上溯找 vendor/ffmpeg/ffmpeg.exe（dev 态 target/debug → 项目根），
+/// 再退回 PATH 上的 ffmpeg.exe。
+pub fn ffmpeg_bin_fallback() -> PathBuf {
     if let Ok(exe) = std::env::current_exe() {
-        if let Some(root) = exe.ancestors().nth(4) {
-            let p = root.join("vendor").join("ffmpeg").join("ffmpeg.exe");
-            if p.exists() {
-                return p;
+        // 测试/调试产物在 target/{debug,release}/deps/ → 多试几级，命中即用
+        for n in 3..=6 {
+            if let Some(root) = exe.ancestors().nth(n) {
+                let p = root.join("vendor").join("ffmpeg").join("ffmpeg.exe");
+                if p.exists() {
+                    return p;
+                }
             }
         }
     }
@@ -37,7 +47,7 @@ fn num_threads() -> usize {
 use tauri::Manager;
 
 /// 注册 kill 闭包（进程树杀：Windows 用 taskkill /T，避免 ffmpeg 子进程残留）
-fn spawn_with_registry(app: &AppHandle, mut cmd: Command) -> (Child, String) {
+fn spawn_with_registry(mut cmd: Command) -> (Child, String) {
     cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     #[cfg(windows)]
     {
@@ -60,7 +70,6 @@ fn spawn_with_registry(app: &AppHandle, mut cmd: Command) -> (Child, String) {
             let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
         }
     });
-    let _ = app;
     (child, kill_id)
 }
 
@@ -107,7 +116,7 @@ pub async fn convert_webm_to_mp4(
             "-y", "-i", input_path, "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-movflags",
             "+faststart", output_path,
         ]);
-        let (child, kill_id) = spawn_with_registry(app, cmd);
+        let (child, kill_id) = spawn_with_registry(cmd);
         emit_progress(app, 80.0, 0);
         let (ok, text) = wait_output(child).await;
         unregister_conversion(&kill_id);
@@ -138,7 +147,7 @@ pub async fn convert_webm_to_mp4(
         cmd.args(args);
         cmd
     };
-    let (child, kill_id) = spawn_with_registry(app, try_pass1(&encoder));
+    let (child, kill_id) = spawn_with_registry(try_pass1(&encoder));
     let (ok1, text1) = wait_output(child).await;
     unregister_conversion(&kill_id);
     let mut used_encoder = encoder.clone();
@@ -146,7 +155,7 @@ pub async fn convert_webm_to_mp4(
         if encoder != "libx264" {
             log::warn!("pass1 failed with {encoder}, retry libx264");
             let _ = std::fs::remove_file(&tmp_path);
-            let (child, kill_id) = spawn_with_registry(app, try_pass1("libx264"));
+            let (child, kill_id) = spawn_with_registry(try_pass1("libx264"));
             let (ok1b, text1b) = wait_output(child).await;
             unregister_conversion(&kill_id);
             if !ok1b {
@@ -168,7 +177,7 @@ pub async fn convert_webm_to_mp4(
         "-y", "-i", &tmp_path, "-i", input_path, "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
         "-map", "0:v", "-map", "1:a?", "-shortest", "-movflags", "+faststart", output_path,
     ]);
-    let (child, kill_id) = spawn_with_registry(app, cmd);
+    let (child, kill_id) = spawn_with_registry(cmd);
     let (ok2, text2) = wait_output(child).await;
     unregister_conversion(&kill_id);
     if ok2 {
@@ -204,7 +213,7 @@ pub async fn crop_video(app: &AppHandle, input_path: &str, output_path: &str, cr
         cmd.args(args);
         cmd
     };
-    let (child, kill_id) = spawn_with_registry(app, run(&encoder));
+    let (child, kill_id) = spawn_with_registry(run(&encoder));
     let (ok, text) = wait_output(child).await;
     unregister_conversion(&kill_id);
     if ok {
@@ -214,7 +223,7 @@ pub async fn crop_video(app: &AppHandle, input_path: &str, output_path: &str, cr
     if encoder != "libx264" {
         log::warn!("cropVideo failed with {encoder}, retry libx264");
         let _ = std::fs::remove_file(output_path);
-        let (child, kill_id) = spawn_with_registry(app, run("libx264"));
+        let (child, kill_id) = spawn_with_registry(run("libx264"));
         let (ok2, text2) = wait_output(child).await;
         unregister_conversion(&kill_id);
         if ok2 {
@@ -246,7 +255,7 @@ pub async fn convert_to_gif(
         &format!("fps={fps},scale={width}:-1:flags=lanczos,palettegen"),
         &palette.to_string_lossy(),
     ]);
-    let (child, kill_id) = spawn_with_registry(app, c1);
+    let (child, kill_id) = spawn_with_registry(c1);
     let (ok1, text1) = wait_output(child).await;
     unregister_conversion(&kill_id);
     if !ok1 {
@@ -261,7 +270,7 @@ pub async fn convert_to_gif(
         &format!("[0:v]fps={fps},scale={width}:-1:flags=lanczos[x];[x][1:v]paletteuse"),
         output_path,
     ]);
-    let (child, kill_id) = spawn_with_registry(app, c2);
+    let (child, kill_id) = spawn_with_registry(c2);
     let (ok2, text2) = wait_output(child).await;
     unregister_conversion(&kill_id);
     let _ = std::fs::remove_file(&palette);
@@ -311,7 +320,21 @@ pub struct MergeInput {
 
 /// 多屏合并（对齐 mergeMultiScreen）：先各自 remux，再用 color 背景 + scale/overlay 叠加
 pub async fn merge_multi_screen(app: &AppHandle, inputs: &[MergeInput], output_path: &str) -> Result<(), String> {
-    let bin = ffmpeg_bin(app);
+    merge_multi_screen_core(Some(app), inputs, output_path).await
+}
+
+/// 多屏合并核心（app 可选：单元测试传 None 跳过进度事件）
+pub async fn merge_multi_screen_core(
+    app: Option<&AppHandle>,
+    inputs: &[MergeInput],
+    output_path: &str,
+) -> Result<(), String> {
+    let bin = match app { Some(a) => ffmpeg_bin(a), None => ffmpeg_bin_fallback() };
+    let emit = |pct: f64| {
+        if let Some(a) = app {
+            emit_progress(a, pct, 0);
+        }
+    };
     if inputs.is_empty() {
         return Err("no inputs".into());
     }
@@ -326,10 +349,13 @@ pub async fn merge_multi_screen(app: &AppHandle, inputs: &[MergeInput], output_p
     // Step1：逐个 remux 到 mp4
     let mut remuxed: Vec<String> = Vec::new();
     for (i, input) in inputs.iter().enumerate() {
-        let out = input.file_path.replace(".webm", "_remux.mp4");
+        // ️ 不能写成 `replace(".webm", "_remux.mp4")`：Rust 采集管线产出的段本来就是 mp4，
+        // 那样替换不会生效 → out == input → ffmpeg 拒绝原地改写（"cannot edit existing files
+        // in-place"）。统一按「原名 + 后缀」派生，任何扩展名都能得到不同的输出路径。
+        let out = format!("{}_remux.mp4", input.file_path);
         let mut cmd = Command::new(&bin);
         cmd.args(["-y", "-i", &input.file_path, "-c", "copy", &out]);
-        let (child, kill_id) = spawn_with_registry(app, cmd);
+        let (child, kill_id) = spawn_with_registry(cmd);
         let (ok, text) = wait_output(child).await;
         unregister_conversion(&kill_id);
         if !ok {
@@ -338,7 +364,7 @@ pub async fn merge_multi_screen(app: &AppHandle, inputs: &[MergeInput], output_p
         }
         remuxed.push(out);
         let pct = ((i + 1) as f64 / inputs.len() as f64 * 30.0).round();
-        emit_progress(app, pct, 0);
+        emit(pct);
     }
 
     // Step2：complexFilter 合成
@@ -376,14 +402,14 @@ pub async fn merge_multi_screen(app: &AppHandle, inputs: &[MergeInput], output_p
         cmd.args(args);
         cmd
     };
-    let (child, kill_id) = spawn_with_registry(app, run(&encoder));
+    let (child, kill_id) = spawn_with_registry(run(&encoder));
     let (ok, text) = wait_output(child).await;
     unregister_conversion(&kill_id);
     let mut success = ok;
     if !success && encoder != "libx264" {
         log::warn!("merge failed with {encoder}, retry libx264");
         let _ = std::fs::remove_file(output_path);
-        let (child, kill_id) = spawn_with_registry(app, run("libx264"));
+        let (child, kill_id) = spawn_with_registry(run("libx264"));
         let (ok2, text2) = wait_output(child).await;
         unregister_conversion(&kill_id);
         success = ok2;
@@ -395,7 +421,7 @@ pub async fn merge_multi_screen(app: &AppHandle, inputs: &[MergeInput], output_p
         cleanup_files(&remuxed, inputs);
         return Err(format!("merge failed: {}", tail(&text)));
     }
-    emit_progress(app, 100.0, 0);
+    emit(100.0);
     cleanup_files(&remuxed, inputs);
     Ok(())
 }
@@ -413,6 +439,189 @@ fn tail(s: &str) -> String {
     let lines: Vec<&str> = s.lines().filter(|l| !l.trim().is_empty()).collect();
     let start = lines.len().saturating_sub(3);
     lines[start..].join(" | ").chars().take(300).collect()
+}
+
+// ===== 录制管线专用（P4）：段拼接 / 音频混流 =====
+
+/// 拼接同源录制段（暂停分段后拼回一个文件）
+///
+/// 用 concat **demuxer** 而非 filter：所有段由同一编码器同参数产出（H264/mp4/同分辨率），
+/// `-c copy` 即可无损拼接，不重编码也就没有画质损失与耗时；concat filter 需要解码再编码。
+pub async fn concat_videos(app: &AppHandle, segments: &[String], output_path: &str) -> Result<(), String> {
+    concat_videos_core(Some(app), segments, output_path).await
+}
+
+/// concat 核心（app 可选：单元测试传 None 跳过进度事件）
+pub async fn concat_videos_core(app: Option<&AppHandle>, segments: &[String], output_path: &str) -> Result<(), String> {
+    if segments.is_empty() {
+        return Err("没有可拼接的录制段".into());
+    }
+    let bin = match app { Some(a) => ffmpeg_bin(a), None => ffmpeg_bin_fallback() };
+    let emit = |pct: f64| {
+        if let Some(a) = app {
+            emit_progress(a, pct, 0);
+        }
+    };
+    let list_path = std::env::temp_dir().join(format!(
+        "muerzhi_concat_{}.txt",
+        crate::modules::todo::store::now_ms()
+    ));
+    // concat demuxer 的 file 行：反斜杠会被当转义，统一改成正斜杠；
+    // 单引号需按 ffmpeg 规则写成 '\''（本工程临时路径不会出现，防御性处理）
+    let body: String = segments
+        .iter()
+        .map(|p| format!("file '{}'\n", p.replace('\\', "/").replace('\'', "'\\''")))
+        .collect();
+    std::fs::write(&list_path, body).map_err(|e| format!("拼接清单写入失败: {e}"))?;
+
+    let mut cmd = Command::new(&bin);
+    cmd.args([
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        &list_path.to_string_lossy(),
+        "-c",
+        "copy",
+        "-movflags",
+        "+faststart",
+        output_path,
+    ]);
+    let (child, kill_id) = spawn_with_registry(cmd);
+    emit(60.0);
+    let (ok, text) = wait_output(child).await;
+    unregister_conversion(&kill_id);
+    let _ = std::fs::remove_file(&list_path);
+    if !ok {
+        return Err(format!("concat failed: {}", tail(&text)));
+    }
+    emit(80.0);
+    Ok(())
+}
+
+/// 给一路音频（可能多段）生成 filter label：单段直接引用，多段用 concat 滤镜接起来。
+/// 接起来的段写进 chains（返回非 None 时调用方必须把 chains 交给 -filter_complex）。
+fn audio_input_label(
+    files: &[String],
+    start: usize,
+    name: &str,
+    chains: &mut Vec<String>,
+) -> Option<String> {
+    match files.len() {
+        0 => None,
+        1 => Some(format!("[{start}:a]")),
+        n => {
+            let inputs: String = (0..n).map(|i| format!("[{}:a]", start + i)).collect();
+            chains.push(format!("{inputs}concat=n={n}:v=0:a=1[{name}]"));
+            Some(format!("[{name}]"))
+        }
+    }
+}
+
+/// 给视频混上音频（麦克风 / 系统声，各自可能多段）并输出最终 mp4
+///
+/// - 两路都没有：纯 remux（保留 faststart，播放器可即时 seek）
+/// - 单路单段：直接 mux
+/// - 任一路多段：先用 concat 滤镜把同源各段接起来（WAV 同格式，仅重采样开销）
+/// - 两路都有：amix 混音（`duration=longest` + `-shortest` 由视频长度收口）
+pub async fn mux_audio(
+    app: &AppHandle,
+    video_path: &str,
+    mic_files: &[String],
+    sys_files: &[String],
+    output_path: &str,
+) -> Result<(), String> {
+    mux_audio_core(Some(app), video_path, mic_files, sys_files, output_path).await
+}
+
+/// mux 核心（app 可选：单元测试传 None 跳过进度事件与资源路径解析）
+pub async fn mux_audio_core(
+    app: Option<&AppHandle>,
+    video_path: &str,
+    mic_files: &[String],
+    sys_files: &[String],
+    output_path: &str,
+) -> Result<(), String> {
+    let bin = match app { Some(a) => ffmpeg_bin(a), None => ffmpeg_bin_fallback() };
+    let emit = |pct: f64| {
+        if let Some(a) = app {
+            emit_progress(a, pct, 0);
+        }
+    };
+
+    // 无音频：remux 即可（copy 视频，不产生音频轨）
+    if mic_files.is_empty() && sys_files.is_empty() {
+        let mut cmd = Command::new(&bin);
+        cmd.args([
+            "-y", "-i", video_path, "-c", "copy", "-movflags", "+faststart", output_path,
+        ]);
+        let (child, kill_id) = spawn_with_registry(cmd);
+        let (ok, text) = wait_output(child).await;
+        unregister_conversion(&kill_id);
+        if !ok {
+            return Err(format!("remux without audio failed: {}", tail(&text)));
+        }
+        emit(100.0);
+        return Ok(());
+    }
+
+    let mut cmd = Command::new(&bin);
+    cmd.args(["-y", "-i", video_path]);
+    for f in mic_files {
+        cmd.args(["-i", f]);
+    }
+    for f in sys_files {
+        cmd.args(["-i", f]);
+    }
+
+    // 输入下标：0 = 视频，随后依次麦克风段、系统声段
+    let mic_start = 1usize;
+    let sys_start = 1 + mic_files.len();
+    let mut chains: Vec<String> = Vec::new();
+
+    let mic_label = audio_input_label(mic_files, mic_start, "amic", &mut chains);
+    let sys_label = audio_input_label(sys_files, sys_start, "asys", &mut chains);
+
+    let audio_out = match (mic_label, sys_label) {
+        (Some(m), Some(s)) => {
+            // 两路混音：duration=longest 保两路都不被截
+            chains.push(format!(
+                "{m}{s}amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[aout]"
+            ));
+            "[aout]".to_string()
+        }
+        (Some(m), None) => m,
+        (None, Some(s)) => s,
+        (None, None) => unreachable!("已在上面提前返回"),
+    };
+
+    // apad 把音频用静音无限延长，再配合 -shortest → **视频是唯一权威时长**。
+    // 若直接 -shortest 而不 pad：音频短于视频时（麦克风起流晚 / WASAPI 循环少收几毫秒 /
+    // 系统声整段静音）视频会被音频截短，用户看到「录了 10 秒只剩 9 秒」。
+    // 反过来音频长于视频也只到视频长度为止，尾部多余采样被丢弃。
+    chains.push(format!("{audio_out}apad[aout_padded]"));
+    let audio_out = "[aout_padded]".to_string();
+
+    // 只有「多段拼接」或「两路混音」才需要滤镜图；单路单段直接映射输入流即可。
+    // 无条件传 -filter_complex（哪怕传空串）会让 ffmpeg 报 "Invalid filtergraph"。
+    if !chains.is_empty() {
+        cmd.args(["-filter_complex", &chains.join(";")]);
+    }
+    cmd.args([
+        "-map", "0:v", "-map", &audio_out, "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest",
+        "-movflags", "+faststart", output_path,
+    ]);
+    let (child, kill_id) = spawn_with_registry(cmd);
+    emit(90.0);
+    let (ok, text) = wait_output(child).await;
+    unregister_conversion(&kill_id);
+    if !ok {
+        return Err(format!("audio mux failed: {}", tail(&text)));
+    }
+    emit(100.0);
+    Ok(())
 }
 
 /// 让 Path/Arc/AtomicBool import 被使用（预留：P4 录制管线复用）

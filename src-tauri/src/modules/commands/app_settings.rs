@@ -229,14 +229,30 @@ pub fn show_main_window(app: AppHandle) {
 }
 
 // ---------- 托盘气泡通知（对齐 tray.displayBalloon）----------
+//
+// Electron 用 tray.displayBalloon（Windows 气泡）；Tauri 的 tray-icon 无此 API，
+// 改用 tauri-plugin-notification 的系统通知（同一视觉位置，且不依赖托盘存在）。
+
+/// 发一条系统通知；通知权限未授予或平台不支持时只记日志，不打断调用方流程
+pub fn balloon(title: &str, body: &str) {
+    use tauri_plugin_notification::NotificationExt;
+    let app = crate::APP_HANDLE.get().cloned();
+    let Some(app) = app else {
+        log::info!("notify: {title} — {body}");
+        return;
+    };
+    match app.notification().builder().title(title).body(body).show() {
+        Ok(()) => log::info!("notify: {title} — {body}"),
+        Err(e) => log::warn!("通知发送失败（{e}）：{title} — {body}"),
+    }
+}
 
 #[tauri::command]
 pub fn notify_conversion_start() {
-    // P3：接 tauri-plugin-notification；P1 先日志占位
-    log::info!("notify: 转换已开始");
+    balloon("二支录制", "视频转换中…");
 }
 
 #[tauri::command]
 pub fn notify_conversion_done(filePath: String) {
-    log::info!("notify: 转换完成 → {filePath}");
+    balloon("二支录制", &format!("转换完成：{filePath}"));
 }

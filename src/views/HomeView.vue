@@ -70,27 +70,14 @@ async function handleStart() {
   if (!store.selectedSource && store.recordingMode !== 'region') return
 
   try {
-    // 清理预览音频，重新获取全新轨道用于录制
+    // P4：音频（麦克风/系统声）由 Rust 侧 WASAPI 采集，这里不再把轨道交给录制 ——
+    // 只关掉试音预览流，避免录制期间麦克风被两个消费者同时打开（共享模式虽允许，
+    // 但双重打开会让两套电平表在各自时钟上跳动）。
     await audio.cleanup()
     previewMicTracks = []
     previewSysTracks = []
-    const micTracks: MediaStreamTrack[] = []
-    const sysTracks: MediaStreamTrack[] = []
 
-    if (store.isMicrophoneEnabled) {
-      micTracks.push(...await audio.startMicrophone(settingsStore.microphoneDeviceId || undefined))
-    }
-    if (store.isSystemAudioEnabled && settingsStore.systemAudioSourceId) {
-      sysTracks.push(...await audio.startSystemAudio(settingsStore.systemAudioSourceId))
-    }
-    const audioTracks = [...micTracks, ...sysTracks]
-    if (audioTracks.length > 0) {
-      audio.startLevelMonitoring(micTracks, sysTracks)
-    }
-
-    // 摄像头预览由独立的悬浮窗负责，主窗口不需要创建摄像头流
-
-    // 区域模式下获取屏幕源 ID
+    // 区域模式下取屏幕源 ID（区域录制同样按显示器寻址，sourceId 只承载显示器下标）
     let sourceId = store.selectedSource?.id || ''
     const region = store.recordingMode === 'region' ? store.selectedRegion! : undefined
     if (!sourceId && region) {
@@ -100,11 +87,11 @@ async function handleStart() {
       }
     }
 
-    // 开始录制
+    // 开始录制（Rust：WGC 分段采集 + WASAPI 音频，停止后 ffmpeg 拼接/裁剪/混音）
     const multiScreen = store.recordingMode === 'allscreens' && store.multiScreenSources.length > 0
       ? store.multiScreenSources
       : undefined
-    await recording.startCapture(sourceId, region, audioTracks.length > 0 ? audioTracks : undefined, multiScreen)
+    await recording.startCapture(sourceId, region, undefined, multiScreen)
   } catch (err: any) {
     alert(err.message)
     audio.cleanup()
@@ -124,7 +111,7 @@ function handleResume() {
 
 async function handleStop() {
   window.electronAPI.hideRegionBorder()
-  recording.stop() // 不 await：正常停止后立即释放摄像头/音频，转换(ffmpeg)在后台进行
+  recording.stop() // 不 await：正常停止后立即释放摄像头/音频，Rust 侧 ffmpeg 合成在后台进行
   await audio.cleanup()
   previewMicTracks = []
   previewSysTracks = []
@@ -492,17 +479,14 @@ onMounted(() => {
     if (handler) handler()
   })
 
-  // 定时将音频电平转发给工具栏窗口（仅在音频激活时）
-  const audioLevelInterval = setInterval(() => {
-    if (store.state === 'idle' && !store.isMicrophoneEnabled && !store.isSystemAudioEnabled) return
-    // 主窗口最小化/隐藏时（录制中常见），转发电平无意义，跳过
-    if (document.hidden) return
-    window.electronAPI.updateAudioLevels(
-      store.isMicrophoneEnabled ? audio.micLevel.value : -1,
-      store.isSystemAudioEnabled ? audio.sysLevel.value : -1
-    )
-  }, 50)
-  onUnmounted(() => clearInterval(audioLevelInterval))
+  // 音频电平：录制中由 Rust 侧 WASAPI 上报（onAudioLevels 事件，主窗口最小化也在推）；
+  // 空闲试音时才走渲染层本地分析器。两者共用 AudioMeter 的 level。
+  const cleanupAudioLevels = window.electronAPI.onAudioLevels(({ mic, sys }) => {
+    audio.micLevel.value = mic
+    audio.sysLevel.value = sys
+  })
+  onUnmounted(() => cleanupAudioLevels())
+})
 
   // 暴露清理函数供 onUnmounted 使用
   onUnmounted(() => cleanupBallAction())

@@ -1,3 +1,21 @@
+export interface RecordingStartOptions {
+  /** 目标显示器（Tauri available_monitors 下标）*/
+  targetDisplayId?: number
+  /** 多屏录制：多个显示器下标；非空时忽略 targetDisplayId */
+  displayIds?: number[]
+  withMic: boolean
+  withSys: boolean
+  /** WASAPI endpoint id（listAudioDevices 返回值）；空 = 系统默认设备 */
+  micDeviceId?: string | null
+  sysDeviceId?: string | null
+  quality: 'low' | 'medium' | 'high'
+  fps: number
+  withCursor: boolean
+  /** 区域录制（逻辑像素）*/
+  region?: { x: number; y: number; width: number; height: number } | null
+  outputDir?: string | null
+}
+
 export interface CaptureSource {
   id: string
   name: string
@@ -79,6 +97,8 @@ export interface ElectronAPI {
   // Screen capture
   getSources: (types?: string[]) => Promise<CaptureSource[]>
   getSystemAudioSources: () => Promise<{ id: string; name: string }[]>
+  /** WASAPI 输入设备（设置页麦克风下拉；id 与 recordingStart 的 micDeviceId 同域）*/
+  listAudioDevices: () => Promise<{ deviceId: string; label: string }[]>
 
   // File dialogs
   showSaveDialog: (options?: SaveDialogOptions) => Promise<SaveDialogResult>
@@ -137,6 +157,20 @@ export interface ElectronAPI {
   notifyConversionStart: () => void
   notifyConversionDone: (filePath: string) => void
 
+  // Screenshot（P4：Rust DXGI 抓帧存桌面）
+  takeScreenshot: () => Promise<{ success: boolean; filePath?: string; error?: string }>
+
+  // 录制会话（P4：采集全在 Rust —— WGC 画面 + WASAPI 音频，停止后 ffmpeg 合成）
+  recordingStart: (options: RecordingStartOptions) => Promise<string>
+  recordingPause: () => Promise<void>
+  recordingResume: () => Promise<void>
+  recordingStop: () => Promise<string>
+  recordingGetStatus: () => Promise<{ state: 'idle' | 'recording' | 'paused' | 'converting'; frames: number; tracks: number; elapsedSec: number }>
+  onRecordingState: (callback: (data: { state: string; id?: string; tracks?: number }) => void) => () => void
+  onRecordingStopped: (callback: (data: { id: string; outputPath: string; elapsed: number; fileName: string }) => void) => () => void
+  /** Rust 侧 WASAPI 实时电平（20Hz）；主窗口最小化时本地分析器拿不到数据 */
+  onAudioLevels: (callback: (data: { mic: number; sys: number }) => void) => () => void
+
   // Region selector
   selectRegion: () => Promise<{ x: number; y: number; width: number; height: number; sourceId: string } | null>
   showRegionBorder: (region: { x: number; y: number; width: number; height: number }, audioState?: { micEnabled: boolean; sysEnabled: boolean }) => Promise<void>
@@ -148,7 +182,6 @@ export interface ElectronAPI {
   hideFloatingIsland: () => Promise<void>
   setIslandState: (state: 'idle' | 'recording' | 'paused', elapsedSeconds?: number) => Promise<void>
   updateToolbarState: (state: 'idle' | 'recording' | 'paused', elapsedSeconds?: number) => Promise<void>
-  updateAudioLevels: (micLevel: number, sysLevel: number) => void
   onToolbarAction: (callback: (action: string) => void) => () => void
 
   // Media devices

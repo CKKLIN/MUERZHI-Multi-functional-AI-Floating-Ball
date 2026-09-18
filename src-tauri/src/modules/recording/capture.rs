@@ -1,43 +1,150 @@
 // 屏幕采集管线 — Windows Graphics Capture（windows-capture crate）
 //
-// P4 定型设计（依据 windows-capture 2.x 能力实测）：
-//   视频：WGC 帧泵（GraphicsCaptureApiHandler::on_frame_arrived）→ 内置 VideoEncoder
-//         （MediaFoundation 硬编）直出 mp4
-//   音频：WGC capture session 自带 loopback → AudioSettingsBuilder（AAC）
-//   停止：recording_stop 置 stop_flag → on_frame_arrived 停止分支 encoder.finish() +
-//         capture_control.stop()（发 WM_QUIT 结束消息循环）→ control.stop() join → mp4 完整
+// 视频：WGC 帧泵（GraphicsCaptureApiHandler::on_frame_arrived）→ 内置 VideoEncoder
+//       （MediaFoundation）直出 mp4。帧走 DirectX 表面通道，不做 GPU→CPU 回读。
+// 音频：不在这里 —— 见 audio.rs（WASAPI 各路录 WAV，停止后 ffmpeg amix），
+//       故 AudioSettingsBuilder 固定 disabled(true)。
+// 停止：置该段 stop 标志 → on_frame_arrived 停止分支 encoder.finish() +
+//       capture_control.stop()（发 WM_QUIT 结束消息循环）→ control.stop() join → mp4 完整。
+//
+// **暂停 = 分段**：一张 WGC 会话只认一个输出文件，且 MF 编码器的时间戳来自捕获时钟，
+// 中途跳帧会在成品里留一个时间黑洞（时长含暂停时间，与界面计时器不符）。所以暂停时
+// 结束当前段、恢复时起新段，停止后 ffmpeg concat（-c copy，无重编码）拼接——得到与
+// Electron 版 MediaRecorder.pause() 一致的「暂停时间从视频里消失」语义。
+//
+// **编码器用 H264 而非 HEVC**：内置的精简 ffmpeg 白名单里有 h264 解码器没有 hevc 解码器
+// （见 vendor/ffmpeg/build-minimal.sh），而区域裁剪/GIF/多屏合并都要解码视频。H264 同时
+// 在兼容性上更稳（Windows 自带播放器直开）。帧泵另一处 docs 示例用 HEVC 属默认值，非必需。
 //
 // feature 开关：无 screen-capture 时用空实现（命令返回明确错误），UI 可提示。
+#![cfg_attr(not(feature = "screen-capture"), allow(dead_code))]
 
 /// WGC + WASAPI 是否编译可用（feature 开关）
-#[allow(dead_code)] // 保留：capture 内部检查 + 未来 UI 查询
+#[allow(dead_code)] // 保留：capture 内部检查 + UI 查询
 pub const ENABLED: bool = cfg!(feature = "screen-capture");
 
-use std::sync::atomic::{AtomicBool, Ordering};
-#[allow(unused_imports)]
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
-// ===== PAUSED（两模式共用）=====
-static PAUSED: AtomicBool = AtomicBool::new(false);
+// ===== 采集参数（一次录制会话的固定配置）=====
 
-pub fn pause_current() {
-    PAUSED.store(true, Ordering::SeqCst);
+/// 画质档 → 目标码率（bps）。对齐 Electron 版 getBitrate：1080p 基准 5Mbps，
+/// 每多 480p 加 3Mbps，再按档位乘系数。
+pub fn bitrate_for(quality: &str, width: u32, height: u32) -> u32 {
+    let pixels = width as f64 * height as f64;
+    let base = 1920.0 * 1080.0;
+    let step = 640.0 * 480.0;
+    let extra = ((pixels - base) / step).round().max(0.0);
+    let base_bitrate = 5_000_000.0 + extra * 3_000_000.0;
+    let factor = match quality {
+        "low" => 0.4,
+        "medium" => 0.7,
+        _ => 1.0,
+    };
+    (base_bitrate * factor).round() as u32
 }
 
-pub fn resume_current() {
-    PAUSED.store(false, Ordering::SeqCst);
+/// fps 合法区间收敛（WGC 最小更新间隔 + MF 帧率都要正整数）
+pub fn clamp_fps(fps: u32) -> u32 {
+    fps.clamp(5, 120)
+}
+
+/// 一段采集的配置
+#[derive(Debug, Clone)]
+pub struct SegmentConfig {
+    pub output_path: String,
+    pub width: u32,
+    pub height: u32,
+    pub fps: u32,
+    pub bitrate: u32,
+    pub with_cursor: bool,
+    /// monitor index（0-based，与 windows_capture::Monitor::from_index 的 1-based 相差 1）
+    pub monitor_index: usize,
+    pub stop: Arc<AtomicBool>,
+    pub frames: Arc<AtomicU64>,
+}
+
+/// 运行时句柄：正在跑的采集段 + 每路（每显示器）已完成段
+pub struct TrackState {
+    pub monitor_index: usize,
+    /// 物理像素 bounds（x, y, w, h），多屏合并时定位用
+    pub bounds: (i32, i32, i32, i32),
+    pub segments: Vec<String>,
+}
+
+pub struct CaptureHandles {
+    pub tracks: Mutex<Vec<TrackState>>,
+    pub active: Mutex<Vec<imp::Active>>,
+    pub frames: Arc<AtomicU64>,
+}
+
+impl CaptureHandles {
+    pub fn global() -> &'static CaptureHandles {
+        use std::sync::OnceLock;
+        static S: OnceLock<CaptureHandles> = std::sync::OnceLock::new();
+        S.get_or_init(|| CaptureHandles {
+            tracks: Mutex::new(Vec::new()),
+            active: Mutex::new(Vec::new()),
+            frames: Arc::new(AtomicU64::new(0)),
+        })
+    }
+
+    /// 开始新一轮录制（清空上一轮残留状态）
+    pub fn reset(&self) {
+        self.tracks.lock().unwrap().clear();
+        self.active.lock().unwrap().clear();
+        self.frames.store(0, Ordering::SeqCst);
+        crate::modules::recording::audio::reset_levels();
+    }
+
+    pub fn frame_count(&self) -> u64 {
+        self.frames.load(Ordering::SeqCst)
+    }
+
+    /// 登记一路（一个显示器）
+    pub fn add_track(&self, monitor_index: usize, bounds: (i32, i32, i32, i32)) {
+        self.tracks.lock().unwrap().push(TrackState {
+            monitor_index,
+            bounds,
+            segments: Vec::new(),
+        });
+    }
+
+    /// 某一路的成品段（按录制顺序）
+    pub fn segments_of(&self, monitor_index: usize) -> Vec<String> {
+        self.tracks
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|t| t.monitor_index == monitor_index)
+            .map(|t| t.segments.clone())
+            .unwrap_or_default()
+    }
+
+    /// 某一路的 bounds
+    pub fn bounds_of(&self, monitor_index: usize) -> (i32, i32, i32, i32) {
+        self.tracks
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|t| t.monitor_index == monitor_index)
+            .map(|t| t.bounds)
+            .unwrap_or((0, 0, 0, 0))
+    }
+
+    pub fn track_count(&self) -> usize {
+        self.tracks.lock().unwrap().len()
+    }
 }
 
 // ==================== feature 版本 ====================
 #[cfg(feature = "screen-capture")]
-mod imp {
-    use std::sync::Mutex;
+pub mod imp {
     use super::*;
-    use windows_capture::capture::{
-        CaptureControl, Context, GraphicsCaptureApiHandler,
-    };
+    use windows_capture::capture::{CaptureControl, Context, GraphicsCaptureApiHandler};
     use windows_capture::encoder::{
         AudioSettingsBuilder, ContainerSettingsBuilder, VideoEncoder, VideoSettingsBuilder,
+        VideoSettingsSubType,
     };
     use windows_capture::frame::Frame;
     use windows_capture::graphics_capture_api::InternalCaptureControl;
@@ -47,25 +154,41 @@ mod imp {
         MinimumUpdateIntervalSettings, SecondaryWindowSettings, Settings,
     };
 
-    /// WGC 采集器：on_frame_arrived 把帧送进 MediaFoundation 编码器，写 mp4
+    pub type Control = CaptureControl<ScreenCaptureHandler, Box<dyn std::error::Error + Send + Sync>>;
+
+    /// 当前活跃的采集段
+    pub struct Active {
+        pub control: Control,
+        pub stop: Arc<AtomicBool>,
+        pub path: String,
+        pub monitor_index: usize,
+    }
+
+    /// WGC 采集器：on_frame_arrived 把帧送进编码器写 mp4
     pub struct ScreenCaptureHandler {
-        pub encoder: Option<VideoEncoder>,
-        pub frame_count: u64,
+        encoder: Option<VideoEncoder>,
+        stop: Arc<AtomicBool>,
+        frames: Arc<AtomicU64>,
     }
 
     impl GraphicsCaptureApiHandler for ScreenCaptureHandler {
-        type Flags = (String,);
+        type Flags = SegmentConfig;
         type Error = Box<dyn std::error::Error + Send + Sync>;
 
         fn new(ctx: Context<Self::Flags>) -> Result<Self, Self::Error> {
-            let output_path = ctx.flags.0.clone();
+            let cfg = ctx.flags;
             let encoder = VideoEncoder::new(
-                VideoSettingsBuilder::new(1920, 1080),
-                AudioSettingsBuilder::default(),
+                VideoSettingsBuilder::new(cfg.width, cfg.height)
+                    .sub_type(VideoSettingsSubType::H264)
+                    .frame_rate(cfg.fps)
+                    .bitrate(cfg.bitrate),
+                // 音频在 audio.rs 里单独录 WAV，最后 ffmpeg 合成 —— 这里必须显式关闭，
+                // 否则 MF 容器会写出一个空音轨，后续 amix 时还要额外丢弃。
+                AudioSettingsBuilder::new().disabled(true),
                 ContainerSettingsBuilder::default(),
-                &output_path,
+                &cfg.output_path,
             )?;
-            Ok(Self { encoder: Some(encoder), frame_count: 0 })
+            Ok(Self { encoder: Some(encoder), stop: cfg.stop, frames: cfg.frames })
         }
 
         fn on_frame_arrived(
@@ -73,12 +196,8 @@ mod imp {
             frame: &mut Frame,
             capture_control: InternalCaptureControl,
         ) -> Result<(), Self::Error> {
-            // 暂停期间跳帧（编码器时间轴由 WGC 帧时间戳维持）
-            if PAUSED.load(Ordering::SeqCst) {
-                return Ok(());
-            }
-            // stop 信号：finish + 停止消息循环
-            if CaptureHandles::global().stop_flag.load(Ordering::SeqCst) {
+            // stop 信号：finish + 停止消息循环（帧时间戳由捕获时钟给，无需补帧）
+            if self.stop.load(Ordering::SeqCst) {
                 if let Some(enc) = self.encoder.take() {
                     enc.finish()?;
                 }
@@ -87,7 +206,7 @@ mod imp {
             }
             if let Some(enc) = self.encoder.as_mut() {
                 enc.send_frame(frame)?;
-                self.frame_count += 1;
+                self.frames.fetch_add(1, Ordering::Relaxed);
             }
             Ok(())
         }
@@ -100,150 +219,187 @@ mod imp {
         }
     }
 
-    pub type Control =
-        CaptureControl<ScreenCaptureHandler, Box<dyn std::error::Error + Send + Sync>>;
-
-    /// 采集会话句柄（存全局，stop 时消费 control）
-    pub struct CaptureHandles {
-        pub stop_flag: AtomicBool,
-        pub output_path: Mutex<String>,
-        pub control: Mutex<Option<Control>>,
-    }
-
-    #[allow(dead_code)]
-    impl CaptureHandles {
-        pub fn global() -> &'static CaptureHandles {
-            use std::sync::OnceLock;
-            static S: OnceLock<CaptureHandles> = std::sync::OnceLock::new();
-            S.get_or_init(|| CaptureHandles {
-                stop_flag: AtomicBool::new(false),
-                output_path: Mutex::new(String::new()),
-                control: Mutex::new(None),
-            })
-        }
-
-        pub fn reset(&self, output_path: &str) {
-            self.stop_flag.store(false, Ordering::SeqCst);
-            *self.output_path.lock().unwrap() = output_path.to_string();
-            PAUSED.store(false, Ordering::SeqCst);
-            *self.control.lock().unwrap() = None;
-        }
-    }
-
-    /// 启动屏幕采集（WGC 帧泵 → mp4）
-    pub async fn spawn_screen_capture(
-        _app: &tauri::AppHandle,
-        session_id: &str,
-        target_display_id: Option<u32>,
-        with_mic: bool,
-        with_sys: bool,
-    ) -> Result<(), String> {
-        let _ = (with_mic, with_sys);
-        let output_path = std::env::temp_dir()
-            .join(format!("muerzhi_rec_{session_id}.mp4"))
-            .to_string_lossy()
-            .to_string();
-        CaptureHandles::global().reset(&output_path);
-
-        // 选定显示器（None/0=主屏，其他=枚举下标）
-        let monitor = if target_display_id.unwrap_or(0) == 0 {
-            Monitor::primary().map_err(|e| format!("primary monitor failed: {e}"))?
-        } else {
-            Monitor::from_index(target_display_id.unwrap() as usize)
-                .map_err(|e| format!("monitor #{target_display_id:?} failed: {e}"))?
-        };
-
+    /// 启动一段采集（同一进程内可并行多段：多屏录制各显示器一段）
+    pub fn spawn_segment(cfg: SegmentConfig) -> Result<Active, String> {
+        // windows-capture 的 Monitor::from_index 是 1-based；本工程对外一律 0-based
+        let monitor = Monitor::from_index(cfg.monitor_index + 1)
+            .map_err(|e| format!("显示器 #{} 不存在: {e}", cfg.monitor_index))?;
         let settings = Settings::new(
             monitor,
-            CursorCaptureSettings::WithoutCursor,
+            if cfg.with_cursor {
+                CursorCaptureSettings::WithCursor
+            } else {
+                CursorCaptureSettings::WithoutCursor
+            },
+            // 关闭 WGC 自带的黄色捕获边框（否则录出来的视频四周有系统描边）
             DrawBorderSettings::WithoutBorder,
             SecondaryWindowSettings::Default,
-            MinimumUpdateIntervalSettings::Default,
+            // fps 上限交给系统侧节流（不是硬保证，屏幕不动时本来就没有新帧）
+            MinimumUpdateIntervalSettings::Custom(std::time::Duration::from_millis(
+                1000 / cfg.fps.max(1) as u64,
+            )),
             DirtyRegionSettings::Default,
-            ColorFormat::Rgba8,
-            (output_path.clone(),),
+            ColorFormat::Bgra8,
+            cfg.clone(),
         );
-
-        // 异步启动 WGC 帧泵（独立线程）
+        let stop = cfg.stop.clone();
+        let path = cfg.output_path.clone();
+        let monitor_index = cfg.monitor_index;
         let control = ScreenCaptureHandler::start_free_threaded(settings)
-            .map_err(|e| format!("WGC start failed: {e}"))?;
-        // CaptureControl 存全局（stop 时消费）
-        *CaptureHandles::global().control.lock().unwrap() = Some(control);
-        log::info!("WGC capture started (session {session_id})");
-        Ok(())
+            .map_err(|e| format!("WGC 启动失败: {e}"))?;
+        log::info!("WGC 采集段已启动（monitor #{}, {}x{}@{}）", cfg.monitor_index, cfg.width, cfg.height, cfg.fps);
+        Ok(Active { control, stop, path, monitor_index })
     }
 
-    /// 停止采集：置 stop_flag → on_frame_arrived 停止分支 encoder.finish() →
-    /// control.stop()（halt → WM_QUIT → join）→ 等文件落盘
-    pub async fn stop_current() -> Result<String, String> {
-        let handles = CaptureHandles::global();
-        handles.stop_flag.store(true, Ordering::SeqCst);
-        let control = handles.control.lock().unwrap().take();
-        if let Some(control) = control {
-            // stop 是阻塞 join，放 blocking 池
-            let join = tokio::task::spawn_blocking(move || control.stop().map_err(|e| format!("{e}")))
-                .await
-                .map_err(|e| format!("join spawn failed: {e}"))?;
-            if let Err(e) = join {
-                log::warn!("WGC stop join: {e}");
-            }
+    /// 结束一段：置 stop → 结束消息循环并 join → 校验产物
+    ///
+    /// 编码器的收尾走两条路：屏幕还在动 → 下一帧进停止分支，显式 `finish()`；
+    /// 屏幕完全静止（无新帧）→ 直接退消息循环，handler 析构，`VideoEncoder::drop`
+    /// 里同样 `finish()`。两条都产出完整 mp4（实测 4 秒录制 4.86MB 可播放）。
+    pub fn end_segment(active: Active) -> Result<String, String> {
+        let Active { control, stop, path, .. } = active;
+        stop.store(true, Ordering::SeqCst);
+        // control.stop() 会发 WM_QUIT 并 join（内部已处理线程已退出的竞态）
+        let join = std::thread::spawn(move || control.stop().map_err(|e| format!("{e}")));
+        match join.join() {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => log::warn!("WGC 停止时 join 报错: {e}"),
+            Err(_) => log::warn!("WGC 停止线程 panic"),
         }
-        let path = handles.output_path.lock().unwrap().clone();
+        // writer flush 后再判存在（finish 是同步的，这里只留一点余量）
+        std::thread::sleep(std::time::Duration::from_millis(200));
         if std::path::Path::new(&path).exists() {
-            // 再等一拍让 writer flush 完
-            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-            return Ok(path);
+            Ok(path)
+        } else {
+            Err("编码器未产出文件".into())
         }
-        Err("encoder 未在期限内产出文件".into())
+    }
+
+    /// 显示器设备名 → WGC 枚举下标（0-based）。
+    /// Tauri(tao) 与 windows-capture 都从 `GetMonitorInfoW` 拿 `\\.\DISPLAYn`，靠名字配对
+    /// 才能保证两边下标一致（两套 EnumDisplayMonitors 的返回顺序不保证相同）。
+    pub fn index_for_device_name(name: &str) -> Option<usize> {
+        Monitor::enumerate()
+            .ok()?
+            .iter()
+            .position(|m| m.device_name().map(|n| n == name).unwrap_or(false))
     }
 }
 
 #[cfg(feature = "screen-capture")]
-pub use imp::{spawn_screen_capture, stop_current};
+pub use imp::{end_segment, index_for_device_name, spawn_segment};
 
 // ==================== 无 feature 版本（空实现）====================
 #[cfg(not(feature = "screen-capture"))]
-mod imp {
-    use std::sync::Mutex;
-    use std::sync::atomic::{AtomicBool, Ordering};
-    #[allow(dead_code)] // 保持与 feature 版同接口，命令层无需 cfg 分支
-    pub struct CaptureHandles {
-        pub stop_flag: AtomicBool,
-        pub output_path: Mutex<String>,
-        pub control: Mutex<Option<()>>,
+pub mod imp {
+    /// 无采集 feature 时的占位：字段与 feature 版同名同型，命令层无需 cfg 分支
+    /// （mod.rs 的 end_all_segments 会读 monitor_index 登记产物）
+    #[derive(Default)]
+    pub struct Active {
+        pub monitor_index: usize,
     }
 
-    #[allow(dead_code)]
-    impl CaptureHandles {
-        pub fn global() -> &'static CaptureHandles {
-            use std::sync::OnceLock;
-            static S: OnceLock<CaptureHandles> = std::sync::OnceLock::new();
-            S.get_or_init(|| CaptureHandles {
-                stop_flag: AtomicBool::new(false),
-                output_path: Mutex::new(String::new()),
-                control: Mutex::new(None),
-            })
-        }
-        pub fn reset(&self, _output_path: &str) {
-            self.stop_flag.store(false, Ordering::SeqCst);
-            *self.output_path.lock().unwrap() = String::new();
-        }
-    }
-
-    pub async fn spawn_screen_capture(
-        _app: &tauri::AppHandle,
-        _session_id: &str,
-        _target_display_id: Option<u32>,
-        _with_mic: bool,
-        _with_sys: bool,
-    ) -> Result<(), String> {
+    pub fn spawn_segment(_cfg: super::SegmentConfig) -> Result<Active, String> {
         Err("屏幕采集管线未编译（用 --features screen-capture 构建）".into())
     }
 
-    pub async fn stop_current() -> Result<String, String> {
+    pub fn end_segment(_active: Active) -> Result<String, String> {
         Err("采集管线未编译".into())
+    }
+
+    pub fn index_for_device_name(_name: &str) -> Option<usize> {
+        None
     }
 }
 
 #[cfg(not(feature = "screen-capture"))]
-pub use imp::{spawn_screen_capture, stop_current};
+pub use imp::{end_segment, index_for_device_name, spawn_segment};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bitrate_1080p_high_is_baseline() {
+        assert_eq!(bitrate_for("high", 1920, 1080), 5_000_000);
+    }
+
+    #[test]
+    fn bitrate_1080p_medium_and_low_scale() {
+        assert_eq!(bitrate_for("medium", 1920, 1080), 3_500_000);
+        assert_eq!(bitrate_for("low", 1920, 1080), 2_000_000);
+    }
+
+    #[test]
+    fn bitrate_4k_has_extra_steps() {
+        // (3840*2160 − 1920*1080) / (640*480) = 20.25 → round 20 → 5Mbps + 20×3Mbps
+        assert_eq!(bitrate_for("high", 3840, 2160), 5_000_000 + 20 * 3_000_000);
+    }
+
+    #[test]
+    fn bitrate_below_1080p_has_no_negative_steps() {
+        assert_eq!(bitrate_for("high", 1280, 720), 5_000_000);
+    }
+
+    #[test]
+    fn fps_clamped_to_sane_range() {
+        assert_eq!(clamp_fps(0), 5);
+        assert_eq!(clamp_fps(30), 30);
+        assert_eq!(clamp_fps(240), 120);
+    }
+
+    #[test]
+    fn enabled_flag_matches_feature() {
+        assert_eq!(ENABLED, cfg!(feature = "screen-capture"));
+    }
+
+    #[cfg(not(feature = "screen-capture"))]
+    #[test]
+    fn disabled_returns_error() {
+        let cfg = SegmentConfig {
+            output_path: String::new(),
+            width: 1,
+            height: 1,
+            fps: 30,
+            bitrate: 1,
+            with_cursor: false,
+            monitor_index: 0,
+            stop: Arc::new(AtomicBool::new(false)),
+            frames: Arc::new(AtomicU64::new(0)),
+        };
+        assert!(spawn_segment(cfg).is_err());
+        assert!(index_for_device_name("\\\\.\\DISPLAY1").is_none());
+    }
+
+    /// 真机冒烟：实起一段 WGC 采集，录约 3 秒，校验产出 mp4 非空且帧数 > 0。
+    ///
+    /// 需真实桌面会话（远程/无头会话下 WGC 会失败），故 `#[ignore]` 默认不跑。
+    /// 手动执行：`cargo test --test unit -- --ignored --nocapture wgc_smoke`
+    #[cfg(feature = "screen-capture")]
+    #[test]
+    #[ignore = "需要真实桌面会话；手动用 --ignored 跑"]
+    fn wgc_smoke_records_playable_file() {
+        let out = std::env::temp_dir().join("muerzhi_wgc_smoke.mp4");
+        let _ = std::fs::remove_file(&out);
+        let cfg = SegmentConfig {
+            output_path: out.to_string_lossy().to_string(),
+            width: 1920,
+            height: 1080,
+            fps: 30,
+            bitrate: 5_000_000,
+            with_cursor: false,
+            monitor_index: 0,
+            stop: Arc::new(AtomicBool::new(false)),
+            frames: Arc::new(AtomicU64::new(0)),
+        };
+        let frames = cfg.frames.clone();
+        let active = spawn_segment(cfg).expect("WGC 应能启动");
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        let path = end_segment(active).expect("应产出 mp4");
+        let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+        assert!(size > 10_000, "mp4 过小（{size} 字节），编码器没真正写入");
+        assert!(frames.load(Ordering::SeqCst) > 0, "一帧都没收到");
+        println!("WGC 冒烟：{path}（{size} 字节，{} 帧）", frames.load(Ordering::SeqCst));
+        let _ = std::fs::remove_file(&path);
+    }
+}

@@ -1,27 +1,27 @@
-// electronAPI → Tauri 桥（P0 stub 版）
+// electronAPI → Tauri 桥
 // 目标：在 Tauri/WebView2 环境下提供与 electron/preload/index.ts 完全同名的 window.electronAPI，
-// 使 src/ 下渲染层代码零改动。P1 桥阶段逐个把 stub 换成真 invoke/listen 映射。
+// 使 src/ 下渲染层代码零改动。
 //
 // 实现约定：
 // - invoke('<camel-command>', { args })：Rust 侧命令用 snake_case，invoke 用 camelCase 参数名
 // - 事件订阅：tauri.event.listen(channel, handler)，退订函数返回 Promise<UnlistenFn>
-// - P0 阶段未迁移的子系统返回安全 stub（不抛错，避免 UI 崩），并打一次 console.warn
+//
+// 历史：P0/P1 阶段未迁移的方法曾返回安全 stub（warnOnce 提示），P4 已全部替换为真实现，
+// 故 stub 与 warnOnce 一并移除 —— 若将来再出现「渲染层调了但没接」的方法，直接让它
+// 抛 Uncaught (in promise) 比静默返回空值更容易在开发期暴露。
 
 import { invoke as tauriInvoke } from '@tauri-apps/api/core'
 import { listen as tauriListen, type UnlistenFn } from '@tauri-apps/api/event'
 
 type Progress = { percent: number; targetSize: number }
 
-function warnOnce(name: string) {
-  const flagged = new Set<string>()
-  return (fn: string) => {
-    if (!flagged.has(fn)) {
-      flagged.add(fn)
-      console.warn(`[bridge] ${name}.${fn} 尚未迁移（P1 桥阶段实现），返回 stub 值`)
-    }
-  }
+type CaptureSourceLike = {
+  id: string
+  name: string
+  display_id: string
+  appIcon: string | null
+  thumbnail: string
 }
-const w = warnOnce('electronAPI')
 
 async function cmd<T>(name: string, args?: Record<string, unknown>): Promise<T> {
   return tauriInvoke(name, args) as Promise<T>
@@ -42,15 +42,11 @@ function on(channel: string, handler: (payload: unknown) => void): () => void {
 }
 
 const electronAPI = {
-  // ===== Screen capture（P4 录制管线迁移）=====
-  getSources: (_types?: string[]) => {
-    w('getSources')
-    return Promise.resolve([])
-  },
-  getSystemAudioSources: () => {
-    w('getSystemAudioSources')
-    return Promise.resolve([])
-  },
+  // ===== Screen capture（P4：Rust 侧 DXGI 抓帧出缩略图；sourceId 为 `screen:下标`）=====
+  getSources: (types?: string[]) => cmd<CaptureSourceLike[]>('get_sources', { types }),
+  getSystemAudioSources: () => cmd<{ id: string; name: string }[]>('get_system_audio_sources'),
+  /** WASAPI 输入设备（设置页麦克风下拉；id 与 recordingStart 的 micDeviceId 同域）*/
+  listAudioDevices: () => cmd<{ deviceId: string; label: string }[]>('list_audio_devices'),
 
   // ===== File dialogs =====
   showSaveDialog: async (options?: {
@@ -200,33 +196,50 @@ const electronAPI = {
       thumbnail: string
     }[]>('get_all_displays'),
 
-  // ===== Screenshot（P4 迁移）=====
-  takeScreenshot: () => {
-    w('takeScreenshot')
-    return cmd<string>('take_screenshot')
-  },
+  // ===== Screenshot（P4 实装：Rust DXGI 抓帧存桌面）=====
+  takeScreenshot: () => cmd<{ success: boolean; filePath?: string; error?: string }>('take_screenshot'),
 
-  // ===== Region selector（P2 已实装：windows/region.rs + public/windows/*.html）=====
+  // ===== 录制会话（P4：WGC + WASAPI 全在 Rust 侧，渲染层只下指令）=====
+  recordingStart: (options: Record<string, unknown>) => cmd<string>('recording_start', { options }),
+  recordingPause: () => cmd<void>('recording_pause'),
+  recordingResume: () => cmd<void>('recording_resume'),
+  recordingStop: () => cmd<string>('recording_stop'),
+  recordingGetStatus: () =>
+    cmd<{ state: 'idle' | 'recording' | 'paused' | 'converting'; frames: number; tracks: number; elapsedSec: number }>(
+      'recording_get_status',
+    ),
+  onRecordingState: (callback: (data: { state: string; id?: string; tracks?: number }) => void) =>
+    on('recording-state', callback),
+  onRecordingStopped: (callback: (data: { id: string; outputPath: string; elapsed: number; fileName: string }) => void) =>
+    on('recording-stopped', callback),
+  /** Rust 侧 WASAPI 实时电平（20Hz）——录制中主窗口被最小化时，渲染层的本地分析器拿不到数据 */
+  onAudioLevels: (callback: (data: { mic: number; sys: number }) => void) =>
+    on('audio-levels', callback),
+
+  // ===== Region selector（P2 窗口体系：windows/region.rs + public/windows/*.html）=====
   // 选区走事件驱动：start_region_select 起全屏窗，用户在 region-selector.html 画框后
-  // invoke('region_selected'/'region_cancelled')，渲染层经 on('region-selected') 收结果。
-  selectRegion: () => {
-    tauriInvoke('start_region_select')
-    return new Promise<null>((resolve) => {
-      let unlisten: (() => void) | null = null
-      const finish = (result: null) => {
-        unlisten?.()
+  // invoke('region_selected'/'region_cancelled')，这里等对应事件并 resolve 真实选区。
+  // ⚠️ 必须 resolve 真实坐标：调用方（HomeView.handleSelectRegion）拿它填 store.selectedRegion
+  // 并立刻 showRegionBorder —— 之前实现把两种结果都 resolve(null)，导致选区数据丢失。
+  selectRegion: () =>
+    new Promise<{ x: number; y: number; width: number; height: number; sourceId: string } | null>((resolve) => {
+      let settled = false
+      let offSelected: (() => void) | null = null
+      let offCancelled: (() => void) | null = null
+      const finish = (result: { x: number; y: number; width: number; height: number; sourceId: string } | null) => {
+        if (settled) return
+        settled = true
+        offSelected?.()
+        offCancelled?.()
         resolve(result)
       }
-      on('region-selected', (payload) => {
+      offSelected = on('region-selected', (payload) => {
         const r = payload as { x: number; y: number; width: number; height: number }
-        finish(null)
-        void r
+        finish({ x: r.x, y: r.y, width: r.width, height: r.height, sourceId: 'screen:0' })
       })
-      on('region-cancelled', () => finish(null))
-      // 返回退订句柄给调用方的是 resolve 后的清理（上面 finish 已处理）
-      void unlisten
-    })
-  },
+      offCancelled = on('region-cancelled', () => finish(null))
+      tauriInvoke('start_region_select').catch(() => finish(null))
+    }),
   showRegionBorder: (region: { x: number; y: number; width: number; height: number }, audioState?: { micEnabled: boolean; sysEnabled: boolean; cameraEnabled?: boolean; cameraDeviceId?: string }) =>
     cmd<void>('show_region_border', { region, audioState }),
   hideRegionBorder: () => cmd<void>('hide_region_border'),
@@ -242,7 +255,7 @@ const electronAPI = {
   toggleCameraPreview: (show: boolean, cameraDeviceId?: string) => cmd<void>('toggle_camera_preview', { show, cameraDeviceId }),
   setIslandState: (state: 'idle' | 'recording' | 'paused', elapsedSeconds?: number) => cmd<void>('set_island_state', { state, elapsedSeconds }),
   updateToolbarState: (state: 'idle' | 'recording' | 'paused', elapsedSeconds?: number) => cmd<void>('update_toolbar_state', { state, elapsedSeconds }),
-  updateAudioLevels: (micLevel: number, sysLevel: number) => { tauriInvoke('update_audio_levels', { micLevel, sysLevel }) },
+  // P4：电平由 Rust 侧 WASAPI 统一推送（见 onAudioLevels），渲染层无需再上报
   onToolbarAction: (callback: (action: string) => void) =>
     on('toolbar-action', callback),
 
