@@ -87,8 +87,7 @@
     "icon": ["../public/logo.ico", "../public/logo.png"],
     "resources": {
       "../vendor/ffmpeg/ffmpeg.exe": "ffmpeg.exe",
-      "../electron/main/clawd-hook.js": "clawd-hook.js",
-      "../electron/main/question-card-utils.js": "question-card-utils.js"
+      "../src-tauri/resources/clawd-hook.js": "clawd-hook.js"
     },
     "windows": {
       "nsis": {
