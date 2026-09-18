@@ -594,6 +594,8 @@ pub fn ball_move(app: AppHandle, sx: f64, sy: f64) {
     let (wx, wy) = get_position(&win);
     let (ww, wh) = get_size(&win);
     *BallState::global().pos.lock().unwrap() = Some(ball_pos_from_window(wx, wy, ww, wh));
+    // 散热中拖动悬浮球 → 面板跟随（对齐 repositionCoolingOverlay）
+    crate::modules::cooling::follow_ball(&app);
 }
 
 /// 拖拽结束：贴边判定 + 弹性吸附 + 保存位置（对齐 floating-ball-drag-end）
