@@ -52,9 +52,19 @@ pub fn kill_all_conversions() -> usize {
 mod tests {
     use super::*;
 
+    /// 两个用例共用一个全局注册表，并行跑必然互踩（A 注册后 B 的 kill_all 会把 A 的条目
+    /// 一起清掉 → A 的数量断言变成 0）。cargo test 默认多线程，故用例内显式串行。
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    /// 前一个用例 panic 也不让后一个用例跟着挂在锁毒化上（断言信息才是有用的）
+    fn lock() -> std::sync::MutexGuard<'static, ()> {
+        TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     #[test]
     fn register_kill_unregister_roundtrip() {
-        // 每个用例串行执行；先清空保证隔离
+        let _guard = lock();
+        // 先清空保证隔离
         kill_all_conversions();
         let killed = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let k = killed.clone();
@@ -71,6 +81,7 @@ mod tests {
 
     #[test]
     fn kill_all_is_idempotent_and_counts() {
+        let _guard = lock();
         kill_all_conversions();
         let c = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         for _ in 0..3 {

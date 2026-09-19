@@ -61,6 +61,54 @@ listen('camera-control', (ev) => {
   else if (ev.payload === 'start') startCamera()
 })
 
+// ===== 画中画录制（供 Rust 侧 ffmpeg overlay 合成）=====
+// 摄像头流由本窗持有（WebView2 的 getUserMedia），Rust 拿不到，所以由这里录成 webm
+// 追加落盘；停止后 Rust 把这段 webm 叠到主视频上。
+let recorder = null
+let recordPath = ''
+
+async function startRecording(path) {
+  if (recorder) return
+  await startCamera()
+  if (!cameraStream) {
+    // 摄像头没起来：立刻回报「已结束」，否则 Rust 侧 stop 会白等 3 秒超时
+    invoke('camera_record_finished', { filePath: path }).catch(() => {})
+    return
+  }
+  recordPath = path
+  const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
+    .find((m) => MediaRecorder.isTypeSupported(m)) || 'video/webm'
+  recorder = new MediaRecorder(cameraStream, { mimeType: mime, videoBitsPerSecond: 2_000_000 })
+  let first = true
+  // 追加写是异步 IPC：必须串成链并在 onstop 里等链尾落完再回报 Rust，
+  // 否则最后一块（含 webm 尾部）可能还在飞，Rust 已经拿半截文件去 overlay。
+  let flushing = Promise.resolve()
+  recorder.ondataavailable = (e) => {
+    if (!e.data || e.data.size === 0) return
+    const blob = e.data
+    const isFirst = first
+    first = false
+    flushing = flushing.then(async () => {
+      const buf = new Uint8Array(await blob.arrayBuffer())
+      await invoke('append_file', { filePath: recordPath, data: Array.from(buf), reset: isFirst })
+    }).catch((err) => console.error('camera chunk append failed:', err))
+  }
+  recorder.onstop = async () => {
+    recorder = null
+    await flushing
+    // 通知 Rust 已落盘（Rust 在停止流程里等这个信号再启动 overlay）
+    invoke('camera_record_finished', { filePath: recordPath }).catch(() => {})
+  }
+  recorder.start(1000)
+}
+
+function stopRecording() {
+  if (recorder && recorder.state !== 'inactive') recorder.stop()
+}
+
+window.startRecording = startRecording
+window.stopRecording = stopRecording
+
 const preview = document.getElementById('preview')
 
 document.addEventListener('mousedown', (e) => {

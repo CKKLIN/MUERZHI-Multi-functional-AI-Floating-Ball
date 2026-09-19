@@ -44,6 +44,21 @@ pub struct StartOptions {
     pub region: Option<RegionRect>,
     /// 输出目录（渲染层设置项；空则用系统「视频」目录）
     pub output_dir: Option<String>,
+    /// 摄像头画中画开关（渲染层把预览窗录成 webm 后，停止时由 ffmpeg 叠加）
+    #[serde(default)]
+    pub with_camera: bool,
+    /// 画中画在成品画面里的位置与尺寸（物理像素，相对录制画面左上角）
+    #[serde(default)]
+    pub camera_rect: Option<CameraRect>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CameraRect {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -296,6 +311,17 @@ pub async fn recording_start(app: AppHandle, options: StartOptions) -> Result<St
         started.push(target.index);
     }
 
+    // 摄像头画中画：预览窗自己录 webm（Rust 拿不到 WebView2 的摄像头流），
+    // 停止时由 ffmpeg 叠加到主视频上
+    if options.with_camera {
+        let cam_path = std::env::temp_dir()
+            .join(format!("muerzhi_cam_{id}.webm"))
+            .to_string_lossy()
+            .to_string();
+        let _ = std::fs::remove_file(&cam_path);
+        crate::modules::windows::region::start_camera_recording(&app, &cam_path);
+    }
+
     *state.inner.lock().unwrap() = Some(SessionInner {
         id: id.clone(),
         options: options.clone(),
@@ -315,23 +341,29 @@ pub async fn recording_start(app: AppHandle, options: StartOptions) -> Result<St
 
 /// 暂停：结束当前段（暂停时长不进成品），音频线程同步停掉
 #[tauri::command]
-pub fn recording_pause(app: AppHandle) -> Result<(), String> {
+pub async fn recording_pause(app: AppHandle) -> Result<(), String> {
     let state = SessionState::global();
     if state.phase() != 1 {
         return Err("当前不在录制中".into());
     }
     end_all_segments();
-    let mut guard = state.inner.lock().unwrap();
-    if let Some(s) = guard.as_mut() {
-        s.accumulated += s.started_at.elapsed();
-        // 音频暂停 = 停掉当前 WAV（与视频分段一致：暂停期间不产生音频）。
-        // stop() 只回收空文件，有内容的 WAV 留在临时目录，停止时按前缀统一收集。
-        if let Some(a) = s.audio.take() {
-            let files = a.stop();
-            log::info!("暂停：音频段收尾 {} 路", files.len());
+    // 独立作用域：MutexGuard 必须在 await 之前析构（跨 await 持有标准库 MutexGuard
+    // 会让整个 future 变成 !Send，Tauri 命令编译不过）
+    {
+        let mut guard = state.inner.lock().unwrap();
+        if let Some(s) = guard.as_mut() {
+            s.accumulated += s.started_at.elapsed();
+            // 音频暂停 = 停掉当前 WAV（与视频分段一致：暂停期间不产生音频）。
+            // stop() 只回收空文件，有内容的 WAV 留在临时目录，停止时按前缀统一收集。
+            if let Some(a) = s.audio.take() {
+                let files = a.stop();
+                log::info!("暂停：音频段收尾 {} 路", files.len());
+            }
         }
     }
-    drop(guard);
+    // 摄像头段收尾（恢复时另起一段）。必须 await 完再置暂停态：若丢给后台线程，
+    // 用户「暂停→立刻继续」会让新段的 MediaRecorder 与旧段的 stop 抢同一个文件。
+    crate::modules::windows::region::stop_camera_recording(&app).await;
     state.phase.store(2, Ordering::SeqCst);
     let _ = app.emit("recording-state", serde_json::json!({"state": "paused"}));
     log::info!("录制已暂停（分段）");
@@ -340,7 +372,7 @@ pub fn recording_pause(app: AppHandle) -> Result<(), String> {
 
 /// 继续：为每路显示器起新段 + 重开音频
 #[tauri::command]
-pub fn recording_resume(app: AppHandle) -> Result<(), String> {
+pub async fn recording_resume(app: AppHandle) -> Result<(), String> {
     let state = SessionState::global();
     if state.phase() != 2 {
         return Err("当前不在暂停中".into());
@@ -374,6 +406,15 @@ pub fn recording_resume(app: AppHandle) -> Result<(), String> {
             }
         }
     }
+    // 摄像头另起一段（文件名带 part 后缀，与音频段同规则）
+    if options.with_camera {
+        let cam_path = std::env::temp_dir()
+            .join(format!("muerzhi_cam_{id}_p{part:02}.webm"))
+            .to_string_lossy()
+            .to_string();
+        let _ = std::fs::remove_file(&cam_path);
+        crate::modules::windows::region::start_camera_recording(&app, &cam_path);
+    }
     state.phase.store(1, Ordering::SeqCst);
     let _ = app.emit("recording-state", serde_json::json!({"state": "recording"}));
     log::info!("录制已继续（新段 #{part}）");
@@ -391,6 +432,8 @@ pub async fn recording_stop(app: AppHandle) -> Result<String, String> {
     state.phase.store(3, Ordering::SeqCst);
     let _ = app.emit("recording-state", serde_json::json!({"state": "converting"}));
 
+    // 先让摄像头段落盘（webm 尾部还在写时合成会截短）
+    crate::modules::windows::region::stop_camera_recording(&app).await;
     end_all_segments();
     let (id, options, elapsed_sec) = {
         let mut guard = state.inner.lock().unwrap();
@@ -504,9 +547,65 @@ pub async fn recording_stop(app: AppHandle) -> Result<String, String> {
         cleanup_video = video_only.clone();
     }
 
+    // 2.5) 摄像头画中画叠加（渲染层录的 webm → 主视频左上角/右下角小窗）
+    let camera_webm = collect_camera_files(&id);
+    let composited: String;
+    if options.with_camera && !camera_webm.is_empty() {
+        let with_cam = std::env::temp_dir()
+            .join(format!("muerzhi_withcam_{id}.mp4"))
+            .to_string_lossy()
+            .to_string();
+        let _ = std::fs::remove_file(&with_cam);
+        // 位置：渲染层给了 rect 就用它；否则默认右下角留 16px 边距。
+        // 渲染层给的是**物理像素**（与 crop/merge 后的成品画面同域），直接用。
+        let rect = options.camera_rect.map(|r| (r.x, r.y, r.width, r.height)).unwrap_or_else(|| {
+            let (vw, vh) = probe_video_size(&cleanup_video);
+            (vw - 336, vh - 268, 320, 240)
+        });
+        // 暂停产生的多段摄像头 webm 先拼成一个（同参数段，无损 copy 即可；容器必须是
+        // mkv —— MediaRecorder 出的是 VP8/VP9，mp4 装不下 VP8 会直接写不出文件头）
+        let cam_src = if camera_webm.len() == 1 {
+            camera_webm[0].clone()
+        } else {
+            let joined = std::env::temp_dir()
+                .join(format!("muerzhi_camjoin_{id}.mkv"))
+                .to_string_lossy()
+                .to_string();
+            let _ = std::fs::remove_file(&joined);
+            crate::modules::media::ffmpeg::concat_videos(&app, &camera_webm, &joined)
+                .await
+                .map_err(|e| {
+                    state.phase.store(0, Ordering::SeqCst);
+                    format!("摄像头分段拼接失败: {e}")
+                })?;
+            joined
+        };
+        let cam_size = std::fs::metadata(&cam_src).map(|m| m.len()).unwrap_or(0);
+        log::info!(
+            "画中画合成：摄像头段 {cam_size} 字节，位置 {rect:?}，帧率 {}",
+            capture::clamp_fps(options.fps)
+        );
+        crate::modules::media::ffmpeg::overlay_camera(
+            &app,
+            &cleanup_video,
+            &cam_src,
+            rect,
+            options.fps,
+            &with_cam,
+        )
+            .await
+            .map_err(|e| {
+                state.phase.store(0, Ordering::SeqCst);
+                format!("摄像头合成失败: {e}")
+            })?;
+        composited = with_cam;
+    } else {
+        composited = cleanup_video.clone();
+    }
+
     // 3) 混流音频（无音频 → remux 到 mp4 收尾）
     let (mic_files, sys_files) = collect_audio_files(&id);
-    crate::modules::media::ffmpeg::mux_audio(&app, &cleanup_video, &mic_files, &sys_files, &final_str)
+    crate::modules::media::ffmpeg::mux_audio(&app, &composited, &mic_files, &sys_files, &final_str)
         .await
         .map_err(|e| {
             state.phase.store(0, Ordering::SeqCst);
@@ -514,16 +613,29 @@ pub async fn recording_stop(app: AppHandle) -> Result<String, String> {
         })?;
 
     // 4) 清理临时文件（录制段/音频/中间产物）
-    for (_, path, _) in &track_videos {
-        if path.contains(&id) {
-            let _ = std::fs::remove_file(path);
+    // 设 MUERZHI_KEEP_TEMP=1 可保留全部中间产物（排查画中画/音频合成问题用）
+    let keep_temp = std::env::var("MUERZHI_KEEP_TEMP").map(|v| v == "1").unwrap_or(false);
+    if keep_temp {
+        log::warn!("MUERZHI_KEEP_TEMP=1：保留中间产物（段/音频/摄像头/叠加件）");
+    }
+    if !keep_temp {
+        for (_, path, _) in &track_videos {
+            if path.contains(&id) {
+                let _ = std::fs::remove_file(path);
+            }
         }
-    }
-    for f in mic_files.iter().chain(sys_files.iter()) {
-        let _ = std::fs::remove_file(f);
-    }
-    if cleanup_video != final_str {
-        let _ = std::fs::remove_file(&cleanup_video);
+        for f in mic_files.iter().chain(sys_files.iter()) {
+            let _ = std::fs::remove_file(f);
+        }
+        if cleanup_video != final_str {
+            let _ = std::fs::remove_file(&cleanup_video);
+        }
+        if composited != cleanup_video && composited != final_str {
+            let _ = std::fs::remove_file(&composited);
+        }
+        for f in &camera_webm {
+            let _ = std::fs::remove_file(f);
+        }
     }
 
     state.phase.store(0, Ordering::SeqCst);
@@ -534,6 +646,51 @@ pub async fn recording_stop(app: AppHandle) -> Result<String, String> {
     );
     log::info!("录制完成: {final_str}（{elapsed_sec}s）");
     Ok(final_str)
+}
+
+/// 收集本次会话的摄像头分段（命名规则见 recording_start/resume，排序即时间顺序）
+fn collect_camera_files(session_id: &str) -> Vec<String> {
+    let prefix = format!("muerzhi_cam_{session_id}");
+    let mut out: Vec<String> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) {
+        for e in entries.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with(&prefix) && name.ends_with(".webm") {
+                let path = e.path();
+                // 空文件（摄像头没起来）直接跳过，别把 overlay 喂挂
+                if std::fs::metadata(&path).map(|m| m.len() > 1024).unwrap_or(false) {
+                    out.push(path.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// 读视频宽高（ffmpeg -i 的 stderr 面板；解析失败回退 1920×1080）
+fn probe_video_size(path: &str) -> (i32, i32) {
+    let bin = crate::modules::media::ffmpeg::ffmpeg_bin_fallback();
+    let Ok(out) = std::process::Command::new(bin).args(["-i", path]).output() else {
+        return (1920, 1080);
+    };
+    let text = String::from_utf8_lossy(&out.stderr);
+    for line in text.lines() {
+        if let Some(idx) = line.find("Video:") {
+            // 形如 "... , 2560x1440 [SAR 1:1 ..." / "..., 1920x1080 (default)"
+            for token in line[idx..].split([',', ' ']) {
+                let t = token.trim().trim_start_matches('(');
+                if let Some((w, h)) = t.split_once('x') {
+                    if let (Ok(w), Ok(h)) = (w.parse::<i32>(), h.parse::<i32>()) {
+                        if w > 0 && h > 0 {
+                            return (w, h);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    (1920, 1080)
 }
 
 /// 收集本次会话的音频 WAV：麦克风与系统声各一路列表（覆盖暂停产生的多段）
@@ -643,6 +800,138 @@ mod tests {
         let (mic, sys) = collect_audio_files("no-such-session-id-xyz");
         assert!(mic.is_empty());
         assert!(sys.is_empty());
+    }
+
+    /// 真机冒烟：摄像头画中画叠加（主 mp4 + 摄像头 webm → 叠加后的 mp4）。
+    /// 手动执行：`cargo test --test unit -- --ignored --nocapture camera_overlay`
+    #[test]
+    #[ignore = "起 ffmpeg 子进程造素材；手动用 --ignored 跑"]
+    fn camera_overlay_smoke() {
+        use crate::modules::media::ffmpeg;
+        let bin = ffmpeg::ffmpeg_bin_fallback();
+        if !bin.exists() {
+            eprintln!("跳过：找不到内置 ffmpeg");
+            return;
+        }
+        let dir = std::env::temp_dir();
+        let mk = |n: &str| dir.join(format!("muerzhi_cam_{n}"));
+        let main_v = mk("main.mp4");
+        let cam_v = mk("cam.webm");
+        let out = mk("out.mp4");
+        for p in [&main_v, &cam_v, &out] {
+            let _ = std::fs::remove_file(p);
+        }
+
+        // 主视频：320×240 纯黑 2 秒；摄像头：160×120 纯白 2 秒（VP9 webm）
+        let black = vec![0u8; 320 * 240 * 4 * 60];
+        let white = vec![255u8; 160 * 120 * 4 * 60];
+        // 先确认渲染层 MediaRecorder 产出的 VP8/VP9 能解码（精简 ffmpeg 只编了解码器，
+        // 没编 libvpx 编码器 —— 所以下面造素材只能退而用 H264/matroska，但**解码能力**
+        // 这条断言才是生产路径真正依赖的）。
+        let decoders = String::from_utf8_lossy(
+            &std::process::Command::new(&bin).arg("-decoders").output().unwrap().stdout,
+        )
+        .to_string();
+        assert!(decoders.contains("vp8") && decoders.contains("vp9"), "缺少 VP8/VP9 解码器，摄像头 webm 无法合成");
+
+        // 摄像头素材容器用 matroska（webm 是其子集，读取走同一 demuxer）
+        for (path, buf, w, h, extra) in [
+            (&main_v, &black, 320, 240, vec!["-c:v", "libx264"]),
+            (&cam_v, &white, 160, 120, vec!["-c:v", "libx264", "-f", "matroska"]),
+        ] {
+            let raw = mk(&format!("{}.raw", path.file_stem().unwrap().to_string_lossy()));
+            std::fs::write(&raw, buf).expect("写 raw");
+            let mut args: Vec<String> = vec![
+                "-y".into(), "-loglevel".into(), "error".into(),
+                "-f".into(), "rawvideo".into(), "-pix_fmt".into(), "bgra".into(),
+                "-s".into(), format!("{w}x{h}"), "-r".into(), "30".into(),
+                "-i".into(), raw.to_string_lossy().to_string(),
+            ];
+            args.extend(extra.iter().map(|s| s.to_string()));
+            args.push("-pix_fmt".into());
+            args.push("yuv420p".into());
+            args.push(path.to_string_lossy().to_string());
+            let res = std::process::Command::new(&bin).args(&args).output().expect("造素材");
+            let _ = std::fs::remove_file(&raw);
+            assert!(res.status.success(), "造素材失败: {}", String::from_utf8_lossy(&res.stderr));
+        }
+
+        block_on(async {
+            ffmpeg::overlay_camera_core(
+                None,
+                &main_v.to_string_lossy(),
+                &cam_v.to_string_lossy(),
+                (160, 100, 120, 90),
+                30,
+                &out.to_string_lossy(),
+            )
+            .await
+            .expect("画中画叠加应成功");
+        });
+
+        // 暂停产生的多段摄像头必须能无损拼起来 —— 且容器只能是 mkv/matroska：
+        // MediaRecorder 出的是 VP8/VP9，`-c copy` 进 mp4 会因 "Could not find tag for
+        // codec vp8" 直接写不出文件头。这条正是 recording_stop 里 camjoin 的真实命令。
+        let cam2 = mk("cam2.webm");
+        let joined = mk("join.mkv");
+        let _ = std::fs::remove_file(&joined);
+        std::fs::copy(&cam_v, &cam2).expect("复制第二段");
+        block_on(async {
+            ffmpeg::concat_videos_core(
+                None,
+                &[cam_v.to_string_lossy().to_string(), cam2.to_string_lossy().to_string()],
+                &joined.to_string_lossy(),
+            )
+            .await
+            .expect("摄像头分段 concat 应成功（mkv 容器）");
+        });
+        let joined_info = String::from_utf8_lossy(
+            &std::process::Command::new(&bin).args(["-i", &joined.to_string_lossy()]).output().unwrap().stderr,
+        )
+        .to_string();
+        // 两段各 2 秒 → 拼接后约 4 秒（若容器/时间戳处理错了，时长会塌成 2 秒或 N/A）
+        assert!(joined_info.contains("Duration: 00:00:04"), "拼接时长应约 4 秒:\n{joined_info}");
+        for p in [&cam2, &joined] {
+            let _ = std::fs::remove_file(p);
+        }
+
+        let size = std::fs::metadata(&out).map(|m| m.len()).unwrap_or(0);
+        assert!(size > 2_000, "叠加产物过小（{size} 字节）");
+        // 抽一帧落 PNG 供人工/外部工具核对叠加位置。
+        //
+        // 为什么不在测试里直接做像素断言：精简 ffmpeg 只编了 rawvideo **demuxer**（没有
+        // muxer），png 也只有 demuxer，Rust 侧又没引图像解码库 —— 三条取像素的路都断了。
+        // 结构断言（时长/尺寸/音轨）+ 下面这张落盘帧已足够定位回归：叠加滤镜写错时
+        // overlay 会直接失败，位置写错则一眼能从帧图上看出。
+        let png = mk("frame.png");
+        let keep = std::env::temp_dir().join("muerzhi_overlay_check.png");
+        let _ = std::fs::remove_file(&keep);
+        let _ = std::fs::remove_file(&png);
+        let res = std::process::Command::new(&bin)
+            .args([
+                "-y", "-loglevel", "error", "-ss", "1", "-i", &out.to_string_lossy(),
+                "-frames:v", "1", "-f", "image2", &png.to_string_lossy(),
+            ])
+            .output()
+            .expect("抽帧");
+        assert!(res.status.success(), "抽帧失败: {}", String::from_utf8_lossy(&res.stderr));
+        let frame = std::fs::read(&png).expect("读帧");
+        assert!(frame.len() > 500, "抽出的帧异常（{} 字节）", frame.len());
+        let _ = std::fs::copy(&png, &keep); // 留一份供肉眼核对叠加位置
+
+        // 时长应与输入一致（2 秒），确认 overlay 没有把时间轴搞乱
+        let info = String::from_utf8_lossy(
+            &std::process::Command::new(&bin).args(["-i", &out.to_string_lossy()]).output().unwrap().stderr,
+        )
+        .to_string();
+        assert!(info.contains("320x240"), "成品尺寸应保持主视频尺寸:
+{info}");
+        assert!(info.contains("Duration: 00:00:02"), "成品时长应约 2 秒:
+{info}");
+        println!("画中画冒烟：{out:?}（{size} 字节），帧图 {png:?}（{} 字节）", frame.len());
+        for p in [&main_v, &cam_v, &out, &png] {
+            let _ = std::fs::remove_file(p);
+        }
     }
 
     /// 真机冒烟：录制收尾链路（concat 拼接 → amix 混音）出来的是**带音轨**的可播 mp4。

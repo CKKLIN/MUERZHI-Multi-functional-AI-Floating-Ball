@@ -35,6 +35,31 @@ pub fn write_file(data: Vec<u8>, filePath: String) -> Value {
     }
 }
 
+/// 追加写（分块落盘）：摄像头/画笔这类持续录制的数据按 MediaRecorder 的 timeslice
+/// 逐块追加，避免停止时一次性把几十 MB 数组过 IPC。
+/// reset=true 时先清空（新一轮录制开始）。
+#[tauri::command]
+pub fn append_file(filePath: String, data: Vec<u8>, reset: Option<bool>) -> Value {
+    let path = std::path::Path::new(&filePath);
+    if let Some(parent) = path.parent() {
+        if let Err(e) = fs::create_dir_all(parent) {
+            return json!({ "success": false, "error": e.to_string() });
+        }
+    }
+    let opened = if reset.unwrap_or(false) {
+        fs::File::create(path)
+    } else {
+        fs::OpenOptions::new().create(true).append(true).open(path)
+    };
+    match opened.and_then(|mut f| f.write_all(&data)) {
+        Ok(()) => json!({ "success": true, "bytes": data.len() }),
+        Err(e) => {
+            log::error!("append_file({filePath}) failed: {e}");
+            json!({ "success": false, "error": e.to_string() })
+        }
+    }
+}
+
 #[tauri::command]
 pub fn read_file(filePath: String) -> Result<Vec<u8>, String> {
     fs::read(&filePath).map_err(|e| e.to_string())

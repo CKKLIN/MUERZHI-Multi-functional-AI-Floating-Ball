@@ -76,8 +76,9 @@ mod gdi {
 
     /// 诊断：分别用「该显示器自己的 DC + 源坐标(0,0)」与「虚拟桌面 DC + 虚拟坐标(mx,my)」
     /// 抓同一块屏，返回两路亮度 —— 用来判定副屏全黑到底是坐标问题还是屏本身没内容。
+    #[allow(dead_code)] // 诊断用
     pub fn probe_both_paths(index0: usize) -> Result<(f64, f64, i32, i32), String> {
-        let (w, h, buf) = grab_bgra(index0)?;
+        let (_w, _h, buf) = grab_bgra(index0)?;
         let a = {
             let mut sum = 0u64;
             let mut n = 0u64;

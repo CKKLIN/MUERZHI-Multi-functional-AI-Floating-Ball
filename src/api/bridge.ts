@@ -252,6 +252,9 @@ const electronAPI = {
   getAiIslandSettings: () => cmd<{ flat: boolean }>('get_ai_island_settings'),
   setAiIslandSettings: (patch: Record<string, unknown>) => cmd<{ flat: boolean }>('set_ai_island_settings', { patch }),
   hideCameraPreview: () => cmd<void>('hide_camera_preview'),
+  /** 摄像头预览窗当前几何（物理像素；合成画中画时换算位置用）*/
+  cameraGeometry: () =>
+    cmd<{ x: number; y: number; width: number; height: number } | null>('camera_geometry_cmd'),
   toggleCameraPreview: (show: boolean, cameraDeviceId?: string) => cmd<void>('toggle_camera_preview', { show, cameraDeviceId }),
   setIslandState: (state: 'idle' | 'recording' | 'paused', elapsedSeconds?: number) => cmd<void>('set_island_state', { state, elapsedSeconds }),
   updateToolbarState: (state: 'idle' | 'recording' | 'paused', elapsedSeconds?: number) => cmd<void>('update_toolbar_state', { state, elapsedSeconds }),

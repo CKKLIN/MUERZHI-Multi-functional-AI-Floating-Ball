@@ -48,6 +48,7 @@ pub fn run() {
             // P1 实装命令
             modules::commands::files::write_file,
             modules::commands::files::read_file,
+            modules::commands::files::append_file,
             modules::commands::files::file_exists,
             modules::commands::files::delete_file,
             modules::commands::files::get_file_size,
@@ -112,6 +113,8 @@ pub fn run() {
             modules::windows::region::region_cancelled,
             modules::windows::region::camera_drag_start,
             modules::windows::region::camera_drag_end,
+            modules::windows::region::camera_record_finished,
+            modules::windows::region::camera_geometry_cmd,
             // AI 岛（P2 实装）
             modules::windows::ai_island::resize_ai_island,
             modules::windows::ai_island::ai_island_drag_start,

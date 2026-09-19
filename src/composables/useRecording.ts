@@ -10,6 +10,22 @@ export interface Region {
   height: number
 }
 
+type DisplayGeom = { x: number; y: number; width: number; height: number; scale: number }
+
+/** 显示器几何：bounds 是物理像素；scale 用来把选区（逻辑像素）换算成物理像素 */
+async function displayGeom(displayIndex: number): Promise<DisplayGeom> {
+  const displays = await window.electronAPI.getAllDisplays()
+  const d = displays.find((x) => x.id === displayIndex) || displays[0]
+  if (!d) return { x: 0, y: 0, width: 0, height: 0, scale: 1 }
+  return {
+    x: d.bounds.x,
+    y: d.bounds.y,
+    width: d.bounds.width,
+    height: d.bounds.height,
+    scale: d.scaleFactor || 1,
+  }
+}
+
 /** 显示器下标：'screen:1' → 1；解析不出来时按主屏 0 处理 */
 function displayIndexFromSourceId(sourceId: string | undefined): number {
   if (!sourceId) return 0
@@ -88,9 +104,59 @@ export function useRecording() {
       ? multiScreenSources.map(s => displayIndexFromSourceId(s.sourceId))
       : []
 
+    // 画中画几何：摄像头预览窗在屏幕上的位置换算成成品画面里的左上角坐标。
+    // 预览窗由 Rust 管理（用户可拖拽），这里只把「相对录制画面原点」的偏移交给合成用。
+    //
+    // ⚠️ 量纲：cameraGeometry()（窗口 outer_position/outer_size）与 getAllDisplays().bounds
+    // 都是**物理像素**，而选区（region-selector.html 的 e.screenX）是**逻辑像素** —— 三者
+    // 混着减在高 DPI 屏上会整体偏移（实测 dpr 1.5 时摄像头窗物理 x=2348 却被当成 2348-选区
+    // 逻辑坐标），故这里统一先把原点换成物理像素，与 crop_video 的换算口径完全一致。
+    let cameraRect: { x: number; y: number; width: number; height: number } | null = null
+    if (store.isCameraEnabled) {
+      const geo = await window.electronAPI.cameraGeometry()
+      if (geo) {
+        let origin: { x: number; y: number }
+        let canvas: { width: number; height: number }
+        if (region) {
+          // 区域录制：成品 = 录制显示器画面裁剪出的选区，原点 = 该屏物理原点 + 选区偏移
+          // （与 Rust crop_video 的 逻辑×缩放比 公式同一口径；选区只在主屏产生）
+          const g = await displayGeom(0)
+          origin = {
+            x: g.x + Math.round(region.x * g.scale),
+            y: g.y + Math.round(region.y * g.scale),
+          }
+          canvas = { width: region.width * g.scale, height: region.height * g.scale }
+        } else if (displayIds.length > 1) {
+          // 多屏：成品是各屏按物理 bounds 叠加的画布，原点 = 最小 bounds（同 merge_multi_screen）
+          const geoms = await Promise.all(displayIds.map(displayGeom))
+          const minX = Math.min(...geoms.map((g) => g.x))
+          const minY = Math.min(...geoms.map((g) => g.y))
+          origin = { x: minX, y: minY }
+          canvas = {
+            width: Math.max(...geoms.map((g) => g.x + g.width)) - minX,
+            height: Math.max(...geoms.map((g) => g.y + g.height)) - minY,
+          }
+        } else {
+          // 单屏全屏：成品 = 目标显示器画面，原点 = 该屏物理左上角
+          const g = await displayGeom(displayIndexFromSourceId(sourceId))
+          origin = { x: g.x, y: g.y }
+          canvas = { width: g.width, height: g.height }
+        }
+        const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(v, hi))
+        cameraRect = {
+          x: clamp(Math.round(geo.x - origin.x), 0, Math.max(0, Math.round(canvas.width - geo.width))),
+          y: clamp(Math.round(geo.y - origin.y), 0, Math.max(0, Math.round(canvas.height - geo.height))),
+          width: Math.round(geo.width),
+          height: Math.round(geo.height),
+        }
+      }
+    }
+
     const options: Record<string, unknown> = {
       targetDisplayId: displayIndexFromSourceId(sourceId),
       displayIds,
+      withCamera: store.isCameraEnabled,
+      cameraRect,
       withMic: store.isMicrophoneEnabled,
       withSys: store.isSystemAudioEnabled,
       // 设置页现在填的是 WASAPI endpoint id（list_audio_devices），与 Rust 侧同域

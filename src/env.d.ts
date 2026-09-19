@@ -177,6 +177,8 @@ export interface ElectronAPI {
   hideRegionBorder: () => Promise<void>
   hideBorderOnly: () => Promise<void>
   hideCameraPreview: () => Promise<void>
+  /** 摄像头预览窗当前几何（物理像素）*/
+  cameraGeometry: () => Promise<{ x: number; y: number; width: number; height: number } | null>
   toggleCameraPreview: (show: boolean, cameraDeviceId?: string) => Promise<void>
   showFloatingIsland: (audioState?: { micEnabled: boolean; sysEnabled: boolean }, targetDisplayId?: number) => Promise<void>
   hideFloatingIsland: () => Promise<void>

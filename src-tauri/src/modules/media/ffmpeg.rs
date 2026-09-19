@@ -5,10 +5,8 @@
 use crate::modules::media::conversion_registry::{register_conversion, unregister_conversion};
 use crate::modules::media::hw_encoder::build_encode_options;
 use serde_json::json;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 
 /// ffmpeg 二进制路径：打包态 resources/ffmpeg.exe；dev 态项目根 vendor/ffmpeg/ffmpeg.exe
@@ -447,6 +445,9 @@ fn tail(s: &str) -> String {
 ///
 /// 用 concat **demuxer** 而非 filter：所有段由同一编码器同参数产出（H264/mp4/同分辨率），
 /// `-c copy` 即可无损拼接，不重编码也就没有画质损失与耗时；concat filter 需要解码再编码。
+///
+/// 容器由 `output_path` 后缀决定：mp4/mov 加 `-movflags +faststart`；`.mkv` 不加
+/// （matroska 不吃这个 flag，而且 VP8 这类编码器 mp4 根本装不下，摄像头 webm 段必须走 mkv）。
 pub async fn concat_videos(app: &AppHandle, segments: &[String], output_path: &str) -> Result<(), String> {
     concat_videos_core(Some(app), segments, output_path).await
 }
@@ -475,20 +476,9 @@ pub async fn concat_videos_core(app: Option<&AppHandle>, segments: &[String], ou
     std::fs::write(&list_path, body).map_err(|e| format!("拼接清单写入失败: {e}"))?;
 
     let mut cmd = Command::new(&bin);
-    cmd.args([
-        "-y",
-        "-f",
-        "concat",
-        "-safe",
-        "0",
-        "-i",
-        &list_path.to_string_lossy(),
-        "-c",
-        "copy",
-        "-movflags",
-        "+faststart",
-        output_path,
-    ]);
+    cmd.args(["-y", "-f", "concat", "-safe", "0", "-i", &list_path.to_string_lossy(), "-c", "copy"]);
+    cmd.args(concat_container_flags(output_path));
+    cmd.arg(output_path);
     let (child, kill_id) = spawn_with_registry(cmd);
     emit(60.0);
     let (ok, text) = wait_output(child).await;
@@ -499,6 +489,17 @@ pub async fn concat_videos_core(app: Option<&AppHandle>, segments: &[String], ou
     }
     emit(80.0);
     Ok(())
+}
+
+/// concat 输出的容器相关参数：只有 mp4/mov 族认识 `+faststart`
+/// （matroska 不认；VP8/VP9 段必须落在 mkv 里，见 concat_videos 注释）
+fn concat_container_flags(output_path: &str) -> Vec<String> {
+    let lower = output_path.to_ascii_lowercase();
+    if lower.ends_with(".mp4") || lower.ends_with(".mov") || lower.ends_with(".m4v") {
+        vec!["-movflags".into(), "+faststart".into()]
+    } else {
+        Vec::new()
+    }
 }
 
 /// 给一路音频（可能多段）生成 filter label：单段直接引用，多段用 concat 滤镜接起来。
@@ -624,10 +625,95 @@ pub async fn mux_audio_core(
     Ok(())
 }
 
-/// 让 Path/Arc/AtomicBool import 被使用（预留：P4 录制管线复用）
-#[allow(dead_code)]
-fn _unused(_p: &Path, _b: Arc<AtomicBool>) {
-    let _ = _b.load(Ordering::SeqCst);
+// ===== 录制叠加层（摄像头画中画）=====
+
+/// 把摄像头画中画叠到成品视频上（对齐 Electron 版 canvas 合成的最终观感）
+///
+/// 两路输入：0 = 主视频，1 = 摄像头视频（渲染层录的 webm，含音频则丢弃）。
+/// 摄像头按目标分辨率缩放到 (x, y)、圆角不做遮罩（ffmpeg 无内建圆角，旧版 canvas 合成的
+/// 圆角在这里退化为直角，视觉差异可接受）。fps 必须显式传给输出（见函数内注释）。
+pub async fn overlay_camera(
+    app: &AppHandle,
+    video_path: &str,
+    camera_path: &str,
+    rect: (i32, i32, i32, i32),
+    fps: u32,
+    output_path: &str,
+) -> Result<(), String> {
+    overlay_camera_core(Some(app), video_path, camera_path, rect, fps, output_path).await
+}
+
+/// overlay 核心（app 可选：单元测试传 None 跳过进度事件）
+///
+/// 摄像头源是渲染层 MediaRecorder 产出的 **webm（VP8/VP9）**，主视频是 H264/mp4 ——
+/// 编码不同源故必须重编码主视频（不能用 -c copy）。主视频通常只有一条视频流 + 可能
+/// 已混好的音轨；这里 -c:a copy 把音轨原样带过，避免二次编码损失。
+pub async fn overlay_camera_core(
+    app: Option<&AppHandle>,
+    video_path: &str,
+    camera_path: &str,
+    rect: (i32, i32, i32, i32),
+    fps: u32,
+    output_path: &str,
+) -> Result<(), String> {
+    let bin = match app { Some(a) => ffmpeg_bin(a), None => ffmpeg_bin_fallback() };
+    let emit = |pct: f64| {
+        if let Some(a) = app {
+            emit_progress(a, pct, 0);
+        }
+    };
+    let (cx, cy, cw, ch) = rect;
+    let even = |v: i32| ((v as f64 / 2.0).round() as i32) * 2;
+    let (cw, ch) = (even(cw.max(16)), even(ch.max(16)));
+    // ⚠️ 滤镜链的**最后一段必须带输出标签**：写成 `[out]format=yuv420p`（无标签）会让
+    // [out] 被消费掉，-map [out] 报 "Output with label 'out' does not exist in any defined
+    // filter graph"。把 format 接在 overlay 同一链尾部、标签挂到最后即可。
+    let filter = format!(
+        "[1:v]scale={cw}:{ch},setsar=1[cam];[0:v][cam]overlay={}:{}:format=auto,format=yuv420p[out]",
+        even(cx.max(0)),
+        even(cy.max(0))
+    );
+    let encoder = crate::modules::media::hw_encoder::get_h264_encoder(&bin.to_string_lossy()).await;
+    let run = |enc: &str| -> Command {
+        let mut cmd = Command::new(&bin);
+        let mut args: Vec<String> = vec!["-y".into(), "-i".into(), video_path.into(), "-i".into(), camera_path.into()];
+        args.extend(["-filter_complex".into(), filter.clone()]);
+        args.extend(build_encode_options(enc, "20", num_threads()));
+        // 摄像头源是 10fps 的 VP9 webm，主视频 30fps —— 必须显式钉住输出帧率，
+        // 否则 overlay 会按**摄像头的时间基**驱动输出（成品降到 10fps，主画面卡顿）。
+        args.extend(["-r".into(), crate::modules::recording::capture::clamp_fps(fps).to_string()]);
+        args.extend([
+            "-map".into(), "[out]".into(),
+            // 音频若已有（主视频里）就带走；摄像头那路的音轨不要（用户要的是麦克风/系统声）
+            "-map".into(), "0:a?".into(),
+            "-c:a".into(), "copy".into(),
+            "-movflags".into(), "+faststart".into(),
+            output_path.into(),
+        ]);
+        cmd.args(args);
+        cmd
+    };
+    let (child, kill_id) = spawn_with_registry(run(&encoder));
+    emit(60.0);
+    let (ok, text) = wait_output(child).await;
+    unregister_conversion(&kill_id);
+    if ok {
+        emit(100.0);
+        return Ok(());
+    }
+    if encoder != "libx264" {
+        log::warn!("overlay 用 {encoder} 失败，回退 libx264");
+        let _ = std::fs::remove_file(output_path);
+        let (child, kill_id) = spawn_with_registry(run("libx264"));
+        let (ok2, text2) = wait_output(child).await;
+        unregister_conversion(&kill_id);
+        if ok2 {
+            emit(100.0);
+            return Ok(());
+        }
+        return Err(format!("camera overlay failed: {}", tail(&text2)));
+    }
+    Err(format!("camera overlay failed: {}", tail(&text)))
 }
 
 #[cfg(test)]
@@ -645,5 +731,16 @@ mod tests {
     fn hms_parsing() {
         assert_eq!(parse_hms("01:02:03.5"), Some(3723.5));
         assert_eq!(parse_hms("bad"), None);
+    }
+
+    /// `-movflags +faststart` 只有 mp4/mov 族认；mkv 会因未知选项直接失败
+    #[test]
+    fn concat_flags_only_for_mp4_family() {
+        for p in ["C:/t/a.mp4", "C:/t/a.MP4", "C:/t/a.mov", "C:/t/a.m4v"] {
+            assert_eq!(concat_container_flags(p), vec!["-movflags", "+faststart"], "{p}");
+        }
+        for p in ["C:/t/a.mkv", "C:/t/a.webm"] {
+            assert!(concat_container_flags(p).is_empty(), "{p}");
+        }
     }
 }

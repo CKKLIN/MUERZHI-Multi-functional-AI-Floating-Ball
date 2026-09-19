@@ -167,6 +167,13 @@ pub fn region_cancelled(app: AppHandle) {
 /// async 原因同 start_region_select（同步命令内建窗死锁）
 #[tauri::command]
 pub async fn show_region_border(app: AppHandle, region: Region) {
+    // 摄像头可用区 = 录制区域。region 是**逻辑像素**（选区窗按 CSS px 上报），而窗口几何与
+    // 光标位置都是物理像素 —— 换算成物理像素后再存，摄像头窗才落在选区右上角而不是别处。
+    let camera_area = region_to_physical(&app, &region);
+    CameraArea::global().set(Some(camera_area));
+    // 已经开着的预览窗跟着搬到选区右上角（对齐 Electron 版 showCameraPreview(region)）：
+    // 不搬的话窗口停在旧位置（常在选区外），拖拽夹取与合成坐标都会落在画面外。
+    place_camera_in_area(&app, camera_area);
     // 边框窗：region 外扩 5px，3px 红框，全穿透
     if let Some(old) = border_window(&app) {
         let _ = old.close();
@@ -181,8 +188,10 @@ pub async fn show_region_border(app: AppHandle, region: Region) {
         window_url("windows/region-border.html"),
     )
     .title("边框")
-    .position(bx / display_scale(&app), by / display_scale(&app))
-    .inner_size(bw / display_scale(&app), bh / display_scale(&app))
+    // region 是选区窗上报的 **逻辑像素**，与 builder 的 logical 口径一致 —— 这里不能再除
+    // 缩放比（除一次 = 二次换算，150% 屏上红框会缩到 2/3 大小并整体左移上移）。
+    .position(bx, by)
+    .inner_size(bw, bh)
     .decorations(false)
     .transparent(true)
     .resizable(false)
@@ -209,6 +218,9 @@ pub async fn show_region_border(app: AppHandle, region: Region) {
 }
 
 /// 工具条智能定位：topSpace/bottomSpace ≥ 48 用外侧，否则贴 region 内部
+///
+/// region 与主屏 bounds 都是**逻辑像素**（region 来自选区窗的 CSS px；Electron 版
+/// screen.getPrimaryDisplay().bounds 同为逻辑像素，两版行为一致）。
 fn show_toolbar_for_region(app: &AppHandle, region: &Region) {
     if let Some(old) = toolbar_window(&app) {
         let _ = old.close();
@@ -238,8 +250,9 @@ fn show_toolbar_for_region(app: &AppHandle, region: &Region) {
         window_url("windows/toolbar.html"),
     )
     .title("工具条")
-    .position((tb_x as f64) / display_scale(&app), (tb_y as f64) / display_scale(&app))
-    .inner_size((tb_w as f64) / display_scale(&app), (TOOLBAR_HEIGHT + TIP_STRIP) / display_scale(&app))
+    // 同边框窗：位置/尺寸已是逻辑像素，builder 也吃逻辑像素，不再换算
+    .position(tb_x as f64, tb_y as f64)
+    .inner_size(tb_w as f64, TOOLBAR_HEIGHT + TIP_STRIP)
     .decorations(false)
     .transparent(true)
     .resizable(false)
@@ -275,6 +288,8 @@ pub fn hide_region_border(app: AppHandle) {
     if let Some(win) = toolbar_window(&app) {
         let _ = win.close();
     }
+    // 可用区随录制 overlay 一起作废（对齐 Electron 的 currentPreviewArea = null）
+    CameraArea::global().set(None);
 }
 
 /// 仅隐藏边框（对齐 hideBorderOnly）
@@ -307,6 +322,23 @@ pub async fn show_floating_island(app: AppHandle, targetDisplayId: Option<u32>) 
     if let Some(old) = toolbar_window(&app) {
         let _ = old.close();
     }
+    // 全屏录制：摄像头可用区 = 目标显示器整块屏（物理像素；都是物理量，这里不换算）
+    let area = targetDisplayId
+        .and_then(|id| {
+            app.available_monitors()
+                .ok()?
+                .into_iter()
+                .nth(id as usize)
+        })
+        .map(|m| Region {
+            x: m.position().x,
+            y: m.position().y,
+            width: m.size().width as i32,
+            height: m.size().height as i32,
+        })
+        .unwrap_or_else(|| primary_area(&app));
+    CameraArea::global().set(Some(area));
+    place_camera_in_area(&app, area);
     // 指定显示器（前端 getAllDisplays 的 id = 枚举下标，与 screen.rs 一致）或主屏
     let (dx, dy, dw) = match targetDisplayId.and_then(|id| {
         app.available_monitors()
@@ -357,6 +389,8 @@ pub fn hide_floating_island(app: AppHandle) {
     if let Some(win) = toolbar_window(&app) {
         let _ = win.close();
     }
+    // 全屏录制的可用区（整块屏）随悬浮岛一起作废，别留给下一次区域录制当默认值
+    CameraArea::global().set(None);
 }
 
 /// 悬浮岛状态推送（对齐 setIslandState）：idle/recording/paused/show/hide
@@ -374,6 +408,74 @@ pub fn set_island_state(app: AppHandle, state: String, elapsedSeconds: Option<u3
 
 // ===== 摄像头预览 =====
 
+/// 摄像头预览窗可放置区域（**物理像素**）——拖拽时用它夹住窗口，初始位置也由它决定
+///
+/// 量纲约定：选区（region-selector.html 的 e.screenX）是逻辑像素，而窗口 outer_position /
+/// cursor_position 都是物理像素。CameraArea 一律存物理像素（入口处换算），下游才不用关心缩放。
+pub struct CameraArea(pub Mutex<Option<Region>>);
+
+impl CameraArea {
+    pub fn global() -> &'static CameraArea {
+        use std::sync::OnceLock;
+        static S: OnceLock<CameraArea> = OnceLock::new();
+        S.get_or_init(|| CameraArea(Mutex::new(None)))
+    }
+
+    pub fn set(&self, area: Option<Region>) {
+        *self.0.lock().unwrap() = area;
+    }
+
+    pub fn get(&self) -> Option<Region> {
+        *self.0.lock().unwrap()
+    }
+}
+
+/// 逻辑像素选区 → 物理像素可用区（摄像头窗几何同域）
+fn region_to_physical(app: &AppHandle, region: &Region) -> Region {
+    scale_region(region, display_scale(app))
+}
+
+/// 换算本体（独立成函数以便单测：`region_to_physical` 需要 AppHandle）
+fn scale_region(region: &Region, scale: f64) -> Region {
+    Region {
+        x: (region.x as f64 * scale).round() as i32,
+        y: (region.y as f64 * scale).round() as i32,
+        width: (region.width as f64 * scale).round() as i32,
+        height: (region.height as f64 * scale).round() as i32,
+    }
+}
+
+/// 主显示器物理 bounds
+fn primary_area(app: &AppHandle) -> Region {
+    match app.primary_monitor() {
+        Ok(Some(m)) => Region {
+            x: m.position().x,
+            y: m.position().y,
+            width: m.size().width as i32,
+            height: m.size().height as i32,
+        },
+        _ => Region { x: 0, y: 0, width: 1920, height: 1080 },
+    }
+}
+
+/// 预览窗在可用区里的初始位置（右上角，留 CAMERA_PAD 边距）
+///
+/// `.max(area.x)/.max(area.y)` 兜住「选区比预览窗还小」的情形 —— 否则右边缘会是负偏移，
+/// 窗口跑到选区左上之外。
+fn camera_pos_in_area(area: Region) -> (i32, i32) {
+    (
+        (area.x as f64 + area.width as f64 - CAMERA_W - CAMERA_PAD).max(area.x as f64).round() as i32,
+        (area.y as f64 + CAMERA_PAD).round() as i32,
+    )
+}
+
+/// 把已开的预览窗搬到可用区右上角（初次创建与选区变更时共用）
+fn place_camera_in_area(app: &AppHandle, area: Region) {
+    let Some(win) = camera_window(app) else { return };
+    let (x, y) = camera_pos_in_area(area);
+    let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+}
+
 /// 显示/隐藏摄像头预览（对齐 toggleCameraPreview）
 /// async 原因同 start_region_select（同步命令内建窗死锁）
 #[tauri::command]
@@ -382,25 +484,24 @@ pub async fn toggle_camera_preview(app: AppHandle, show: bool, cameraDeviceId: O
         hide_camera_preview_inner(&app);
         return;
     }
+    // 初始位置：可用区右上角（有选区就贴选区，否则主屏）—— 单位为物理像素
+    let area = CameraArea::global().get().unwrap_or_else(|| primary_area(&app));
     if let Some(win) = camera_window(&app) {
         let _ = win.show();
+        place_camera_in_area(&app, area);
         let _ = win.eval("window.startCamera && window.startCamera()");
         return;
     }
-    // 初始位置：录制区域右上角（P2 简化用主屏右上角；P3 录制会话传入 region）
-    let (dx, dy, dw) = match (&app).primary_monitor() {
-        Ok(Some(m)) => (m.position().x, m.position().y, m.size().width as i32),
-        _ => (0, 0, 1920),
-    };
-    let x = dx as f64 + dw as f64 - CAMERA_W - CAMERA_PAD;
-    let y = dy as f64 + CAMERA_PAD;
+    // 与 place_camera_in_area 同一算法
+    let (x, y) = camera_pos_in_area(area);
     let device = cameraDeviceId.unwrap_or_default();
     let url = WebviewUrl::App(
         format!("windows/camera-preview.html?deviceId={}", uri_encode(&device)).into(),
     );
     match WebviewWindowBuilder::new(&app, "camera-preview", url)
         .title("摄像头")
-        .position((x as f64) / display_scale(&app), (y as f64) / display_scale(&app))
+        // builder 吃逻辑像素，而 area/x/y 是物理像素 —— 这里必须除缩放比
+        .position(x as f64 / display_scale(&app), y as f64 / display_scale(&app))
         .inner_size(CAMERA_W / display_scale(&app), CAMERA_H / display_scale(&app))
         .decorations(false)
         .transparent(true)
@@ -415,6 +516,10 @@ pub async fn toggle_camera_preview(app: AppHandle, show: bool, cameraDeviceId: O
     {
         Ok(win) => {
             let _ = win.set_content_protected(true);
+            // 放行摄像头/麦克风权限（否则 WebView2 弹的确认框在这类无边框窗里点不到）
+            if let Err(e) = allow_media_permissions(&win) {
+                log::warn!("摄像头窗权限放行失败: {e}");
+            }
         }
         Err(e) => log::error!("camera preview failed: {e}"),
     }
@@ -443,14 +548,59 @@ fn uri_encode(s: &str) -> String {
     }
     out
 }
-/// 摄像头预览拖拽（对齐 TS camera-drag-start/end：16ms 轮询跟随光标）
-#[tauri::command]
-pub fn camera_drag_start(app: AppHandle) {
-    if let Some(win) = camera_window(&app) {
-        if let Ok(cursor) = win.cursor_position() {
-            *CameraDrag::global().lock().unwrap() = Some((cursor.x, cursor.y));
-        }
+// ===== 摄像头预览拖拽（对齐 TS startPreviewDrag：16ms 轮询跟随光标）=====
+
+/// 拖拽状态：Some((offsetX, offsetY)) = 正在拖；offset 是「光标 - 窗口左上角」
+struct CameraDrag;
+impl CameraDrag {
+    fn global() -> &'static Mutex<Option<(f64, f64)>> {
+        static S: std::sync::OnceLock<Mutex<Option<(f64, f64)>>> = std::sync::OnceLock::new();
+        S.get_or_init(|| Mutex::new(None))
     }
+}
+
+fn set_camera_bounds(win: &tauri::WebviewWindow, x: i32, y: i32) {
+    let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+}
+
+#[tauri::command]
+pub async fn camera_drag_start(app: AppHandle) {
+    let Some(win) = camera_window(&app) else { return };
+    let Ok(cursor) = win.cursor_position() else { return };
+    let Ok(pos) = win.outer_position() else { return };
+    // 记下光标相对窗口的偏移：拖动过程中保持这个相对位置，窗口才跟手
+    let offset = (cursor.x - pos.x as f64, cursor.y - pos.y as f64);
+    *CameraDrag::global().lock().unwrap() = Some(offset);
+
+    // 16ms 轮询跟随（与旧版 setInterval 同频）。cursor_position 是物理像素，
+    // 窗口位置也用物理像素设置，不做缩放换算。
+    tauri::async_runtime::spawn(async move {
+        loop {
+            let offset = *CameraDrag::global().lock().unwrap();
+            let Some((ox, oy)) = offset else { break };
+            let Some(win) = camera_window(&app) else { break };
+            let Ok(cursor) = win.cursor_position() else { break };
+            let Ok(size) = win.outer_size() else { break };
+            let mut nx = (cursor.x - ox).round() as i32;
+            let mut ny = (cursor.y - oy).round() as i32;
+            // 夹在可用区内（贴边取景时不许拖出录制范围，否则摄像头会落在成品画面外）。
+            // 用 max/min 而不是 clamp：选区比预览窗还小时上界会小于下界，clamp 直接 panic。
+            if let Some(area) = *CameraArea::global().0.lock().unwrap() {
+                let max_x = (area.x + area.width - size.width as i32).max(area.x);
+                let max_y = (area.y + area.height - size.height as i32).max(area.y);
+                nx = nx.max(area.x).min(max_x);
+                ny = ny.max(area.y).min(max_y);
+            }
+            set_camera_bounds(&win, nx, ny);
+            tokio::time::sleep(std::time::Duration::from_millis(16)).await;
+        }
+    });
+}
+
+/// 摄像头预览窗几何（渲染层合成画中画时取窗口位置）
+#[tauri::command]
+pub fn camera_geometry_cmd(app: AppHandle) -> Option<serde_json::Value> {
+    camera_geometry(&app).map(|(x, y, w, h)| serde_json::json!({"x": x, "y": y, "width": w, "height": h}))
 }
 
 #[tauri::command]
@@ -458,10 +608,135 @@ pub fn camera_drag_end() {
     *CameraDrag::global().lock().unwrap() = None;
 }
 
-static CAMERA_DRAG: std::sync::OnceLock<Mutex<Option<(f64, f64)>>> = std::sync::OnceLock::new();
-struct CameraDrag;
-impl CameraDrag {
-    fn global() -> &'static Mutex<Option<(f64, f64)>> {
-        CAMERA_DRAG.get_or_init(|| Mutex::new(None))
+/// 摄像头录制已落盘（camera-preview.html 的 MediaRecorder 停止后回报）
+///
+/// 录制停止流程会等这个信号再启动 ffmpeg overlay —— 否则 webm 尾部还在写，合成会截短。
+pub fn camera_record_done() -> &'static std::sync::atomic::AtomicBool {
+    static DONE: std::sync::OnceLock<std::sync::atomic::AtomicBool> = std::sync::OnceLock::new();
+    DONE.get_or_init(|| std::sync::atomic::AtomicBool::new(true))
+}
+
+#[tauri::command]
+pub fn camera_record_finished(_app: AppHandle, filePath: String) {
+    log::info!("摄像头录制段已落盘: {filePath}");
+    camera_record_done().store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// 放行 WebView2 的媒体权限（摄像头/麦克风）
+///
+/// WebView2 默认对 `getUserMedia` 弹**权限确认对话框**（CDP 目标里能直接看到
+/// `edge://permission-request-dialog/`），而我们的窗口是无边框透明窗、用户看不到也点不到
+/// 这个对话框 —— 表现就是「摄像头预览一直黑、videoWidth 恒为 0」。旧 Electron 版没有这层
+/// 确认（Electron 直接放行），所以迁移后必须显式处理。
+///
+/// 做法：拿到底层 ICoreWebView2，挂 PermissionRequested 处理器，把摄像头/麦克风一律放行。
+/// 只放行这两类（剪贴板/地理位置等仍走默认策略），避免无差别提权。
+#[cfg(windows)]
+fn allow_media_permissions(win: &tauri::WebviewWindow) -> Result<(), String> {
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        COREWEBVIEW2_PERMISSION_KIND_CAMERA, COREWEBVIEW2_PERMISSION_KIND_MICROPHONE,
+        COREWEBVIEW2_PERMISSION_STATE_ALLOW,
+    };
+    use webview2_com::PermissionRequestedEventHandler;
+
+    win.with_webview(|webview| unsafe {
+        let controller = webview.controller();
+        let core = match controller.CoreWebView2() {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!("取 CoreWebView2 失败，无法放行媒体权限: {e}");
+                return;
+            }
+        };
+        let mut token = 0i64;
+        let handler = PermissionRequestedEventHandler::create(Box::new(|_, args| {
+            let Some(args) = args else { return Ok(()) };
+            let mut kind = Default::default();
+            args.PermissionKind(&mut kind)?;
+            if kind == COREWEBVIEW2_PERMISSION_KIND_CAMERA
+                || kind == COREWEBVIEW2_PERMISSION_KIND_MICROPHONE
+            {
+                args.SetState(COREWEBVIEW2_PERMISSION_STATE_ALLOW)?;
+            }
+            Ok(())
+        }));
+        if let Err(e) = core.add_PermissionRequested(&handler, &mut token) {
+            log::warn!("注册媒体权限处理器失败: {e}");
+        }
+    })
+    .map_err(|e| format!("with_webview 失败: {e}"))
+}
+
+#[cfg(not(windows))]
+fn allow_media_permissions(_win: &tauri::WebviewWindow) -> Result<(), String> {
+    Ok(())
+}
+
+/// 让摄像头窗开始录制画中画（写 path），并复位信号
+pub fn start_camera_recording(app: &AppHandle, path: &str) {
+    if let Some(win) = camera_window(app) {
+        camera_record_done().store(false, std::sync::atomic::Ordering::SeqCst);
+        let script = format!(
+            "window.startRecording && window.startRecording({}); void 0;",
+            serde_json::to_string(path).unwrap_or_else(|_| "\"\"".to_string())
+        );
+        let _ = win.eval(&script);
+    }
+}
+
+/// 让摄像头窗停止录制并等落盘（最多等 3 秒）
+pub async fn stop_camera_recording(app: &AppHandle) {
+    let Some(win) = camera_window(app) else { return };
+    if camera_record_done().load(std::sync::atomic::Ordering::SeqCst) {
+        return; // 没在录
+    }
+    let _ = win.eval("window.stopRecording && window.stopRecording(); void 0;");
+    for _ in 0..60 {
+        if camera_record_done().load(std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    log::warn!("等待摄像头段落盘超时（3s），继续合成");
+}
+
+/// 摄像头窗在屏幕上的当前几何（合成叠加时按它换算到成品画面坐标）
+pub fn camera_geometry(app: &AppHandle) -> Option<(i32, i32, i32, i32)> {
+    let win = camera_window(app)?;
+    if !win.is_visible().unwrap_or(false) {
+        return None;
+    }
+    let pos = win.outer_position().ok()?;
+    let size = win.outer_size().ok()?;
+    Some((pos.x, pos.y, size.width as i32, size.height as i32))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn region_scaled_to_physical_units() {
+        // 150% 缩放：选区 (100,100,400,300) 逻辑像素 → (150,150,600,450) 物理像素。
+        // 摄像头窗的 outer_position 就是物理像素，两边必须同域才能直接相减。
+        let r = Region { x: 100, y: 100, width: 400, height: 300 };
+        let p = scale_region(&r, 1.5);
+        assert_eq!((p.x, p.y, p.width, p.height), (150, 150, 600, 450));
+        // 100% 缩放是恒等（常见无缩放屏不该被换算动到）
+        let q = scale_region(&r, 1.0);
+        assert_eq!((q.x, q.y, q.width, q.height), (100, 100, 400, 300));
+        // 125% 的 .5 边界要四舍五入而不是截断（截断会让窗口每次移动都往左上漂）
+        let s = scale_region(&Region { x: 3, y: 5, width: 7, height: 9 }, 1.25);
+        assert_eq!((s.x, s.y, s.width, s.height), (4, 6, 9, 11));
+    }
+
+    #[test]
+    fn camera_placement_keeps_window_inside_area() {
+        // 正常选区：贴在右上角、留 12px 边距
+        let area = Region { x: 100, y: 100, width: 600, height: 450 };
+        assert_eq!(camera_pos_in_area(area), (600 - 200 - 12 + 100, 112));
+        // 可用区比摄像头窗还小时不能算出负坐标（否则窗口跑到选区左上之外）
+        let tiny = Region { x: 10, y: 20, width: 100, height: 80 };
+        assert_eq!(camera_pos_in_area(tiny), (10, 32));
     }
 }
