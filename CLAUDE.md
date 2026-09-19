@@ -76,8 +76,7 @@ npm run build:web    # 仅 vite build（tauri build 的 beforeCommand）
 
 ## 迁移遗留
 
-- `public/about.html`：Electron 版静态关于页（已迁 Vue hash 路由 /about，此文件待删）
-- 画笔标注合成：渲染层 `useDrawingCanvas` 能画，但笔迹未进成品（需 ffmpeg overlay 合成 strokes）
+- 画笔标注：**整条链路都不通**，不只是合成缺一步 —— ① `RecordingControls.vue` 里画笔按钮是注释掉的，没有任何入口能打开它；② 承载画布的 `.recording-view` 由 `isRecordingView` 控制，而该 ref 全仓库从未被置 true（Electron 版同样如此），`DrawingCanvas.vue`/`DrawingToolbar.vue` 实为死代码；③ 录制时主窗口被 `minimizeWindow()` 最小化，画布所处的窗口本就看不见；④ `useRecording.setDrawAnnotations` 是显式空实现。要落地需先决定画布放哪（可行方案：仿 `region-border` 建一个覆盖选区的透明置顶画布窗，**不加** `set_content_protected`，让 WGC 直接录到合成后的桌面，从而免掉 strokes.webm + ffmpeg overlay 这一整条链路）。
 - 窗口捕获（`types:['window']`）：`get_sources` 只支持 `screen`，窗口源返回空
 - 副屏缩略图全黑：若副显示器处于**待机/关闭**状态，抓到的就是黑图（GDI 与 WGC 一致，
   连 .NET `CopyFromScreen` 抓整块虚拟桌面也是黑的）—— 属系统真实状态，不是缺陷。

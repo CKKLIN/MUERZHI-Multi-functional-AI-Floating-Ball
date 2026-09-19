@@ -8,7 +8,7 @@
 
 ![logo](public/logo.png)
 
-![Windows](https://img.shields.io/badge/Windows-10%2F11-0078D6) ![Electron](https://img.shields.io/badge/Electron-28-47848F) ![Vue](https://img.shields.io/badge/Vue-3-42B883)
+![Windows](https://img.shields.io/badge/Windows-10%2F11-0078D6) ![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB) ![Vue](https://img.shields.io/badge/Vue-3-42B883)
 
 </div>
 
@@ -35,13 +35,13 @@ MUERZHI Universal AI Floating Ball is a resident Windows desktop app. A draggabl
 
 ## 🎥 Screen Recording
 
-Capture runs in the renderer (`getDisplayMedia` + `MediaRecorder`); post-processing runs in the main process via FFmpeg — **the installer bundles an 8 MB trimmed ffmpeg build**, nothing else to install.
+Capture runs **natively in the Rust backend** (Windows Graphics Capture frame pump + MediaFoundation encoder writing MP4 directly); audio is captured through two WASAPI streams and mixed by FFmpeg — **the installer bundles an 8 MB trimmed ffmpeg build**, nothing else to install.
 
 - **Three modes** — full-screen / draggable region / per-display multi-monitor capture
-- **Camera PiP** — camera preview as a separate draggable floating window
+- **Camera PiP** — camera preview as a separate draggable floating window, composited into the output by an ffmpeg overlay pass on stop
 - **Audio capture** — microphone + system audio mixed, with live level meters
-- **Drawing annotations** — draw directly on the frame while recording
-- **Hardware encoding** — auto-detects NVENC / QSV, falls back to software encoding
+- **Pause / resume** — capture is split into segments and losslessly stitched on stop, so paused time never appears in the video
+- **Hardware encoding** — auto-detects NVENC / QSV / AMF, falls back to software encoding
 - **Post-processing** — MP4 transcode / trimming / GIF export / multi-screen compositing
 - **Streaming playback** — custom `local-video://` protocol: instant open and instant seek on large files
 - **Global shortcuts** — record / pause / stop at your fingertips
@@ -86,40 +86,51 @@ Deep integration with the [Claude Code CLI](https://claude.com/claude-code) — 
 
 ### Developers
 
-**Requirements**: Windows 10/11 x64 · Node.js ≥ 20 · npm
+**Requirements**: Windows 10/11 x64 · Node.js ≥ 20 · npm · the [Rust toolchain](https://rustup.rs/) (MSVC toolchain, with Visual Studio C++ build tools and the Windows SDK)
 
 ```bash
 git clone https://github.com/CKKLIN/MUERZHI-Multi-functional-AI-Floating-Ball.git
 cd MUERZHI-Multi-functional-AI-Floating-Ball
-npm install          # dependencies resolve via the npmmirror registry (see .npmrc) — CN-network friendly
-npm run dev          # development: Vite HMR + hot-restarting Electron
+npm install           # dependencies resolve via the npmmirror registry (see .npmrc) — CN-network friendly
+npm run tauri:dev     # development: vite dev server (21047) + cargo run, hot-reloaded on both sides
 ```
+
+`npm run dev:web` starts only the vite dev server (handy for styling work); `tauri:dev` launches it for you, so you rarely need it separately.
 
 **Build & distribute**:
 
 ```bash
-npm run build        # produces the NSIS installer → release/MUERZHI-x.x.x-setup.exe
-npm run build:dir    # unpacked build only (no installer), for quick local verification
+npm run tauri:build   # produces the NSIS installer → src-tauri/target/release/bundle/nsis/
 ```
 
-> The build bundles the trimmed `ffmpeg.exe`, app icons, and the Claude Code hook script (extraResources) — the artifact works out of the box.
+> The build bundles the trimmed `ffmpeg.exe`, app icons, and the Claude Code hook script (via `bundle.resources` in `tauri.conf.json`) — the artifact works out of the box.
 
 **Tests & type checking**:
 
 ```bash
-node --experimental-strip-types test-cooling.mjs   # cooling module unit tests (zero-dep, Node ≥ 22.15)
-npx vue-tsc                                        # type checks renderer + main process
+npx vue-tsc                              # frontend type checking
+cd src-tauri && cargo test --test unit   # Rust unit tests (61: i18n / settings / todos / agent state machine / cooling parsing / encoder detection / local-video Range / recording params & WAV / timezone / region unit conversion)
+```
+
+> On Windows the tests must run through the explicit test target (`--test unit`): `cargo test --lib` fails with `STATUS_ENTRYPOINT_NOT_FOUND` because the harness lacks the comctl32 v6 manifest.
+
+Hardware smoke tests (need a real desktop session; `#[ignore]` by default):
+
+```bash
+cd src-tauri && cargo test --test unit -- --ignored --nocapture
 ```
 
 ## 🧱 Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Desktop | Electron 28 (main / renderer / preload three-layer architecture) |
+| Desktop | Tauri 2 (Rust backend + WebView2 renderer) |
 | UI | Vue 3 + Pinia + vue-router (hash routing) |
-| Build | Vite 8 + vite-plugin-electron + electron-builder (NSIS x64) |
-| Media | MediaRecorder + fluent-ffmpeg (bundled trimmed ffmpeg) |
-| Language | TypeScript (strict, full `vue-tsc` type checking) |
+| Build | Vite 8 + tauri-bundler (NSIS x64) |
+| Screen capture | Windows Graphics Capture (`windows-capture` crate) + MediaFoundation encoding |
+| Audio capture | WASAPI (microphone + system-audio loopback) → WAV → ffmpeg `amix` |
+| Media | bundled trimmed ffmpeg (transcode / trim / GIF / multi-screen composite / PiP overlay) |
+| Language | Rust (backend) + TypeScript (frontend, strict, full `vue-tsc` checking) |
 
 ## 📄 Misc
 

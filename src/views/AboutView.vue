@@ -1,11 +1,11 @@
 // src/views/AboutView.vue
-// 关于视图 —— 独立小窗（hash 路由 /about），样式沿用 public/about.html 的拟态风格
+// 关于视图 —— 独立小窗（hash 路由 /about），样式沿用 Electron 版关于页的拟态风格
 <script setup lang="ts">
 import { t } from '../stores/i18n'
 
 function close() { window.electronAPI.closeAboutWindow() }
 function openRepo() {
-  window.electronAPI.openExternal('https://github.com/muerzhi/MUERZHI-Multi-functional-AI-Floating-Ball')
+  window.electronAPI.openExternal('https://github.com/CKKLIN/MUERZHI-Multi-functional-AI-Floating-Ball')
 }
 </script>
 

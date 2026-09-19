@@ -75,7 +75,7 @@ pub fn close_about_window(app: AppHandle) {
     }
 }
 
-/// about.html「检查更新」按钮：打开 GitHub releases 页
+/// 关于窗「检查更新」按钮：打开 GitHub releases 页
 #[tauri::command]
 pub async fn open_external(app: AppHandle, url: String) {
     use tauri_plugin_opener::OpenerExt;

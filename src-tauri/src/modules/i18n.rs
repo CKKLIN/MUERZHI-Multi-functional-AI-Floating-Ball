@@ -1,5 +1,6 @@
 // 全应用双语 i18n 层 — Rust 版（对齐 electron/main/i18n.ts）
-// 词条表从 TS 版一次性导出为 JSON（scripts/export-i18n.mjs），include_str! 编译期嵌入。
+// 词条表为 src-tauri/src/i18n/{zh,en}.json（Electron 版从 TS 一次性导出后即以此为真相源，
+// 两边 key 集合由单测 bundles_have_identical_keys 守卫），include_str! 编译期嵌入。
 // 切换持久化在 floating-ball-settings.json 的 locale 字段（settings.rs 为真相源）。
 
 use serde::Serialize;

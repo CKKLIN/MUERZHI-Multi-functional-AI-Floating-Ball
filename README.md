@@ -8,7 +8,7 @@
 
 ![logo](public/logo.png)
 
-![Windows](https://img.shields.io/badge/Windows-10%2F11-0078D6) ![Electron](https://img.shields.io/badge/Electron-28-47848F) ![Vue](https://img.shields.io/badge/Vue-3-42B883)
+![Windows](https://img.shields.io/badge/Windows-10%2F11-0078D6) ![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB) ![Vue](https://img.shields.io/badge/Vue-3-42B883)
 
 </div>
 
@@ -35,13 +35,13 @@ MUERZHI 万能 AI 悬浮球是一款常驻桌面的 Windows 应用。一个可�
 
 ## 🎥 屏幕录制
 
-采集在渲染层完成（`getDisplayMedia` + `MediaRecorder`），后处理在主进程用 FFmpeg 完成——**安装包内置 8MB 裁剪版 ffmpeg**，无需额外安装任何依赖。
+屏幕采集由 **Rust 后端**直接完成（Windows Graphics Capture 抓帧 + MediaFoundation 编码器直出 MP4），音频走 WASAPI 双路采集后交给 FFmpeg 混流——**安装包内置 8MB 裁剪版 ffmpeg**，无需额外安装任何依赖。
 
 - **三种模式** —— 全屏 / 拖拽选区 / 多显示器分别录制
-- **摄像头画中画** —— 独立悬浮窗，可拖动、可开关
+- **摄像头画中画** —— 独立悬浮窗，可拖动、可开关，停止时由 ffmpeg overlay 合成进成品
 - **音频采集** —— 麦克风 + 系统声音混录，实时电平显示
-- **画笔标注** —— 录制中直接在画面上圈点勾画
-- **硬件编码** —— 自动探测 NVENC / QSV，不可用自动回退软编码
+- **暂停/继续** —— 采集分段，停止时无损拼接，暂停时长不会出现在成品里
+- **硬件编码** —— 自动探测 NVENC / QSV / AMF，不可用自动回退软编码
 - **后处理** —— MP4 转码 / 视频裁剪 / GIF 导出 / 多屏画面合并
 - **流式回放** —— 自定义 `local-video://` 协议，大文件秒开、拖动即达
 - **全局快捷键** —— 录制 / 暂停 / 停止随手控制
@@ -86,40 +86,51 @@ MUERZHI 万能 AI 悬浮球是一款常驻桌面的 Windows 应用。一个可�
 
 ### 开发者
 
-**环境要求**：Windows 10/11 x64 · Node.js ≥ 20 · npm
+**环境要求**：Windows 10/11 x64 · Node.js ≥ 20 · npm · [Rust 工具链](https://rustup.rs/)（MSVC toolchain，需 Visual Studio C++ 生成工具与 Windows SDK）
 
 ```bash
 git clone https://github.com/CKKLIN/MUERZHI-Multi-functional-AI-Floating-Ball.git
 cd MUERZHI-Multi-functional-AI-Floating-Ball
-npm install          # 依赖走 npmmirror 镜像（见 .npmrc），国内网络友好
-npm run dev          # 开发模式：Vite HMR + Electron 热重启
+npm install           # 依赖走 npmmirror 镜像（见 .npmrc），国内网络友好
+npm run tauri:dev     # 开发模式：vite dev server（21047）+ cargo run，前端与 Rust 双向热重载
 ```
+
+`npm run dev:web` 只起 vite dev server（纯前端调试样式用）；`tauri:dev` 会自己拉起它，日常开发不用单独跑。
 
 **打包分发**：
 
 ```bash
-npm run build        # 产出 NSIS 安装包 → release/MUERZHI-x.x.x-setup.exe
-npm run build:dir    # 仅解包目录（不打包安装器），本地快速验证
+npm run tauri:build   # 产出 NSIS 安装包 → src-tauri/target/release/bundle/nsis/
 ```
 
-> 打包会自动内置裁剪版 `ffmpeg.exe`、应用图标与 Claude Code hook 脚本（extraResources），产物开箱即用。
+> 打包会自动内置裁剪版 `ffmpeg.exe`、应用图标与 Claude Code hook 脚本（`tauri.conf.json` 的 `bundle.resources`），产物开箱即用。
 
 **测试与类型检查**：
 
 ```bash
-node --experimental-strip-types test-cooling.mjs   # 散热模块单测（零依赖，Node ≥ 22.15）
-npx vue-tsc                                        # 渲染层 + 主进程类型检查
+npx vue-tsc                              # 前端类型检查
+cd src-tauri && cargo test --test unit   # Rust 单测（61 项：i18n/设置/待办/Agent 状态机/散热解析/编码器探测/local-video Range/录制参数与 WAV/时区/选区量纲换算）
+```
+
+> Windows 上单测必须走显式 test target（`--test unit`）：`cargo test --lib` 会因缺 comctl32 v6 manifest 报 `STATUS_ENTRYPOINT_NOT_FOUND`。
+
+真机冒烟测试（需桌面会话，默认 `#[ignore]`）：
+
+```bash
+cd src-tauri && cargo test --test unit -- --ignored --nocapture
 ```
 
 ## 🧱 技术栈
 
 | 层 | 技术 |
 |---|---|
-| 桌面框架 | Electron 28（主进程 / 渲染进程 / preload 三层架构） |
+| 桌面框架 | Tauri 2（Rust 后端 + WebView2 渲染层） |
 | 界面 | Vue 3 + Pinia + vue-router（hash 路由） |
-| 构建 | Vite 8 + vite-plugin-electron + electron-builder（NSIS x64） |
-| 媒体处理 | MediaRecorder + fluent-ffmpeg（内置裁剪版 ffmpeg） |
-| 语言 | TypeScript（strict，`vue-tsc` 全量类型检查） |
+| 构建 | Vite 8 + tauri-bundler（NSIS x64） |
+| 屏幕采集 | Windows Graphics Capture（`windows-capture` crate）+ MediaFoundation 编码 |
+| 音频采集 | WASAPI（麦克风 + 系统声 loopback）→ WAV → ffmpeg `amix` 混流 |
+| 媒体处理 | 内置裁剪版 ffmpeg（转码 / 裁剪 / GIF / 多屏合并 / 画中画合成） |
+| 语言 | Rust（后端）+ TypeScript（前端，strict，`vue-tsc` 全量类型检查） |
 
 ## 📄 其他
 
