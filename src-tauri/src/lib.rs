@@ -332,15 +332,19 @@ fn setup_ball_events(app: &tauri::AppHandle) {
 }
 
 
-/// 工具条/悬浮岛事件：close → 关对应窗口（对齐 region-selector.ts 的 close 分支）
+/// 工具条/悬浮岛事件：close → 关对应窗口；其余动作转发回主窗口
+/// （主窗口 onToolbarAction 只监听 `toolbar-action` —— island.html 发的是 `island-action`，
+/// 不转发的话全屏录制时点 开始/暂停/继续/停止/麦克风/摄像头 全部没反应）
 fn setup_region_events(app: &tauri::AppHandle) {
-    use tauri::Listener;
+    use tauri::{Emitter, Listener};
 
     let app_owned = app.clone();
     app.listen("toolbar-action".to_string(), move |event| {
         let action = event.payload().trim().trim_matches('"').to_string();
         if action == "close" {
             modules::windows::region::hide_region_border(app_owned.clone());
+        } else {
+            let _ = app_owned.emit("toolbar-action", action.as_str());
         }
     });
 
@@ -349,6 +353,8 @@ fn setup_region_events(app: &tauri::AppHandle) {
         let action = event.payload().trim().trim_matches('"').to_string();
         if action == "close" {
             modules::windows::region::hide_floating_island(app_owned2.clone());
+        } else {
+            let _ = app_owned2.emit("toolbar-action", action.as_str());
         }
     });
 }
