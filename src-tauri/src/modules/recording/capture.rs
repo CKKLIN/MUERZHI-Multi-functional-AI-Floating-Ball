@@ -215,7 +215,9 @@ pub mod imp {
             let mut out = packed.to_vec();
             flip_rows_bgra(&mut out, w, h);
             *self.shared.buf.lock().unwrap() = Some((out, w, h));
-            self.frames.fetch_add(1, Ordering::Relaxed);
+            // ⚠️ 不要在这里 fetch_add：frames 的语义是「成品里实际有多少帧」，
+            // 而成品帧数由 pacing 线程决定（帧到达量随画面动静变化）。两个地方都加
+            // 会让计数虚高近一倍（实测 3 秒 165 帧 vs 真实 90 帧），冒烟测试因此误报。
             Ok(())
         }
 
