@@ -274,6 +274,41 @@ pub async fn recording_start(app: AppHandle, options: StartOptions) -> Result<St
     let id = crate::modules::agent::state_machine::new_uuid_like();
     capture::CaptureHandles::global().reset();
 
+    // 登记「录制实际覆盖的屏幕范围」（物理像素）——标注窗按它定位，
+    // 否则跨屏录制时笔迹会画在主屏、而录的是副屏。
+    {
+        let area = if let Some(r) = options.region {
+            // 区域录制：选区是逻辑像素，换算到目标屏的物理像素
+            let scale = app
+                .available_monitors()
+                .ok()
+                .and_then(|ms| {
+                    ms.get(options.target_display_id.unwrap_or(0) as usize)
+                        .map(|m| m.scale_factor())
+                })
+                .unwrap_or(1.0);
+            crate::modules::windows::region::Region {
+                x: (r.x as f64 * scale).round() as i32,
+                y: (r.y as f64 * scale).round() as i32,
+                width: (r.width as f64 * scale).round() as i32,
+                height: (r.height as f64 * scale).round() as i32,
+            }
+        } else {
+            // 全屏/多屏：目标显示器集合的外接矩形（物理像素）
+            let min_x = displays.iter().map(|d| d.bounds.0).min().unwrap_or(0);
+            let min_y = displays.iter().map(|d| d.bounds.1).min().unwrap_or(0);
+            let max_x = displays.iter().map(|d| d.bounds.0 + d.bounds.2).max().unwrap_or(0);
+            let max_y = displays.iter().map(|d| d.bounds.1 + d.bounds.3).max().unwrap_or(0);
+            crate::modules::windows::region::Region {
+                x: min_x,
+                y: min_y,
+                width: max_x - min_x,
+                height: max_y - min_y,
+            }
+        };
+        crate::modules::windows::region::RecordingArea::global().set(Some(area));
+    }
+
     // 音频先起（起不来不阻塞视频：麦克风会回错误，系统声只记日志）
     let audio_session = if options.with_mic || options.with_sys {
         match audio::start(
@@ -434,6 +469,8 @@ pub async fn recording_stop(app: AppHandle) -> Result<String, String> {
 
     // 先让摄像头段落盘（webm 尾部还在写时合成会截短）
     crate::modules::windows::region::stop_camera_recording(&app).await;
+    // 标注窗是录制辅助层：停录即收，避免透明窗残留在桌面上（也不该出现在后续画面里）
+    crate::modules::windows::region::hide_annotation(app.clone());
     end_all_segments();
     let (id, options, elapsed_sec) = {
         let mut guard = state.inner.lock().unwrap();
@@ -640,6 +677,7 @@ pub async fn recording_stop(app: AppHandle) -> Result<String, String> {
 
     state.phase.store(0, Ordering::SeqCst);
     capture::CaptureHandles::global().reset();
+    crate::modules::windows::region::RecordingArea::global().set(None);
     let _ = app.emit(
         "recording-stopped",
         serde_json::json!({"id": id, "outputPath": final_str, "elapsed": elapsed_sec, "fileName": final_name}),

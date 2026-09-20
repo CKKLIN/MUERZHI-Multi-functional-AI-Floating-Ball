@@ -177,6 +177,9 @@ export interface ElectronAPI {
   hideRegionBorder: () => Promise<void>
   hideBorderOnly: () => Promise<void>
   hideCameraPreview: () => Promise<void>
+  /** 画笔标注窗开/关（笔迹画在桌面上，由屏幕采集直接录进成品）*/
+  toggleAnnotation: (show: boolean, color?: string, width?: number) => Promise<boolean>
+  hideAnnotation: () => Promise<void>
   /** 摄像头预览窗当前几何（物理像素）*/
   cameraGeometry: () => Promise<{ x: number; y: number; width: number; height: number } | null>
   toggleCameraPreview: (show: boolean, cameraDeviceId?: string) => Promise<void>

@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<!-- 画笔标注覆盖窗 — 透明置顶画布，盖在录制区域上。
+     ⚠️ 本窗**故意不设** set_content_protected：它的笔迹必须能被 WGC 录进成品，
+     所以走「画在桌面上 → 屏幕采集直接录到合成后的画面」这条路，不需要 strokes.webm
+     + ffmpeg overlay 那条链路（那是旧 Electron 方案，见 CLAUDE.md 迁移遗留）。
+     完成后由 Rust eval 关闭：window.stopDrawing && window.stopDrawing() -->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;user-select:none}
+html,body{width:100%;height:100%;overflow:hidden;background:transparent}
+canvas{position:fixed;inset:0;display:block;cursor:crosshair;touch-action:none}
+.bar{
+  position:fixed;left:50%;bottom:14px;transform:translateX(-50%);
+  display:flex;align-items:center;gap:6px;padding:6px 10px;
+  background:rgba(24,26,34,.94);border-radius:12px;
+  font-family:'Segoe UI',system-ui,sans-serif;font-size:12px;color:#dfe3ea;
+  box-shadow:0 6px 20px rgba(0,0,0,.4);
+  cursor:default;
+}
+.bar.hidden{display:none}
+.btn{
+  min-width:32px;height:32px;border:none;border-radius:8px;background:transparent;
+  color:#dfe3ea;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  font-size:14px;line-height:1;
+}
+.btn:hover{background:rgba(255,255,255,.14)}
+.btn.on{background:#e94560;color:#fff}
+.sep{width:1px;height:20px;background:rgba(255,255,255,.18);margin:0 2px}
+.dot{width:16px;height:16px;border-radius:50%;border:2px solid transparent;cursor:pointer}
+.dot.on{border-color:#fff}
+input[type=range]{width:64px;accent-color:#e94560}
+[hidden]{display:none !important}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div class="bar" id="bar">
+  <button class="btn" id="pen" title="画笔">✏️</button>
+  <button class="btn" id="eraser" title="橡皮">🧽</button>
+  <button class="btn" id="arrow" title="箭头">↗</button>
+  <button class="btn" id="rect" title="矩形">▭</button>
+  <span class="sep"></span>
+  <span id="colors"></span>
+  <span class="sep"></span>
+  <input type="range" id="width" min="1" max="16" value="3" title="粗细">
+  <span class="sep"></span>
+  <button class="btn" id="undo" title="撤销">↶</button>
+  <button class="btn" id="clear" title="清除">🗑</button>
+  <button class="btn" id="hide" title="隐藏工具条">👁</button>
+</div>
+<script>
+const COLOR_LIST = ['#ff3b30', '#ff9500', '#ffd60a', '#34c759', '#0a84ff', '#ffffff', '#000000']
+
+const canvas = document.getElementById('cv')
+const ctx = canvas.getContext('2d')
+const bar = document.getElementById('bar')
+
+let dpr = 1
+let tool = 'pen'
+let color = COLOR_LIST[0]
+let lineWidth = 3
+let drawing = false
+let startPt = null
+let current = null          // 进行中的笔触
+const strokes = []          // 已提交笔触
+// 拖动工具条：bar 上按下并移动时平移工具条（画布仍有全屏鼠标事件，需在 bar 内截住）
+
+function resize() {
+  dpr = window.devicePixelRatio || 1
+  const w = Math.round(window.innerWidth * dpr)
+  const h = Math.round(window.innerHeight * dpr)
+  if (canvas.width === w && canvas.height === h) return
+  canvas.width = w
+  canvas.height = h
+  canvas.style.width = window.innerWidth + 'px'
+  canvas.style.height = window.innerHeight + 'px'
+  redraw()
+}
+
+/** 重绘全部笔触（坐标以 CSS px 记录，绘制时统一乘 dpr） */
+function redraw() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  for (const s of strokes) paint(s)
+  if (current) paint(current)
+}
+
+function paint(s) {
+  ctx.save()
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.strokeStyle = s.color
+  ctx.fillStyle = s.color
+  ctx.lineWidth = s.width
+  if (s.tool === 'eraser') ctx.globalCompositeOperation = 'destination-out'
+  const pts = s.points
+  if (s.tool === 'pen' || s.tool === 'eraser') {
+    if (pts.length < 2) {
+      ctx.beginPath()
+      ctx.arc(pts[0].x, pts[0].y, s.width / 2, 0, Math.PI * 2)
+      ctx.fill()
+    } else {
+      ctx.beginPath()
+      ctx.moveTo(pts[0].x, pts[0].y)
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y)
+      ctx.stroke()
+    }
+  } else if (s.tool === 'arrow' && pts.length === 2) {
+    const [a, b] = pts
+    const ang = Math.atan2(b.y - a.y, b.x - a.x)
+    const head = Math.max(10, s.width * 4)
+    ctx.beginPath()
+    ctx.moveTo(a.x, a.y)
+    ctx.lineTo(b.x, b.y)
+    ctx.moveTo(b.x, b.y)
+    ctx.lineTo(b.x - head * Math.cos(ang - Math.PI / 6), b.y - head * Math.sin(ang - Math.PI / 6))
+    ctx.moveTo(b.x, b.y)
+    ctx.lineTo(b.x - head * Math.cos(ang + Math.PI / 6), b.y - head * Math.sin(ang + Math.PI / 6))
+    ctx.stroke()
+  } else if (s.tool === 'rect' && pts.length === 2) {
+    const [a, b] = pts
+    ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y)
+  }
+  ctx.restore()
+}
+
+function pos(e) {
+  const r = canvas.getBoundingClientRect()
+  return { x: e.clientX - r.left, y: e.clientY - r.top }
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return
+  canvas.setPointerCapture(e.pointerId)
+  drawing = true
+  startPt = pos(e)
+  current = { tool, color, width: tool === 'eraser' ? lineWidth * 3 : lineWidth, points: [startPt] }
+  redraw()
+})
+
+canvas.addEventListener('pointermove', (e) => {
+  if (!drawing || !current) return
+  const p = pos(e)
+  if (tool === 'pen' || tool === 'eraser') current.points.push(p)
+  else current.points = [startPt, p]
+  redraw()
+})
+
+function endStroke(e) {
+  if (!drawing) return
+  drawing = false
+  if (current) {
+    const p = pos(e)
+    if (tool === 'arrow' || tool === 'rect') current.points = [startPt, p]
+    // 单击无拖动的形状笔触没有意义，丢弃
+    const keep = (tool === 'pen' || tool === 'eraser') || Math.hypot(p.x - startPt.x, p.y - startPt.y) > 3
+    if (keep) strokes.push(current)
+    current = null
+  }
+  redraw()
+}
+canvas.addEventListener('pointerup', endStroke)
+canvas.addEventListener('pointercancel', endStroke)
+
+// ===== 工具条交互（在自己身上截住指针事件，避免画到画布）=====
+bar.addEventListener('pointerdown', (e) => {
+  e.stopPropagation()
+  const el = e.target
+  if (el.closest('button') || el.closest('input')) return
+  // 空白处拖动整条工具条
+  const r = bar.getBoundingClientRect()
+  const ox = e.clientX - r.left
+  const oy = e.clientY - r.top
+  const move = (ev) => {
+    bar.style.left = (ev.clientX - ox) + 'px'
+    bar.style.top = (ev.clientY - oy) + 'px'
+    bar.style.bottom = 'auto'
+    bar.style.transform = 'none'
+  }
+  const up = () => {
+    window.removeEventListener('pointermove', move)
+    window.removeEventListener('pointerup', up)
+  }
+  window.addEventListener('pointermove', move)
+  window.addEventListener('pointerup', up)
+})
+
+const toolBtns = { pen: 'pen', eraser: 'eraser', arrow: 'arrow', rect: 'rect' }
+for (const [id, key] of Object.entries(toolBtns)) {
+  document.getElementById(id).addEventListener('click', () => {
+    tool = key
+    for (const other of Object.keys(toolBtns)) {
+      document.getElementById(other).classList.toggle('on', other === id)
+    }
+  })
+}
+document.getElementById('pen').classList.add('on')
+
+const colorsEl = document.getElementById('colors')
+for (const c of COLOR_LIST) {
+  const d = document.createElement('span')
+  d.className = 'dot'
+  d.style.background = c
+  if (c === color) d.classList.add('on')
+  d.addEventListener('click', () => {
+    color = c
+    tool = 'pen'
+    document.getElementById('pen').classList.add('on')
+    document.getElementById('eraser').classList.remove('on')
+    for (const el of colorsEl.children) el.classList.toggle('on', el === d)
+  })
+  colorsEl.appendChild(d)
+}
+
+document.getElementById('width').addEventListener('input', (e) => { lineWidth = Number(e.target.value) })
+document.getElementById('undo').addEventListener('click', () => { strokes.pop(); redraw() })
+document.getElementById('clear').addEventListener('click', () => { strokes.length = 0; redraw() })
+document.getElementById('hide').addEventListener('click', () => {
+  const hidden = bar.classList.toggle('hidden')
+  document.getElementById('hide').textContent = hidden ? '👁' : '👁'
+  // 隐藏后留一个小圆点作为恢复入口，避免工具条消失后无法再操作
+  restoreBtn.style.display = hidden ? 'flex' : 'none'
+})
+
+// 工具条被隐藏时的恢复按钮（右上角小圆点）
+const restoreBtn = document.createElement('button')
+restoreBtn.className = 'btn'
+restoreBtn.textContent = '✏️'
+restoreBtn.title = '显示画笔工具条'
+restoreBtn.style.cssText =
+  'position:fixed;right:10px;top:10px;width:34px;height:34px;border-radius:50%;' +
+  'background:rgba(24,26,34,.9);color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.4);display:none'
+restoreBtn.addEventListener('click', () => {
+  bar.classList.remove('hidden')
+  restoreBtn.style.display = 'none'
+})
+document.body.appendChild(restoreBtn)
+
+// Rust 侧入口：进入标注态时可预置颜色/粗细（读设置页的值）
+window.initDrawing = function (opts) {
+  const o = opts || {}
+  if (o.color) {
+    color = o.color
+    for (const el of colorsEl.children) el.classList.toggle('on', el.style.background === color)
+  }
+  if (o.width) {
+    lineWidth = Number(o.width)
+    document.getElementById('width').value = String(lineWidth)
+  }
+  resize()
+}
+/** 退出标注前的收尾（当前无资源需释放，保留钩子给 Rust 统一调用） */
+window.stopDrawing = function () {
+  current = null
+  drawing = false
+}
+
+window.addEventListener('resize', resize)
+resize()
+document.getElementById('pen').focus()
+</script>
+</body>
+</html>

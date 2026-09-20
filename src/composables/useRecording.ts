@@ -75,10 +75,24 @@ export function useRecording() {
     }
   }
 
-  function setDrawAnnotations(_fn: (ctx: CanvasRenderingContext2D) => void) {
-    // P4：画笔标注的合成尚未接线（Rust 侧需 ffmpeg overlay 合成 strokes.webm）。
-    // 显式空实现而不是静默吞掉：调用方（HomeView）仍能把画笔 UI 打开用于圈重点，
-    // 但笔迹不会进成品。见 CLAUDE.md「迁移遗留」。
+  /**
+   * 切换画笔标注。
+   *
+   * 实现方式与旧 Electron 版完全不同：不再在渲染层画布上作画、也不用 strokes.webm 后期
+   * 合成，而是让 Rust 开一个**覆盖录制区域的透明置顶画布窗**、笔迹直接画在桌面上 ——
+   * 屏幕采集（WGC）会把笔迹连同桌面一起录进成品，零后期成本、零对齐误差。
+   * 因此这里不需要绘制回调，参数保留只为兼容调用方签名。
+   */
+  async function setDrawAnnotations(_fn: (ctx: CanvasRenderingContext2D) => void, show: boolean) {
+    try {
+      await window.electronAPI.toggleAnnotation(
+        show,
+        settingsStore.drawColor,
+        settingsStore.drawWidth,
+      )
+    } catch (err: unknown) {
+      log.error('切换画笔标注失败', err)
+    }
   }
 
   function setCameraPosition(pos: { x: number; y: number; width: number; height: number }) {
@@ -184,6 +198,10 @@ export function useRecording() {
     recordingStartedAt = Date.now()
     startTimer()
     store.setState('recording')
+    // 录制区域此刻才确定（区域/单屏/多屏），标注窗按它定尺寸后再显示
+    if (store.isDrawingEnabled) {
+      await setDrawAnnotations(() => {}, true)
+    }
     const modeLabel = displayIds.length > 1
       ? `multi-screen (${displayIds.length} displays)`
       : region ? `region: ${region.width}x${region.height}` : 'full screen'

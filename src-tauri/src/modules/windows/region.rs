@@ -430,6 +430,29 @@ impl CameraArea {
     }
 }
 
+/// 当前**录制区域**（物理像素）——由 recording_start 按实际目标显示器写入。
+///
+/// 与 CameraArea 的区别：CameraArea 是「选区可用区」（区域录制时才有值，全屏时退主屏），
+/// 而这里是**录制实际覆盖的屏幕范围**，跨屏/多屏时与主屏完全不同。标注窗必须按它定位，
+/// 否则会出现「笔迹画在主屏、录制录的是副屏」这种画面里什么都没有的情况（实测踩过）。
+pub struct RecordingArea(pub Mutex<Option<Region>>);
+
+impl RecordingArea {
+    pub fn global() -> &'static RecordingArea {
+        use std::sync::OnceLock;
+        static S: OnceLock<RecordingArea> = OnceLock::new();
+        S.get_or_init(|| RecordingArea(Mutex::new(None)))
+    }
+
+    pub fn set(&self, area: Option<Region>) {
+        *self.0.lock().unwrap() = area;
+    }
+
+    pub fn get(&self) -> Option<Region> {
+        *self.0.lock().unwrap()
+    }
+}
+
 /// 逻辑像素选区 → 物理像素可用区（摄像头窗几何同域）
 fn region_to_physical(app: &AppHandle, region: &Region) -> Region {
     scale_region(region, display_scale(app))
@@ -548,6 +571,120 @@ fn uri_encode(s: &str) -> String {
     }
     out
 }
+// ===== 画笔标注窗（透明置顶画布，笔迹由 WGC 直接录到）=====
+//
+// 与摄像头窗相反的取舍：**故意不设 set_content_protected** —— 笔迹必须进成品，
+// 所以让 WGC 直接录「画在桌面上的笔迹」，省掉 strokes.webm + ffmpeg overlay 整条链路
+// （旧 Electron 方案，见 CLAUDE.md 迁移遗留）。窗口尺寸严格等于录制区域，笔迹坐标因此
+// 就是画面坐标，不需要任何后处理对齐。
+
+fn annotation_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+    app.get_webview_window("annotation")
+}
+
+/// 当前录制区域（物理像素）：优先用录制会话登记的 RecordingArea（最准，跨屏也对），
+/// 其次摄像头窗那份选区可用区，最后退主屏整块。
+fn current_recording_area(app: &AppHandle) -> Region {
+    RecordingArea::global()
+        .get()
+        .or_else(|| CameraArea::global().get())
+        .unwrap_or_else(|| primary_area(app))
+}
+
+/// 用物理像素定位并定尺（不经过逻辑像素换算，跨屏/混合 DPI 下才准）。
+/// build 时先 visible(false)，这里改完再 show —— 窗口不会在错误位置闪一下。
+fn place_window_physical(win: &tauri::WebviewWindow, area: Region) {
+    let _ = win.set_position(tauri::PhysicalPosition::new(area.x, area.y));
+    let _ = win.set_size(tauri::PhysicalSize::new(
+        area.width.max(1) as u32,
+        area.height.max(1) as u32,
+    ));
+}
+
+/// 标注窗初始化脚本（预置颜色/粗细；html 侧暴露 initDrawing）
+fn annotation_init_script(color: Option<&str>, width: Option<f64>) -> String {
+    let c = serde_json::to_string(color.unwrap_or("")).unwrap_or_else(|_| "\"\"".into());
+    let w = width.unwrap_or(0.0);
+    format!("window.initDrawing && window.initDrawing({{ color: {c}, width: {w} }}); void 0;")
+}
+
+/// 显示/隐藏画笔标注窗。返回切换后的可见状态。
+///
+/// async 原因同 start_region_select（同步命令内建窗死锁）。
+#[tauri::command]
+pub async fn toggle_annotation(
+    app: AppHandle,
+    show: bool,
+    color: Option<String>,
+    width: Option<f64>,
+) -> bool {
+    if !show {
+        hide_annotation_inner(&app);
+        return false;
+    }
+
+    let area = current_recording_area(&app);
+
+    // 已存在：搬到当前区域再显示（切屏/改选区后不搬会停在旧位置）
+    if let Some(win) = annotation_window(&app) {
+        place_window_physical(&win, area);
+        let _ = win.eval(&annotation_init_script(color.as_deref(), width));
+        let _ = win.show();
+        let _ = win.set_focus();
+        return true;
+    }
+
+    // 位置/尺寸一律走物理像素（build 后再 set）：逻辑像素换算依赖「哪块屏的 scale」，
+    // 混合 DPI 机器上会算错 —— 实测 150% 副屏录制时标注窗跑到了主屏上。
+    match WebviewWindowBuilder::new(&app, "annotation", window_url("windows/annotation.html"))
+        .title("画笔标注")
+        .decorations(false)
+        .transparent(true)
+        .resizable(false)
+        .maximizable(false)
+        .minimizable(false)
+        .skip_taskbar(true)
+        .shadow(false)
+        .always_on_top(true)
+        .visible(false)
+        .build()
+    {
+        Ok(win) => {
+            place_window_physical(&win, area);
+            // 要能画图 → 必须可交互；且**不要**设 content_protected（笔迹要进画面）
+            let _ = win.set_ignore_cursor_events(false);
+            let _ = win.eval(&annotation_init_script(color.as_deref(), width));
+            let _ = win.show();
+            let _ = win.set_focus();
+            log::info!(
+                "画笔标注窗已显示（区域 {}x{} @ {},{}）",
+                area.width,
+                area.height,
+                area.x,
+                area.y
+            );
+            true
+        }
+        Err(e) => {
+            log::error!("annotation window failed: {e}");
+            false
+        }
+    }
+}
+
+/// 关闭标注窗（录制停止时统一清理，避免残留一层透明窗挡住桌面）
+#[tauri::command]
+pub fn hide_annotation(app: AppHandle) {
+    hide_annotation_inner(&app);
+}
+
+fn hide_annotation_inner(app: &AppHandle) {
+    if let Some(win) = annotation_window(app) {
+        let _ = win.eval("window.stopDrawing && window.stopDrawing()");
+        let _ = win.close();
+    }
+}
+
 // ===== 摄像头预览拖拽（对齐 TS startPreviewDrag：16ms 轮询跟随光标）=====
 
 /// 拖拽状态：Some((offsetX, offsetY)) = 正在拖；offset 是「光标 - 窗口左上角」

@@ -61,12 +61,12 @@ const hasSource = computed(() => !!store.selectedSource)
           <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
         </svg>
       </button> -->
-      <!-- <button
+      <button
         class="btn btn-icon"
         :class="{ active: store.isDrawingEnabled }"
         :disabled="!store.canStart"
         @click="emit('toggleDrawing')"
-        title="画笔 (Ctrl+Shift+D)"
+        v-tip="t('record.toggleDrawingShort', { k: 'Ctrl+Shift+D' })"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M12 19l7-7 3 3-7 7-3-3z"/>
@@ -74,7 +74,7 @@ const hasSource = computed(() => !!store.selectedSource)
           <path d="M2 2l7.586 7.586"/>
           <circle cx="11" cy="11" r="2"/>
         </svg>
-      </button> -->
+      </button>
     </div>
 
     <div class="control-divider"></div>

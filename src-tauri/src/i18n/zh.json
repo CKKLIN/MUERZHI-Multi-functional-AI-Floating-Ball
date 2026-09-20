@@ -289,5 +289,7 @@
   "tools.toolSessions": "{n} 个会话",
   "tools.idle": "空闲",
   "tools.working": "工作中",
-  "tools.title": "工具"
+  "tools.title": "工具",
+  "record.toggleDrawing": "画笔标注",
+  "record.toggleDrawingShort": "画笔标注 ({k})"
 }

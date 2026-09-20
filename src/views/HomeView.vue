@@ -5,8 +5,6 @@ import RecordingControls from '../components/RecordingControls.vue'
 import RecordingTimer from '../components/RecordingTimer.vue'
 import AudioMeter from '../components/AudioMeter.vue'
 import CameraOverlay from '../components/CameraOverlay.vue'
-import DrawingCanvas from '../components/DrawingCanvas.vue'
-import DrawingToolbar from '../components/DrawingToolbar.vue'
 import RecordingsList from '../components/RecordingsList.vue'
 import VideoPlayer from '../components/VideoPlayer.vue'
 import SettingsPanel from '../components/SettingsPanel.vue'
@@ -325,11 +323,6 @@ async function handleDeleteRecording(id: string) {
   store.removeRecording(id)
 }
 
-// 绘制标注回调
-function handleDrawAnnotations(fn: (ctx: CanvasRenderingContext2D) => void) {
-  recording.setDrawAnnotations(fn)
-}
-
 // 摄像头位置更新
 function handleCameraPositionUpdate(pos: { x: number; y: number; width: number; height: number }) {
   recording.setCameraPosition(pos)
@@ -364,6 +357,12 @@ function toggleSystemAudio() {
 
 function toggleDrawing() {
   store.isDrawingEnabled = !store.isDrawingEnabled
+  // 笔迹画在 Rust 的透明置顶窗里（屏幕采集直接录到），渲染层不再承担画布。
+  // 待录制态只记开关（此时录制区域还没定，开窗尺寸会错）——startCapture 会在
+  // 录制启动、区域确定后按这个开关开窗；录制中切换则立刻开/关。
+  if (!store.canStart) {
+    recording.setDrawAnnotations(() => {}, store.isDrawingEnabled)
+  }
 }
 
 // 点击外部关闭下拉菜单
@@ -565,8 +564,6 @@ watch(() => isConverting.value, (val) => {
         <div class="preview-container">
           <video ref="previewVideoRef" class="preview-video" muted autoplay playsinline/>
           <CameraOverlay v-if="store.isCameraEnabled" :stream="recording.cameraStream" @position-update="handleCameraPositionUpdate"/>
-          <DrawingCanvas v-if="store.isDrawingEnabled" @draw="handleDrawAnnotations"/>
-          <DrawingToolbar v-if="store.isDrawingEnabled"/>
         </div>
         <div class="recording-header">
           <RecordingTimer/>

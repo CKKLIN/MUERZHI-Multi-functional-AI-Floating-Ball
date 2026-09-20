@@ -115,6 +115,8 @@ pub fn run() {
             modules::windows::region::camera_drag_end,
             modules::windows::region::camera_record_finished,
             modules::windows::region::camera_geometry_cmd,
+            modules::windows::region::toggle_annotation,
+            modules::windows::region::hide_annotation,
             // AI 岛（P2 实装）
             modules::windows::ai_island::resize_ai_island,
             modules::windows::ai_island::ai_island_drag_start,

@@ -289,5 +289,7 @@
   "tools.toolSessions": "{n} sessions",
   "tools.idle": "Idle",
   "tools.working": "Working",
-  "tools.title": "Tools"
+  "tools.title": "Tools",
+  "record.toggleDrawing": "Annotate",
+  "record.toggleDrawingShort": "Annotate ({k})"
 }

@@ -56,9 +56,11 @@ npm run build:web    # 仅 vite build（tauri build 的 beforeCommand）
 
 **定速补帧（关键）**：WGC 只在画面**变化**时投帧（脏区驱动），静置桌面可能几秒才来一帧，而 MF 编码器时间戳完全取自帧到达时刻 —— 直接送帧会「录 6 秒得 0.03 秒视频」（实测）。现在帧到达只更新共享缓冲，另一个 pacing 线程按目标 fps 用墙钟时间戳反复推最后一帧，于是动静皆有真实帧率、时长与界面计时器一致。**帧序**：WGC 的 BGRA 是自下而上，送编码器前必须翻转行序。
 
-**录制辅助窗口不进画面**：边框/工具条/悬浮岛/摄像头预览窗都设了 `set_content_protected(true)`（tao → `WDA_EXCLUDEFROMCAPTURE`），人在屏幕上看得到、WGC 录不到。**未接线**：画笔标注（`setDrawAnnotations` 是空实现，笔迹不进成品）。
+**录制辅助窗口不进画面**：边框/工具条/悬浮岛/摄像头预览窗都设了 `set_content_protected(true)`（tao → `WDA_EXCLUDEFROMCAPTURE`），人在屏幕上看得到、WGC 录不到。画笔标注走独立透明窗（见下方「画笔标注」段），本段这些辅助窗的内容保护设置对它**不适用**。
 
 **WebView2 媒体权限**：`getUserMedia` 默认弹权限确认框（CDP 里能看到 `edge://permission-request-dialog/`），而预览窗是无边框透明窗、用户点不到 → 表现为「摄像头一直黑」。`region.rs::allow_media_permissions` 挂 `PermissionRequested` 只放行 CAMERA/MICROPHONE（其余仍走默认策略）。
+
+**画笔标注（与旧版实现完全不同）**：不开渲染层画布、也不用 strokes.webm 后期合成 —— Rust 开一个**覆盖录制区域的透明置顶窗**（`public/windows/annotation.html`），笔迹直接画在桌面上，WGC 顺手把它录进成品：零后期成本、零坐标对齐误差，工具条（笔/橡皮/箭头/矩形/颜色/粗细/撤销/清空）全在这个窗内自绘，可拖动、可隐藏（隐藏后右上角留恢复按钮）。三个必须记住的点：① 这个窗**故意不设** `set_content_protected`（与边框/工具条/摄像头预览窗相反）——设了笔迹就进不了画面；② 窗口位置尺寸必须用 `RecordingArea`（录制会话按目标显示器/选区登记的**物理像素**矩形）走 `set_position/set_size`，不能用 builder 的逻辑像素 —— 混合 DPI 机器上按主屏缩放比换算会算错屏（实测 150% 副屏录制时窗跑到了主屏，笔迹全落在画面外）；③ 录制停止流程统一 `hide_annotation` 收窗。
 
 **选区页必须是完整 HTML**：`public/windows/region-selector.html` 曾只有 CSS+JS 片段（缺 `<!DOCTYPE>/<body>`），浏览器当纯文本渲染 → 内联脚本永不执行 → 点「区域录制」毫无反应。改动该文件时务必保持完整文档结构。
 
@@ -76,7 +78,7 @@ npm run build:web    # 仅 vite build（tauri build 的 beforeCommand）
 
 ## 迁移遗留
 
-- 画笔标注：**整条链路都不通**，不只是合成缺一步 —— ① `RecordingControls.vue` 里画笔按钮是注释掉的，没有任何入口能打开它；② 承载画布的 `.recording-view` 由 `isRecordingView` 控制，而该 ref 全仓库从未被置 true（Electron 版同样如此），`DrawingCanvas.vue`/`DrawingToolbar.vue` 实为死代码；③ 录制时主窗口被 `minimizeWindow()` 最小化，画布所处的窗口本就看不见；④ `useRecording.setDrawAnnotations` 是显式空实现。要落地需先决定画布放哪（可行方案：仿 `region-border` 建一个覆盖选区的透明置顶画布窗，**不加** `set_content_protected`，让 WGC 直接录到合成后的桌面，从而免掉 strokes.webm + ffmpeg overlay 这一整条链路）。
+（画笔标注已在 P4 落地，实现方式与旧 Electron 版完全不同 —— 见下方「画笔标注」段；旧版的 `DrawingCanvas.vue`/`DrawingToolbar.vue`/`useDrawingCanvas.ts` 已删除。）
 - 窗口捕获（`types:['window']`）：`get_sources` 只支持 `screen`，窗口源返回空
 - 副屏缩略图全黑：若副显示器处于**待机/关闭**状态，抓到的就是黑图（GDI 与 WGC 一致，
   连 .NET `CopyFromScreen` 抓整块虚拟桌面也是黑的）—— 属系统真实状态，不是缺陷。

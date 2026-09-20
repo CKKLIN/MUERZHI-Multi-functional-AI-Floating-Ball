@@ -252,6 +252,10 @@ const electronAPI = {
   getAiIslandSettings: () => cmd<{ flat: boolean }>('get_ai_island_settings'),
   setAiIslandSettings: (patch: Record<string, unknown>) => cmd<{ flat: boolean }>('set_ai_island_settings', { patch }),
   hideCameraPreview: () => cmd<void>('hide_camera_preview'),
+  /** 画笔标注窗开/关（笔迹画在桌面上，由屏幕采集直接录进成品）*/
+  toggleAnnotation: (show: boolean, color?: string, width?: number) =>
+    cmd<boolean>('toggle_annotation', { show, color, width }),
+  hideAnnotation: () => cmd<void>('hide_annotation'),
   /** 摄像头预览窗当前几何（物理像素；合成画中画时换算位置用）*/
   cameraGeometry: () =>
     cmd<{ x: number; y: number; width: number; height: number } | null>('camera_geometry_cmd'),
