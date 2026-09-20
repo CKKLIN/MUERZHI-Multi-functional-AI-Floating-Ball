@@ -292,6 +292,20 @@ pub mod imp {
 
     /// 启动一段采集（同一进程内可并行多段：多屏录制各显示器一段）
     pub fn spawn_segment(cfg: SegmentConfig) -> Result<Active, String> {
+        // ⚠️ 必须在独立大栈线程上跑：Tauri 命令在 tokio worker（2MB 栈）里执行，
+        // 而 WGC + MediaFoundation 初始化在 debug 构建下调用帧极深，直接在 worker
+        // 线程上跑会 STATUS_STACK_OVERFLOW 整个进程崩掉（实测点开始录制即闪退）。
+        let handle = std::thread::Builder::new()
+            .name("wgc-spawn".into())
+            .stack_size(16 * 1024 * 1024)
+            .spawn(move || spawn_segment_inner(cfg))
+            .map_err(|e| format!("采集线程启动失败: {e}"))?;
+        handle
+            .join()
+            .map_err(|_| "采集线程 panic".to_string())?
+    }
+
+    fn spawn_segment_inner(cfg: SegmentConfig) -> Result<Active, String> {
         // windows-capture 的 Monitor::from_index 是 1-based；本工程对外一律 0-based
         let monitor = Monitor::from_index(cfg.monitor_index + 1)
             .map_err(|e| format!("显示器 #{} 不存在: {e}", cfg.monitor_index))?;
@@ -351,6 +365,16 @@ pub mod imp {
     /// 才能停 WGC —— 否则 WGC 线程退出时 handler 析构，编码器已经被 Drop 掉，
     /// pacing 线程再送帧就会撞上已关闭的通道。
     pub fn end_segment(active: Active) -> Result<String, String> {
+        // 同 spawn_segment：finish/join 调用链深，挪到大栈线程防 tokio worker 溢栈
+        let handle = std::thread::Builder::new()
+            .name("wgc-end".into())
+            .stack_size(16 * 1024 * 1024)
+            .spawn(move || end_segment_inner(active))
+            .map_err(|e| format!("采集收尾线程启动失败: {e}"))?;
+        handle.join().map_err(|_| "采集收尾线程 panic".to_string())?
+    }
+
+    fn end_segment_inner(active: Active) -> Result<String, String> {
         let Active { control, stop, path, pacing, paced_stop, .. } = active;
         stop.store(true, Ordering::SeqCst);
         paced_stop.store(true, Ordering::SeqCst);
