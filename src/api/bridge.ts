@@ -107,24 +107,24 @@ const electronAPI = {
 
   // ===== FFmpeg（P3 media 迁移）=====
   convertToMp4: (inputPath: string, outputPath: string, crop?: { x: number; y: number; width: number; height: number }) => {
-    return cmd<{ success: boolean; outputPath: string; error?: string }>('convert_to_mp4', {
+    return cmd<{ success: boolean; outputPath: string; error?: string }>('media_convert_to_mp4', {
       inputPath,
       outputPath,
       crop: crop ? [crop.x, crop.y, crop.width, crop.height] : undefined,
     })
   },
   cropVideo: (inputPath: string, outputPath: string, crop: { x: number; y: number; width: number; height: number }) => {
-    return cmd<{ success: boolean; outputPath: string; error?: string }>('crop_video', {
+    return cmd<{ success: boolean; outputPath: string; error?: string }>('media_crop_video', {
       inputPath,
       outputPath,
       crop: [crop.x, crop.y, crop.width, crop.height],
     })
   },
   convertToGif: (inputPath: string, outputPath: string, options?: { width?: number; fps?: number; duration?: number }) => {
-    return cmd<{ success: boolean; outputPath: string; error?: string }>('convert_to_gif', { inputPath, outputPath, options })
+    return cmd<{ success: boolean; outputPath: string; error?: string }>('media_convert_to_gif', { inputPath, outputPath, options })
   },
   mergeMultiScreen: (inputs: { filePath: string; bounds: { x: number; y: number; width: number; height: number } }[], outputPath: string) => {
-    return cmd<{ success: boolean; outputPath: string; error?: string }>('merge_multi_screen', { inputs, outputPath })
+    return cmd<{ success: boolean; outputPath: string; error?: string }>('media_merge_multi_screen', { inputs, outputPath })
   },
 
   // ===== Events =====
