@@ -96,7 +96,10 @@ impl Cooling {
                 current_temp: None,
                 levers: Levers::default(),
                 usage: UsageSample::default(),
-                st: CoolingStateFile { ac_orig: 100, ..Default::default() },
+                st: CoolingStateFile {
+                    ac_orig: 100,
+                    ..Default::default()
+                },
                 fan_orig_mode_for_token: None,
             }),
             active: AtomicBool::new(false),
@@ -130,7 +133,11 @@ impl Cooling {
     fn snapshot(&self, phase: &str) -> CoolingStatus {
         // 单次持锁内取全部字段（含剩余秒数由 remain_sec_locked 计算，不再二次加锁）
         let inner = self.inner.lock().unwrap();
-        let remain = if phase == "done" { 0 } else { self.remain_sec_locked(inner.started_at) };
+        let remain = if phase == "done" {
+            0
+        } else {
+            self.remain_sec_locked(inner.started_at)
+        };
         CoolingStatus {
             phase: phase.to_string(),
             remain_sec: remain,
@@ -138,7 +145,11 @@ impl Cooling {
             usage: inner.usage.clone(),
             levers: inner.levers.clone(),
             temp_before: inner.temp_before,
-            temp_after: if phase == "done" { inner.temp_after } else { None },
+            temp_after: if phase == "done" {
+                inner.temp_after
+            } else {
+                None
+            },
         }
     }
 
@@ -235,7 +246,11 @@ impl Cooling {
     async fn apply_levers(&self, app: &AppHandle, token: u64) {
         log::info!("cooling: probing vendor capability...");
         let cap = vendor::ensure_capability(app).await;
-        log::info!("cooling: capability ready (uniwill={} lenovo={})", cap.uniwill, cap.lenovo);
+        log::info!(
+            "cooling: capability ready (uniwill={} lenovo={})",
+            cap.uniwill,
+            cap.lenovo
+        );
         // 功耗杠杆
         log::info!("cooling: applying power lever...");
         let applied = lower::apply_power_lever().await;
@@ -323,25 +338,46 @@ impl Cooling {
         }
         self.active.store(false, Ordering::SeqCst);
         self.emit(app, "done");
+        // 摘掉悬浮球的冷却视觉（body.cooling）：不摘的话 pointerup/click 的 cooling 分支
+        // 会永远吞掉点击，散热结束后菜单再也打不开（实测）。旧 Electron 版在 done 回调
+        // 里显式 setFloatingBallCoolingVisual(false)，迁移时丢了这一步。
+        crate::modules::windows::floating_ball::set_cooling_visual(app, false);
+        crate::modules::windows::floating_ball::restore_after_cooling(app);
     }
 
     /// 同步取消（before-quit / 托盘退出路径，对齐 cancelCooling）
     pub fn cancel(&self, app: &AppHandle) {
+        if let Some(st) = self.begin_cancel() {
+            self.restore_after_cancel(app, &st);
+        }
+    }
+
+    /// 取消第一步：置 restoring 并返回要恢复的状态（无活跃会话返回 None）
+    pub fn begin_cancel(&self) -> Option<CoolingStateFile> {
         let st = {
             let mut inner = self.inner.lock().unwrap();
             inner.restore_token += 1;
             if inner.phase == "idle" {
-                return;
+                return None;
             }
             inner.phase = "restoring".into();
             inner.st.clone()
         };
         self.running.store(false, Ordering::SeqCst);
-        lower::restore_power_lever_sync(&st);
-        vendor::restore_vendor_lever_sync(&st);
+        Some(st)
+    }
+
+    /// 取消第二步：跑恢复（powercfg×3 + 厂商，各 3s 上限，合计最长 ~12s 的同步子进程链）。
+    /// 异步命令里应丢进 spawn_blocking —— 直接跑会卡住主线程/UI。
+    pub fn restore_after_cancel(&self, app: &AppHandle, st: &CoolingStateFile) {
+        lower::restore_power_lever_sync(st);
+        vendor::restore_vendor_lever_sync(st);
         self.delete_state_file(app);
         self.inner.lock().unwrap().phase = "idle".into();
         self.active.store(false, Ordering::SeqCst);
+        // 同 finish：取消路径也要摘球的冷却视觉，否则菜单同样点不开
+        crate::modules::windows::floating_ball::set_cooling_visual(app, false);
+        crate::modules::windows::floating_ball::restore_after_cooling(app);
     }
 
     fn emit(&self, app: &AppHandle, phase: &str) {
@@ -372,7 +408,9 @@ impl Cooling {
     /// 崩溃残留恢复（启动时调用）：上次散热中被强杀 → 把 powercfg/风扇模式写回原值
     pub fn recover_residue(app: &AppHandle) {
         let path = Self::state_path(app);
-        let Ok(text) = std::fs::read_to_string(&path) else { return };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return;
+        };
         let Ok(st) = serde_json::from_str::<CoolingStateFile>(&text) else {
             let _ = std::fs::remove_file(&path);
             return;
@@ -417,23 +455,40 @@ pub fn get_cooling_duration_sec() -> u64 {
 }
 
 #[tauri::command]
-pub fn cancel_cooling(app: AppHandle) {
-    Cooling::global().cancel(&app);
+pub async fn cancel_cooling(app: AppHandle) {
+    let Some(st) = Cooling::global().begin_cancel() else {
+        return;
+    };
+    // 恢复是同步子进程链（powercfg×3 + 厂商，最长 ~12s）——原实现在命令线程上直接跑，
+    // UI 冻结半分钟级；丢阻塞线程池
+    let app2 = app.clone();
+    let _ = tokio::task::spawn_blocking(move || {
+        Cooling::global().restore_after_cancel(&app2, &st);
+    })
+    .await;
 }
 
-/// 悬浮球右键入口：启动散热 + 面板 + 花瓣旋转（对齐 floating-ball-cooling 分支）
+/// 悬浮球花瓣「散热」入口：启动散热 + 面板 + 花瓣旋转（对齐 floating-ball-cooling 分支）
 ///
 /// ⚠️ 本函数被 Tauri 事件监听器调用（监听器回调在主线程），因此不能直接建窗——
 /// WebviewWindowBuilder::build() 需要事件循环处理创建消息，与主线程互等会死锁
 /// （与 region.rs::start_region_select 同一坑）。故整体 spawn 到异步线程池。
+///
+/// 动画语义（对齐旧 Electron 版）：中央圆圈不动，花瓣逆时针旋转散热时长。菜单收起态
+/// 触发时临时展开用于旋转；散热结束按触发前状态复位（floating_ball::restore_after_cooling）。
 pub fn trigger_from_ball(app: &AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let started = Cooling::global().start(&app);
         if !started {
+            // 防重入：已在散热中，面板抖动提示（不重置计时，避免功耗限制被无限延长）
             crate::modules::windows::todo_windows::shake_cooling_overlay(&app);
             return;
         }
+        // 收起态触发：先临时展开菜单（花瓣 DOM 都在 ringSvg 里，收起态是清空的，
+        // 没东西可转）并记录「临时展开」标记（结束后 restore_after_cooling 收回），
+        // 再打开冷却视觉（花瓣旋转 + 圆圈冷光）
+        crate::modules::windows::floating_ball::expand_for_cooling(&app);
         crate::modules::windows::floating_ball::set_cooling_visual(&app, true);
         let center = crate::modules::windows::floating_ball::ball_center_for_overlay(&app);
         crate::modules::windows::todo_windows::show_cooling_overlay(&app, center);

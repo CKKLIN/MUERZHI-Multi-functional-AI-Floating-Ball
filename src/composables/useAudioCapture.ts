@@ -2,11 +2,8 @@ import { ref, shallowRef, onUnmounted } from 'vue'
 
 export function useAudioCapture() {
   let audioCtx: AudioContext | null = null
-  let micSource: MediaStreamAudioSourceNode | null = null
-  let sysSource: MediaStreamAudioSourceNode | null = null
   let micStream: MediaStream | null = null
   let sysStream: MediaStream | null = null
-  let analyser: AnalyserNode | null = null
 
   const micLevel = ref(0)
   const sysLevel = ref(0)
@@ -84,15 +81,15 @@ export function useAudioCapture() {
     if (micTracks.length > 0) {
       micAnalyser = audioCtx.createAnalyser()
       micAnalyser.fftSize = 256
-      const micSource = audioCtx.createMediaStreamSource(new MediaStream(micTracks))
-      micSource.connect(micAnalyser)
+      const src = audioCtx.createMediaStreamSource(new MediaStream(micTracks))
+      src.connect(micAnalyser)
     }
 
     if (sysTracks.length > 0) {
       sysAnalyser = audioCtx.createAnalyser()
       sysAnalyser.fftSize = 256
-      const sysSource = audioCtx.createMediaStreamSource(new MediaStream(sysTracks))
-      sysSource.connect(sysAnalyser)
+      const src = audioCtx.createMediaStreamSource(new MediaStream(sysTracks))
+      src.connect(sysAnalyser)
     }
 
     const dataArray = new Uint8Array(128)
@@ -113,6 +110,13 @@ export function useAudioCapture() {
       // 死区：仅当变化超过阈值才写 ref，减少响应式下游通知
       if (Math.abs(mic - lastMic) >= DEADBAND) { micLevel.value = mic; lastMic = mic }
       if (Math.abs(sys - lastSys) >= DEADBAND) { sysLevel.value = sys; lastSys = sys }
+      // 把**预览**电平也推给原生工具条/悬浮岛。
+      // 录制中 Rust 侧 ticker 推的是 WASAPI 采集管线的 RMS；未录制时那条链路没有数据
+      // （没人往 atomics 写），电平恒 0 —— 于是「开了麦克风但没开始录制」时工具条的
+      // 电平条完全不动。这里补一条预览通路，让未录制时电平条也随说话跳动。
+      if (typeof window !== 'undefined' && window.muerzhiAPI?.emitPreviewAudioLevel) {
+        window.muerzhiAPI.emitPreviewAudioLevel(mic)
+      }
     }
     levelInterval = setInterval(updateLevel, 50)
   }
@@ -124,6 +128,12 @@ export function useAudioCapture() {
     }
     micAnalyser = null
     sysAnalyser = null
+    // AudioContext 一并关掉：只关麦的路径只走这里不调 cleanup，audioCtx 留着会
+    // 占一条音频线程直到下一次 cleanup（close() 会连带释放挂在它上面的节点）
+    if (audioCtx) {
+      void audioCtx.close().catch(() => {})
+      audioCtx = null
+    }
     micLevel.value = 0
     sysLevel.value = 0
     lastMic = 0
@@ -140,11 +150,8 @@ export function useAudioCapture() {
       await audioCtx.close()
       audioCtx = null
     }
-    analyser = null
     micAnalyser = null
     sysAnalyser = null
-    micSource = null
-    sysSource = null
   }
 
   onUnmounted(() => {

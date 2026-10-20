@@ -3,7 +3,7 @@
 // 布局：顶部标题栏 + 大号标题输入 + Quill 正文 + 底部字段与保存。
 // 新建时无“完成”勾选（新项默认未完成），编辑时才有。
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
-import Quill from 'quill'
+import type Quill from 'quill'
 import 'quill/dist/quill.snow.css'
 import type { TodoDraft, TodoPriority, TodoType } from '../stores/todo'
 import { t } from '../stores/i18n'
@@ -167,8 +167,18 @@ onMounted(() => {
     // 新建：默认类型跟随当前选中 Tab
     type.value = props.defaultType
   }
+  void initQuill()
+})
+
+// quill 是包体里最大的第三方库（~200K）：动态 import 把它拆到独立 chunk，
+// 待办列表（TodoApp 首屏）不再背编辑器的体积，首次挂载编辑器才拉取。
+async function initQuill() {
+  if (!editorEl.value) return
   try {
-    quill = new Quill(editorEl.value!, { theme: 'snow', modules: { toolbar: TOOLBAR } })
+    const { default: Quill } = await import('quill')
+    // 动态 import 期间组件可能已卸载（快速返回列表）：挂载点没了就不初始化
+    if (!editorEl.value || quill) return
+    quill = new Quill(editorEl.value, { theme: 'snow', modules: { toolbar: TOOLBAR } })
     quill.root.innerHTML = props.initial?.content ?? ''
     quill.focus()
     console.log('[TodoEditor] Quill init OK, toolbar buttons =', editorEl.value?.querySelectorAll('.ql-toolbar button').length)
@@ -197,7 +207,7 @@ onMounted(() => {
   } catch (e) {
     console.error('[TodoEditor] Quill init FAILED:', e)
   }
-})
+}
 
 // 编辑器卸载（返回列表/取消）时销毁 Quill，移除其注册在 document 上的 selectionchange
 // 监听与内部 DOM 引用，避免重复进出编辑器时累积监听器、旧编辑器 DOM 常驻内存

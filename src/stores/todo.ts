@@ -34,7 +34,7 @@ export const useTodoStore = defineStore('todo', {
   state: (): TodoState => ({
     items: [],
     loaded: false,
-    settings: { badgeVisible: true, windowAlwaysOnTop: true, stickyBoardPos: null },
+    settings: { badgeVisible: true, windowAlwaysOnTop: true, manualSort: false, stickyBoardPos: null },
     editingId: '',
     previewId: '',
     activeType: 'all',
@@ -46,6 +46,8 @@ export const useTodoStore = defineStore('todo', {
       const list = state.activeType === 'all'
         ? state.items
         : state.items.filter(i => i.type === state.activeType)
+      // 手动排序：拖动后的落盘顺序原样展示（自动规则只在自动模式下生效）
+      if (state.settings.manualSort) return list
       // 排序：未完成置前 → 优先级(urgent>high>medium>low) → 更新时间倒序；备忘录统一排在后面
       const prioRank = { urgent: 0, high: 1, medium: 2, low: 3 }
       return [...list].sort((a, b) => {
@@ -71,11 +73,11 @@ export const useTodoStore = defineStore('todo', {
   actions: {
     async load() {
       try {
-        this.items = (await window.electronAPI.todoGet()) ?? []
+        this.items = (await window.muerzhiAPI.todoGet()) ?? []
       } finally {
         this.loaded = true
       }
-      this.settings = await window.electronAPI.todoGetSettings()
+      this.settings = await window.muerzhiAPI.todoGetSettings()
     },
 
     toastMsg(msg: string) {
@@ -84,28 +86,46 @@ export const useTodoStore = defineStore('todo', {
     },
 
     async create(draft: TodoDraft) {
-      const items = await window.electronAPI.todoCreate(draft)
+      const items = await window.muerzhiAPI.todoCreate(draft)
       this.items = items
       this.editingId = ''
     },
 
     async update(id: string, draft: TodoDraft) {
-      const items = await window.electronAPI.todoUpdate(id, draft)
+      const items = await window.muerzhiAPI.todoUpdate(id, draft)
       this.items = items
       this.editingId = ''
     },
 
     async remove(id: string) {
-      this.items = await window.electronAPI.todoDelete(id)
+      this.items = await window.muerzhiAPI.todoDelete(id)
     },
 
     async toggleDone(id: string) {
-      this.items = await window.electronAPI.todoToggleDone(id)
+      this.items = await window.muerzhiAPI.todoToggleDone(id)
     },
 
-    async togglePin(id: string) {
-      this.items = await window.electronAPI.todoTogglePin(id)
-    },
+  async togglePin(id: string) {
+    this.items = await window.muerzhiAPI.todoTogglePin(id)
+  },
+
+  /** 拖动结束：按展示序（被拖卡已挪位）整体落盘，服务器侧自动开启手动排序 */
+  async commitOrder(ids: string[]) {
+    const byId = new Map(this.items.map(i => [i.id, i] as const))
+    const ordered = ids.map(id => byId.get(id)).filter((i): i is TodoItem => !!i)
+    if (ordered.length !== this.items.length) return // id 集对不上（数据刚被外部改过）：放弃本次落盘
+    this.items = ordered
+    if (!this.settings.manualSort) this.settings = { ...this.settings, manualSort: true }
+    try {
+      this.items = await window.muerzhiAPI.todoReorder(ids)
+    } catch (e) {
+      console.error(e)
+    }
+  },
+
+  async setManualSort(v: boolean) {
+    this.settings = await window.muerzhiAPI.todoSetSettings({ manualSort: v })
+  },
 
     startEdit(id: string) { this.editingId = id },
     startCreate() { this.editingId = '__new__'; this.previewId = '' },
@@ -115,7 +135,7 @@ export const useTodoStore = defineStore('todo', {
     closePreview() { this.previewId = '' },
 
     async setBadgeVisible(v: boolean) {
-      this.settings = await window.electronAPI.todoSetSettings({ badgeVisible: v })
+      this.settings = await window.muerzhiAPI.todoSetSettings({ badgeVisible: v })
     },
   },
 })

@@ -39,14 +39,19 @@ pub fn ffmpeg_bin_fallback() -> PathBuf {
 }
 
 fn num_threads() -> usize {
-    std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(8)
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .min(8)
 }
 
 use tauri::Manager;
 
 /// 注册 kill 闭包（进程树杀：Windows 用 taskkill /T，避免 ffmpeg 子进程残留）
 fn spawn_with_registry(mut cmd: Command) -> (Child, String) {
-    cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -79,16 +84,16 @@ fn emit_progress(app: &AppHandle, percent: f64, target_size: u64) {
     );
 }
 
-/// 读取 ffmpeg 输出（等待退出），返回成功与否 + stdout/stderr
-async fn wait_output(mut child: Child) -> (bool, String) {
-    let out = tokio::task::spawn_blocking(move || {
-        let status = child.wait();
-        let mut buf = String::new();
-        if let Some(mut err) = child.stderr.take() {
-            use std::io::Read;
-            let _ = err.read_to_string(&mut buf);
-        }
-        (status.map(|s| s.success()).unwrap_or(false), buf)
+/// 读取 ffmpeg 输出（等待退出），返回成功与否 + stderr
+/// stdout/stderr 必须在 wait 的同时并发排水：ffmpeg 持续写 stderr（进度/日志），
+/// Windows 管道缓冲约 64KB，先 wait 再读会让 ffmpeg 卡死在写管道上（长转换必现）。
+async fn wait_output(child: Child) -> (bool, String) {
+    let out = tokio::task::spawn_blocking(move || match child.wait_with_output() {
+        Ok(o) => (
+            o.status.success(),
+            String::from_utf8_lossy(&o.stderr).to_string(),
+        ),
+        Err(e) => (false, format!("wait failed: {e}")),
     })
     .await;
     match out {
@@ -107,12 +112,23 @@ pub async fn convert_webm_to_mp4(
     crop: Option<(i32, i32, i32, i32)>,
 ) -> Result<(), String> {
     let bin = ffmpeg_bin(app);
+    log::info!("convert_webm_to_mp4: {input_path} → {output_path}（crop={crop:?}）");
     if crop.is_none() {
         // remux：-c:v copy -c:a aac -b:a 128k -movflags +faststart
         let mut cmd = Command::new(&bin);
         cmd.args([
-            "-y", "-i", input_path, "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-movflags",
-            "+faststart", output_path,
+            "-y",
+            "-i",
+            input_path,
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-movflags",
+            "+faststart",
+            output_path,
         ]);
         let (child, kill_id) = spawn_with_registry(cmd);
         emit_progress(app, 80.0, 0);
@@ -137,7 +153,10 @@ pub async fn convert_webm_to_mp4(
         let mut args: Vec<String> = vec!["-y".into(), "-i".into(), input_path.into()];
         args.extend(build_encode_options(enc, "23", num_threads()));
         args.push("-vf".into());
-        args.push(format!("{}pad=ceil(iw/2)*2:ceil(ih/2)*2,format=yuv420p", crop_filter));
+        args.push(format!(
+            "{}pad=ceil(iw/2)*2:ceil(ih/2)*2,format=yuv420p",
+            crop_filter
+        ));
         args.push("-an".into());
         args.push("-movflags".into());
         args.push("+faststart".into());
@@ -172,8 +191,25 @@ pub async fn convert_webm_to_mp4(
     // pass2：remux 合回音频
     let mut cmd = Command::new(&bin);
     cmd.args([
-        "-y", "-i", &tmp_path, "-i", input_path, "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
-        "-map", "0:v", "-map", "1:a?", "-shortest", "-movflags", "+faststart", output_path,
+        "-y",
+        "-i",
+        &tmp_path,
+        "-i",
+        input_path,
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-map",
+        "0:v",
+        "-map",
+        "1:a?",
+        "-shortest",
+        "-movflags",
+        "+faststart",
+        output_path,
     ]);
     let (child, kill_id) = spawn_with_registry(cmd);
     let (ok2, text2) = wait_output(child).await;
@@ -196,18 +232,38 @@ pub async fn convert_webm_to_mp4(
 }
 
 /// 单遍裁剪（对齐 cropVideo）
-pub async fn crop_video(app: &AppHandle, input_path: &str, output_path: &str, crop: (i32, i32, i32, i32)) -> Result<(), String> {
+pub async fn crop_video(
+    app: &AppHandle,
+    input_path: &str,
+    output_path: &str,
+    crop: (i32, i32, i32, i32),
+) -> Result<(), String> {
     let bin = ffmpeg_bin(app);
+    log::info!("crop_video: {input_path} → {output_path} crop={crop:?}");
     let (cx, cy, cw, ch) = crop;
     let even = |v: i32| ((v as f64 / 2.0).round() as i32) * 2;
-    let vf = format!("crop={}:{}:{}:{},format=yuv420p", even(cw), even(ch), even(cx), even(cy));
+    let vf = format!(
+        "crop={}:{}:{}:{},format=yuv420p",
+        even(cw),
+        even(ch),
+        even(cx),
+        even(cy)
+    );
     let encoder = crate::modules::media::hw_encoder::get_h264_encoder(&bin.to_string_lossy()).await;
 
     let run = |enc: &str| -> Command {
         let mut cmd = Command::new(&bin);
         let mut args: Vec<String> = vec!["-y".into(), "-i".into(), input_path.into()];
         args.extend(build_encode_options(enc, "18", num_threads()));
-        args.extend(["-vf".into(), vf.clone(), "-c:a".into(), "copy".into(), "-movflags".into(), "+faststart".into(), output_path.into()]);
+        args.extend([
+            "-vf".into(),
+            vf.clone(),
+            "-c:a".into(),
+            "copy".into(),
+            "-movflags".into(),
+            "+faststart".into(),
+            output_path.into(),
+        ]);
         cmd.args(args);
         cmd
     };
@@ -244,13 +300,27 @@ pub async fn convert_to_gif(
     duration: Option<f64>,
 ) -> Result<(), String> {
     let bin = ffmpeg_bin(app);
-    let palette = std::env::temp_dir().join(format!("gif_palette_{}.png", crate::modules::todo::store::now_ms()));
+    log::info!("convert_to_gif: {input_path} → {output_path}（width={width}, fps={fps}, duration={duration:?}）");
+    let palette = std::env::temp_dir().join(format!(
+        "gif_palette_{}.png",
+        crate::modules::todo::store::now_ms()
+    ));
 
     // pass1：palettegen
+    // `-frames:v 1 -update 1`：palettegen 只出一帧，而 png 走 image2 封装器 ——
+    // 不声明单图输出时 ffmpeg 会告警「filename does not contain an image sequence pattern」，
+    // 序列写盘行为在不同版本下还可能写不出文件（pass2 随后就找不到 palette 输入）。
     let mut c1 = Command::new(&bin);
     c1.args([
-        "-y", "-i", input_path, "-vf",
+        "-y",
+        "-i",
+        input_path,
+        "-vf",
         &format!("fps={fps},scale={width}:-1:flags=lanczos,palettegen"),
+        "-frames:v",
+        "1",
+        "-update",
+        "1",
         &palette.to_string_lossy(),
     ]);
     let (child, kill_id) = spawn_with_registry(c1);
@@ -264,7 +334,12 @@ pub async fn convert_to_gif(
     // pass2：paletteuse（进度靠 stderr time= 解析，口径与 TS 一致：percent+50）
     let mut c2 = Command::new(&bin);
     c2.args([
-        "-y", "-i", input_path, "-i", &palette.to_string_lossy(), "-filter_complex",
+        "-y",
+        "-i",
+        input_path,
+        "-i",
+        &palette.to_string_lossy(),
+        "-filter_complex",
         &format!("[0:v]fps={fps},scale={width}:-1:flags=lanczos[x];[x][1:v]paletteuse"),
         output_path,
     ]);
@@ -290,7 +365,10 @@ pub async fn convert_to_gif(
 pub fn parse_last_time(stderr: &str) -> Option<f64> {
     let mut last: Option<f64> = None;
     for part in stderr.split("time=") {
-        let candidate: String = part.chars().take_while(|c| c.is_ascii_digit() || *c == ':' || *c == '.').collect();
+        let candidate: String = part
+            .chars()
+            .take_while(|c| c.is_ascii_digit() || *c == ':' || *c == '.')
+            .collect();
         if let Some(secs) = parse_hms(&candidate) {
             last = Some(secs);
         }
@@ -317,7 +395,11 @@ pub struct MergeInput {
 }
 
 /// 多屏合并（对齐 mergeMultiScreen）：先各自 remux，再用 color 背景 + scale/overlay 叠加
-pub async fn merge_multi_screen(app: &AppHandle, inputs: &[MergeInput], output_path: &str) -> Result<(), String> {
+pub async fn merge_multi_screen(
+    app: &AppHandle,
+    inputs: &[MergeInput],
+    output_path: &str,
+) -> Result<(), String> {
     merge_multi_screen_core(Some(app), inputs, output_path).await
 }
 
@@ -327,7 +409,15 @@ pub async fn merge_multi_screen_core(
     inputs: &[MergeInput],
     output_path: &str,
 ) -> Result<(), String> {
-    let bin = match app { Some(a) => ffmpeg_bin(a), None => ffmpeg_bin_fallback() };
+    let bin = match app {
+        Some(a) => ffmpeg_bin(a),
+        None => ffmpeg_bin_fallback(),
+    };
+    log::info!(
+        "merge_multi_screen: {} 路输入 → {output_path}（bounds={:?}）",
+        inputs.len(),
+        inputs.iter().map(|i| i.bounds).collect::<Vec<_>>()
+    );
     let emit = |pct: f64| {
         if let Some(a) = app {
             emit_progress(a, pct, 0);
@@ -339,8 +429,16 @@ pub async fn merge_multi_screen_core(
     // 画布尺寸
     let min_x = inputs.iter().map(|i| i.bounds.0).min().unwrap_or(0);
     let min_y = inputs.iter().map(|i| i.bounds.1).min().unwrap_or(0);
-    let max_x = inputs.iter().map(|i| i.bounds.0 + i.bounds.2).max().unwrap_or(0);
-    let max_y = inputs.iter().map(|i| i.bounds.1 + i.bounds.3).max().unwrap_or(0);
+    let max_x = inputs
+        .iter()
+        .map(|i| i.bounds.0 + i.bounds.2)
+        .max()
+        .unwrap_or(0);
+    let max_y = inputs
+        .iter()
+        .map(|i| i.bounds.1 + i.bounds.3)
+        .max()
+        .unwrap_or(0);
     let even = |v: i32| ((v as f64 / 2.0).round() as i32) * 2;
     let (cw, ch) = (even(max_x - min_x), even(max_y - min_y));
 
@@ -375,10 +473,16 @@ pub async fn merge_multi_screen_core(
         let sh = even(input.bounds.3);
         filter.push_str(&format!(";[{i}:v]scale={sw}:{sh},setsar=1[s{i}]"));
         let is_last = i == inputs.len() - 1;
-        let out_label = if is_last { "[out]".to_string() } else { format!("[tmp{i}]") };
+        let out_label = if is_last {
+            "[out]".to_string()
+        } else {
+            format!("[tmp{i}]")
+        };
         // 最后一个 overlay 必须带 shortest=1，否则输出无限长（TS 注释记录的卡死 bug）
         let shortest = if is_last { ":shortest=1" } else { "" };
-        filter.push_str(&format!(";{prev}[s{i}]overlay={dx}:{dy}{shortest}{out_label}"));
+        filter.push_str(&format!(
+            ";{prev}[s{i}]overlay={dx}:{dy}{shortest}{out_label}"
+        ));
         prev = out_label;
     }
     filter.push_str(";[out]format=yuv420p");
@@ -448,16 +552,32 @@ fn tail(s: &str) -> String {
 ///
 /// 容器由 `output_path` 后缀决定：mp4/mov 加 `-movflags +faststart`；`.mkv` 不加
 /// （matroska 不吃这个 flag，而且 VP8 这类编码器 mp4 根本装不下，摄像头 webm 段必须走 mkv）。
-pub async fn concat_videos(app: &AppHandle, segments: &[String], output_path: &str) -> Result<(), String> {
+pub async fn concat_videos(
+    app: &AppHandle,
+    segments: &[String],
+    output_path: &str,
+) -> Result<(), String> {
     concat_videos_core(Some(app), segments, output_path).await
 }
 
 /// concat 核心（app 可选：单元测试传 None 跳过进度事件）
-pub async fn concat_videos_core(app: Option<&AppHandle>, segments: &[String], output_path: &str) -> Result<(), String> {
+pub async fn concat_videos_core(
+    app: Option<&AppHandle>,
+    segments: &[String],
+    output_path: &str,
+) -> Result<(), String> {
     if segments.is_empty() {
         return Err("没有可拼接的录制段".into());
     }
-    let bin = match app { Some(a) => ffmpeg_bin(a), None => ffmpeg_bin_fallback() };
+    log::info!(
+        "concat_videos: {} 段 → {output_path}（首段 {}）",
+        segments.len(),
+        segments[0]
+    );
+    let bin = match app {
+        Some(a) => ffmpeg_bin(a),
+        None => ffmpeg_bin_fallback(),
+    };
     let emit = |pct: f64| {
         if let Some(a) = app {
             emit_progress(a, pct, 0);
@@ -476,7 +596,17 @@ pub async fn concat_videos_core(app: Option<&AppHandle>, segments: &[String], ou
     std::fs::write(&list_path, body).map_err(|e| format!("拼接清单写入失败: {e}"))?;
 
     let mut cmd = Command::new(&bin);
-    cmd.args(["-y", "-f", "concat", "-safe", "0", "-i", &list_path.to_string_lossy(), "-c", "copy"]);
+    cmd.args([
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        &list_path.to_string_lossy(),
+        "-c",
+        "copy",
+    ]);
     cmd.args(concat_container_flags(output_path));
     cmd.arg(output_path);
     let (child, kill_id) = spawn_with_registry(cmd);
@@ -545,7 +675,15 @@ pub async fn mux_audio_core(
     sys_files: &[String],
     output_path: &str,
 ) -> Result<(), String> {
-    let bin = match app { Some(a) => ffmpeg_bin(a), None => ffmpeg_bin_fallback() };
+    let bin = match app {
+        Some(a) => ffmpeg_bin(a),
+        None => ffmpeg_bin_fallback(),
+    };
+    log::info!(
+        "mux_audio: {video_path} → {output_path}（mic {} 段 / sys {} 段）",
+        mic_files.len(),
+        sys_files.len()
+    );
     let emit = |pct: f64| {
         if let Some(a) = app {
             emit_progress(a, pct, 0);
@@ -556,7 +694,14 @@ pub async fn mux_audio_core(
     if mic_files.is_empty() && sys_files.is_empty() {
         let mut cmd = Command::new(&bin);
         cmd.args([
-            "-y", "-i", video_path, "-c", "copy", "-movflags", "+faststart", output_path,
+            "-y",
+            "-i",
+            video_path,
+            "-c",
+            "copy",
+            "-movflags",
+            "+faststart",
+            output_path,
         ]);
         let (child, kill_id) = spawn_with_registry(cmd);
         let (ok, text) = wait_output(child).await;
@@ -611,8 +756,20 @@ pub async fn mux_audio_core(
         cmd.args(["-filter_complex", &chains.join(";")]);
     }
     cmd.args([
-        "-map", "0:v", "-map", &audio_out, "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest",
-        "-movflags", "+faststart", output_path,
+        "-map",
+        "0:v",
+        "-map",
+        &audio_out,
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-shortest",
+        "-movflags",
+        "+faststart",
+        output_path,
     ]);
     let (child, kill_id) = spawn_with_registry(cmd);
     emit(90.0);
@@ -643,6 +800,119 @@ pub async fn overlay_camera(
     overlay_camera_core(Some(app), video_path, camera_path, rect, fps, output_path).await
 }
 
+/// 分段画中画叠加：录制中开关过摄像头时，各段按**会话时间轴**的 [start, end] 窗口出现，
+/// 关闭区间不叠小窗（concat 会把段内容贴错时间轴，无法表达间隙）。
+///
+/// 滤镜：每段 `[i:v]scale,setsar,setpts=PTS-STARTPTS+{start}/TB` 平移到自己的起点，
+/// 串行 overlay 并用 `enable='between(t,start,end)'` 控制可见窗口；窗口连续时行为与
+/// concat + 单段 overlay 一致（间隙存在时才走这条路，见 recording/mod.rs 的分叉）。
+pub async fn overlay_camera_multi(
+    app: &AppHandle,
+    video_path: &str,
+    parts: &[(String, f64, f64)], // (路径, start 秒, end 秒)
+    rect: (i32, i32, i32, i32),
+    fps: u32,
+    output_path: &str,
+) -> Result<(), String> {
+    overlay_camera_multi_core(Some(app), video_path, parts, rect, fps, output_path).await
+}
+
+pub async fn overlay_camera_multi_core(
+    app: Option<&AppHandle>,
+    video_path: &str,
+    parts: &[(String, f64, f64)],
+    rect: (i32, i32, i32, i32),
+    fps: u32,
+    output_path: &str,
+) -> Result<(), String> {
+    let bin = match app {
+        Some(a) => ffmpeg_bin(a),
+        None => ffmpeg_bin_fallback(),
+    };
+    log::info!(
+        "overlay_camera_multi: {video_path} + {} 段 → {output_path}（rect={rect:?}, fps={fps}）",
+        parts.len()
+    );
+    let emit = |pct: f64| {
+        if let Some(a) = app {
+            emit_progress(a, pct, 0);
+        }
+    };
+    let (cx, cy, cw, ch) = rect;
+    let even = |v: i32| ((v as f64 / 2.0).round() as i32) * 2;
+    let (cw, ch) = (even(cw.max(16)), even(ch.max(16)));
+
+    // 滤镜链：每段平移到自己的时间窗口，串行叠加，末段挂 format + 输出标签
+    // （标签必须在链尾，见 overlay_camera_core 的注释）
+    let mut chain = String::new();
+    let mut prev_label = "0:v".to_string();
+    for (i, (_path, start, end)) in parts.iter().enumerate() {
+        chain.push_str(&format!(
+            "[{}:v]scale={cw}:{ch},setsar=1,setpts=PTS-STARTPTS+{start}/TB[c{i}];",
+            i + 1
+        ));
+        chain.push_str(&format!(
+            "[{prev}][c{i}]overlay={}:{}:format=auto:enable='between(t,{start:.3},{end:.3})'[b{i}];",
+            even(cx.max(0)),
+            even(cy.max(0)),
+            prev = prev_label,
+            i = i,
+        ));
+        prev_label = format!("b{i}");
+    }
+    chain.push_str(&format!("[{prev_label}]format=yuv420p[out]"));
+
+    let encoder = crate::modules::media::hw_encoder::get_h264_encoder(&bin.to_string_lossy()).await;
+    let run = |enc: &str| -> Command {
+        let mut cmd = Command::new(&bin);
+        let mut args: Vec<String> = vec!["-y".into(), "-i".into(), video_path.into()];
+        for (path, _, _) in parts {
+            args.extend(["-i".into(), path.clone()]);
+        }
+        args.extend(["-filter_complex".into(), chain.clone()]);
+        args.extend(build_encode_options(enc, "20", num_threads()));
+        // 同单段 overlay：显式钉帧率，否则输出按摄像头 10fps 时间基驱动
+        args.extend([
+            "-r".into(),
+            crate::modules::recording::capture::clamp_fps(fps).to_string(),
+        ]);
+        args.extend([
+            "-map".into(),
+            "[out]".into(),
+            "-map".into(),
+            "0:a?".into(),
+            "-c:a".into(),
+            "copy".into(),
+            "-movflags".into(),
+            "+faststart".into(),
+            output_path.into(),
+        ]);
+        cmd.args(args);
+        cmd
+    };
+    let (child, kill_id) = spawn_with_registry(run(&encoder));
+    emit(60.0);
+    let (ok, text) = wait_output(child).await;
+    unregister_conversion(&kill_id);
+    if ok {
+        emit(100.0);
+        return Ok(());
+    }
+    if encoder != "libx264" {
+        log::warn!("分段 overlay 用 {encoder} 失败，回退 libx264");
+        let _ = std::fs::remove_file(output_path);
+        let (child, kill_id) = spawn_with_registry(run("libx264"));
+        let (ok2, text2) = wait_output(child).await;
+        unregister_conversion(&kill_id);
+        if ok2 {
+            emit(100.0);
+            return Ok(());
+        }
+        return Err(format!("overlay multi failed: {}", tail(&text2)));
+    }
+    Err(format!("overlay multi failed: {}", tail(&text)))
+}
+
 /// overlay 核心（app 可选：单元测试传 None 跳过进度事件）
 ///
 /// 摄像头源是渲染层 MediaRecorder 产出的 **webm（VP8/VP9）**，主视频是 H264/mp4 ——
@@ -656,7 +926,13 @@ pub async fn overlay_camera_core(
     fps: u32,
     output_path: &str,
 ) -> Result<(), String> {
-    let bin = match app { Some(a) => ffmpeg_bin(a), None => ffmpeg_bin_fallback() };
+    let bin = match app {
+        Some(a) => ffmpeg_bin(a),
+        None => ffmpeg_bin_fallback(),
+    };
+    log::info!(
+        "overlay_camera: {video_path} + {camera_path} → {output_path}（rect={rect:?}, fps={fps}）"
+    );
     let emit = |pct: f64| {
         if let Some(a) = app {
             emit_progress(a, pct, 0);
@@ -676,18 +952,31 @@ pub async fn overlay_camera_core(
     let encoder = crate::modules::media::hw_encoder::get_h264_encoder(&bin.to_string_lossy()).await;
     let run = |enc: &str| -> Command {
         let mut cmd = Command::new(&bin);
-        let mut args: Vec<String> = vec!["-y".into(), "-i".into(), video_path.into(), "-i".into(), camera_path.into()];
+        let mut args: Vec<String> = vec![
+            "-y".into(),
+            "-i".into(),
+            video_path.into(),
+            "-i".into(),
+            camera_path.into(),
+        ];
         args.extend(["-filter_complex".into(), filter.clone()]);
         args.extend(build_encode_options(enc, "20", num_threads()));
         // 摄像头源是 10fps 的 VP9 webm，主视频 30fps —— 必须显式钉住输出帧率，
         // 否则 overlay 会按**摄像头的时间基**驱动输出（成品降到 10fps，主画面卡顿）。
-        args.extend(["-r".into(), crate::modules::recording::capture::clamp_fps(fps).to_string()]);
         args.extend([
-            "-map".into(), "[out]".into(),
+            "-r".into(),
+            crate::modules::recording::capture::clamp_fps(fps).to_string(),
+        ]);
+        args.extend([
+            "-map".into(),
+            "[out]".into(),
             // 音频若已有（主视频里）就带走；摄像头那路的音轨不要（用户要的是麦克风/系统声）
-            "-map".into(), "0:a?".into(),
-            "-c:a".into(), "copy".into(),
-            "-movflags".into(), "+faststart".into(),
+            "-map".into(),
+            "0:a?".into(),
+            "-c:a".into(),
+            "copy".into(),
+            "-movflags".into(),
+            "+faststart".into(),
             output_path.into(),
         ]);
         cmd.args(args);
@@ -716,6 +1005,57 @@ pub async fn overlay_camera_core(
     Err(format!("camera overlay failed: {}", tail(&text)))
 }
 
+/// 从视频第 0 秒抽一帧生成 PNG base64 data URL（录制历史缩略图）。
+///
+/// 返回 `data:image/png;base64,...`，渲染层直接塞 `<img>` 显示、放进录制历史 JSON 一起
+/// 持久化 —— 缩略图压缩到 ~120px 宽，一条记录十几 KB base64，几十条也就几 MB，
+/// 远低于 localStorage 上限，且不依赖任何自定义协议，绝对可用。
+///
+/// **为什么用 PNG 不用 JPEG**：本工程 vendor 的 ffmpeg 是精简构建，`mjpeg`/`jpeg` 编码器
+/// 被禁用了（`.encoders` 里只剩 png/gif/libx264/aac），指定 .jpg 输出直接报
+/// `Automatic encoder selection failed ... codec mjpeg is probably disabled`，
+/// 抽帧必然失败（首帧图因此一直看不到）。PNG 编码器可用，故改用 image/png。
+///
+/// 抽帧失败（0 帧/编码不支持）返回 None，列表落到播放占位图标。
+pub async fn extract_first_frame(app: &AppHandle, video_path: &str) -> Option<String> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    let bin = ffmpeg_bin(app);
+    log::info!("extract_first_frame: {video_path}");
+    let out = std::env::temp_dir().join(format!(
+        "muerzhi_thumb_{}_{}.png",
+        crate::modules::todo::store::now_ms(),
+        std::process::id(),
+    ));
+    let out_str = out.to_string_lossy().to_string();
+    let _ = std::fs::remove_file(&out_str);
+    let mut cmd = Command::new(&bin);
+    cmd.args([
+        "-y",
+        "-i",
+        video_path,
+        "-frames:v",
+        "1",
+        "-update",
+        "1",
+        "-vf",
+        "scale=120:-2",
+        &out_str,
+    ]);
+    let (child, kill_id) = spawn_with_registry(cmd);
+    let (ok, _text) = wait_output(child).await;
+    unregister_conversion(&kill_id);
+    if !ok || !std::path::Path::new(&out_str).exists() {
+        // 失败也可能留下半截 PNG（ffmpeg 中途被杀/编码中断）——不留的话
+        // 每次抽帧失败都在 %TEMP% 挂一张，清扫兜底前会持续累积
+        let _ = std::fs::remove_file(&out_str);
+        return None;
+    }
+    let data = std::fs::read(&out_str).ok();
+    let _ = std::fs::remove_file(&out_str);
+    let bytes = data?;
+    Some(format!("data:image/png;base64,{}", STANDARD.encode(bytes)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -737,7 +1077,11 @@ mod tests {
     #[test]
     fn concat_flags_only_for_mp4_family() {
         for p in ["C:/t/a.mp4", "C:/t/a.MP4", "C:/t/a.mov", "C:/t/a.m4v"] {
-            assert_eq!(concat_container_flags(p), vec!["-movflags", "+faststart"], "{p}");
+            assert_eq!(
+                concat_container_flags(p),
+                vec!["-movflags", "+faststart"],
+                "{p}"
+            );
         }
         for p in ["C:/t/a.mkv", "C:/t/a.webm"] {
             assert!(concat_container_flags(p).is_empty(), "{p}");

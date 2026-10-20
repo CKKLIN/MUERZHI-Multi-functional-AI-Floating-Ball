@@ -35,7 +35,10 @@ fn is_guid(s: &str) -> bool {
         return false;
     }
     let lens = [8, 4, 4, 4, 12];
-    parts.iter().zip(lens.iter()).all(|(p, l)| p.len() == *l && p.chars().all(|c| c.is_ascii_hexdigit()))
+    parts
+        .iter()
+        .zip(lens.iter())
+        .all(|(p, l)| p.len() == *l && p.chars().all(|c| c.is_ascii_hexdigit()))
 }
 
 /// 解析 PROCTHROTTLEMAX 的 AC/DC 原值（对齐 parseThrottleMax）
@@ -94,13 +97,25 @@ pub async fn apply_power_lever() -> Option<CoolingStateFile> {
 
     let pct = COOLING_THROTTLE_PCT.to_string();
     ps::run_powercfg(
-        &["/setacvalueindex", &scheme, "SUB_PROCESSOR", "PROCTHROTTLEMAX", &pct],
+        &[
+            "/setacvalueindex",
+            &scheme,
+            "SUB_PROCESSOR",
+            "PROCTHROTTLEMAX",
+            &pct,
+        ],
         POWERCFG_TIMEOUT,
     )
     .await?;
     // DC 尽力而为（笔记本电池场景）
     let _ = ps::run_powercfg(
-        &["/setdcvalueindex", &scheme, "SUB_PROCESSOR", "PROCTHROTTLEMAX", &pct],
+        &[
+            "/setdcvalueindex",
+            &scheme,
+            "SUB_PROCESSOR",
+            "PROCTHROTTLEMAX",
+            &pct,
+        ],
         POWERCFG_TIMEOUT,
     )
     .await;
@@ -132,13 +147,25 @@ pub fn restore_power_lever_sync(st: &CoolingStateFile) {
     }
     let ac = st.ac_orig.to_string();
     ps::run_powercfg_sync(
-        &["/setacvalueindex", &st.scheme_guid, "SUB_PROCESSOR", "PROCTHROTTLEMAX", &ac],
+        &[
+            "/setacvalueindex",
+            &st.scheme_guid,
+            "SUB_PROCESSOR",
+            "PROCTHROTTLEMAX",
+            &ac,
+        ],
         3000,
     );
     if let Some(dc) = st.dc_orig {
         let dc_s = dc.to_string();
         ps::run_powercfg_sync(
-            &["/setdcvalueindex", &st.scheme_guid, "SUB_PROCESSOR", "PROCTHROTTLEMAX", &dc_s],
+            &[
+                "/setdcvalueindex",
+                &st.scheme_guid,
+                "SUB_PROCESSOR",
+                "PROCTHROTTLEMAX",
+                &dc_s,
+            ],
             3000,
         );
     }
@@ -152,14 +179,26 @@ pub fn restore_power_lever_sync(st: &CoolingStateFile) {
 async fn restore_power_lever_impl(st: &CoolingStateFile, _sync: bool) {
     let ac = st.ac_orig.to_string();
     ps::run_powercfg(
-        &["/setacvalueindex", &st.scheme_guid, "SUB_PROCESSOR", "PROCTHROTTLEMAX", &ac],
+        &[
+            "/setacvalueindex",
+            &st.scheme_guid,
+            "SUB_PROCESSOR",
+            "PROCTHROTTLEMAX",
+            &ac,
+        ],
         3000,
     )
     .await;
     if let Some(dc) = st.dc_orig {
         let dc_s = dc.to_string();
         ps::run_powercfg(
-            &["/setdcvalueindex", &st.scheme_guid, "SUB_PROCESSOR", "PROCTHROTTLEMAX", &dc_s],
+            &[
+                "/setdcvalueindex",
+                &st.scheme_guid,
+                "SUB_PROCESSOR",
+                "PROCTHROTTLEMAX",
+                &dc_s,
+            ],
             3000,
         )
         .await;
@@ -190,7 +229,10 @@ mod tests {
     #[test]
     fn parses_active_scheme_guid() {
         let s = "Power Scheme GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (Balanced)";
-        assert_eq!(parse_active_scheme(s).as_deref(), Some("381b4222-f694-41f0-9685-ff5bb260df2e"));
+        assert_eq!(
+            parse_active_scheme(s).as_deref(),
+            Some("381b4222-f694-41f0-9685-ff5bb260df2e")
+        );
         assert_eq!(parse_active_scheme("no guid here"), None);
     }
 

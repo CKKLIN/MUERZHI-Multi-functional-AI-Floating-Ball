@@ -53,7 +53,10 @@ fn default_schema_version() -> u32 {
 
 impl Default for TodoState {
     fn default() -> Self {
-        TodoState { items: Vec::new(), meta: Meta { schema_version: 1 } }
+        TodoState {
+            items: Vec::new(),
+            meta: Meta { schema_version: 1 },
+        }
     }
 }
 
@@ -64,6 +67,12 @@ pub struct TodoSettings {
     pub badge_visible: bool,
     #[serde(default = "default_true")]
     pub window_always_on_top: bool,
+    /// 手动排序（待办窗口拖动排序后自动开启；关闭则恢复自动排序：
+    /// 未完成置前 → 优先级 → 更新时间倒序，备忘录靠后）
+    #[serde(default)]
+    pub manual_sort: bool,
+    /// 贴屏便签板上次关闭时的窗口位置（**物理**像素，outer_position；
+    /// Rust 侧在关窗时保存、建窗时恢复，渲染层不写 —— 见 todo_windows.rs::save_sticky_position）
     #[serde(default)]
     pub sticky_board_pos: Option<Pos>,
 }
@@ -80,7 +89,12 @@ fn default_true() -> bool {
 
 impl Default for TodoSettings {
     fn default() -> Self {
-        TodoSettings { badge_visible: true, window_always_on_top: true, sticky_board_pos: None }
+        TodoSettings {
+            badge_visible: true,
+            window_always_on_top: true,
+            manual_sort: false,
+            sticky_board_pos: None,
+        }
     }
 }
 
@@ -109,7 +123,14 @@ fn new_id() -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.subsec_nanos() as u64)
         .unwrap_or(0);
-    format!("{:08x}-{:04x}-4{:03x}-{:04x}-{:012x}", (t >> 32) as u32, t as u16, n & 0xfff, salt & 0xffff, ((t << 16) ^ salt) & 0xffffffffffff)
+    format!(
+        "{:08x}-{:04x}-4{:03x}-{:04x}-{:012x}",
+        (t >> 32) as u32,
+        t as u16,
+        n & 0xfff,
+        salt & 0xffff,
+        ((t << 16) ^ salt) & 0xffffffffffff
+    )
 }
 
 /// 读待办（文件缺失/损坏 → 空列表，全新数组）
@@ -132,7 +153,10 @@ fn save_items(app: &AppHandle, items: &[TodoItem]) -> bool {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let state = TodoState { items: items.to_vec(), meta: Meta { schema_version: 1 } };
+    let state = TodoState {
+        items: items.to_vec(),
+        meta: Meta { schema_version: 1 },
+    };
     let text = match serde_json::to_string_pretty(&state) {
         Ok(t) => t,
         Err(e) => {
@@ -145,7 +169,8 @@ fn save_items(app: &AppHandle, items: &[TodoItem]) -> bool {
     if atomic.is_ok() {
         return true;
     }
-    // 回退：直写目标文件（Windows 下 rename 覆盖偶发失败）
+    // 回退：直写目标文件（Windows 下 rename 覆盖偶发失败），顺手删掉残留的 tmp
+    let _ = std::fs::remove_file(&tmp);
     match std::fs::write(&path, &text) {
         Ok(()) => true,
         Err(e) => {
@@ -167,18 +192,23 @@ pub fn load_settings(app: &AppHandle) -> TodoSettings {
 
 pub fn update_settings(app: &AppHandle, patch: &serde_json::Value) -> TodoSettings {
     let mut next = load_settings(app);
+    log::info!("todo update_settings: {patch}");
     if let Some(v) = patch.get("badgeVisible").and_then(|v| v.as_bool()) {
         next.badge_visible = v;
     }
     if let Some(v) = patch.get("windowAlwaysOnTop").and_then(|v| v.as_bool()) {
         next.window_always_on_top = v;
     }
+    if let Some(v) = patch.get("manualSort").and_then(|v| v.as_bool()) {
+        next.manual_sort = v;
+    }
     if let Some(pos) = patch.get("stickyBoardPos") {
         if pos.is_null() {
             next.sticky_board_pos = None;
-        } else if let (Some(x), Some(y)) =
-            (pos.get("x").and_then(|v| v.as_f64()), pos.get("y").and_then(|v| v.as_f64()))
-        {
+        } else if let (Some(x), Some(y)) = (
+            pos.get("x").and_then(|v| v.as_f64()),
+            pos.get("y").and_then(|v| v.as_f64()),
+        ) {
             next.sticky_board_pos = Some(Pos { x, y });
         }
     }
@@ -194,7 +224,10 @@ pub fn update_settings(app: &AppHandle, patch: &serde_json::Value) -> TodoSettin
 
 /// 未完成待办数（角标口径：type==='todo' && !done；memo 不计）
 pub fn incomplete_todo_count(app: &AppHandle) -> usize {
-    load_items(app).iter().filter(|i| i.kind == "todo" && !i.done).count()
+    load_items(app)
+        .iter()
+        .filter(|i| i.kind == "todo" && !i.done)
+        .count()
 }
 
 /// 完成态待办自动取消贴屏（对齐 ensureDoneUnpins）
@@ -217,16 +250,31 @@ pub fn create(app: &AppHandle, input: &serde_json::Value) -> Vec<TodoItem> {
     let now = now_ms();
     let item = TodoItem {
         id: new_id(),
-        kind: input.get("type").and_then(|v| v.as_str()).unwrap_or("todo").to_string(),
-        title: input.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        content: input.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        kind: input
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("todo")
+            .to_string(),
+        title: input
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        content: input
+            .get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
         priority: input
             .get("priority")
             .and_then(|v| v.as_str())
             .filter(|p| PRIORITIES.contains(p))
             .unwrap_or("medium")
             .to_string(),
-        reminder: input.get("reminder").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        reminder: input
+            .get("reminder")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
         reminder_fired: false,
         done: input.get("done").and_then(|v| v.as_bool()).unwrap_or(false),
         pinned: false,
@@ -235,6 +283,12 @@ pub fn create(app: &AppHandle, input: &serde_json::Value) -> Vec<TodoItem> {
         created_at: now,
         updated_at: now,
     };
+    log::info!(
+        "todo create: id={} type={} title={}",
+        item.id,
+        item.kind,
+        item.title
+    );
     items.insert(0, item);
     persist(app, items)
 }
@@ -280,12 +334,18 @@ pub fn update(app: &AppHandle, id: &str, patch: &serde_json::Value) -> Vec<TodoI
         ensure_done_unpins(it);
     }
     if !found {
+        log::warn!("todo update: id={id} 不存在，忽略");
         return items; // ID 不存在：静默返回原列表，不写盘
     }
+    log::info!(
+        "todo update: id={id}（{} 项变更）",
+        patch.as_object().map(|o| o.len()).unwrap_or(0)
+    );
     persist(app, items)
 }
 
 pub fn delete(app: &AppHandle, id: &str) -> Vec<TodoItem> {
+    log::info!("todo delete: id={id}");
     let mut items = load_items(app);
     items.retain(|i| i.id != id);
     persist(app, items)
@@ -306,21 +366,26 @@ pub fn toggle_done(app: &AppHandle, id: &str) -> Vec<TodoItem> {
     if !changed {
         return items;
     }
+    log::info!("todo toggle_done: id={id}");
     persist(app, items)
 }
-
-/// togglePin：新贴屏时待办自动回到未完成；取消贴屏保留坐标
 pub fn toggle_pin(app: &AppHandle, id: &str) -> Vec<TodoItem> {
     toggle_pin_with_pos(app, id, None)
 }
 
-pub fn toggle_pin_with_pos(app: &AppHandle, id: &str, initial: Option<(f64, f64)>) -> Vec<TodoItem> {
+pub fn toggle_pin_with_pos(
+    app: &AppHandle,
+    id: &str,
+    initial: Option<(f64, f64)>,
+) -> Vec<TodoItem> {
     let mut items = load_items(app);
+    let mut new_pinned = false;
     for it in items.iter_mut() {
         if it.id != id {
             continue;
         }
         it.pinned = !it.pinned;
+        new_pinned = it.pinned;
         if it.pinned {
             if let Some((x, y)) = initial {
                 it.pin_x = Some(x.round());
@@ -332,10 +397,49 @@ pub fn toggle_pin_with_pos(app: &AppHandle, id: &str, initial: Option<(f64, f64)
         }
         it.updated_at = now_ms();
     }
+    log::info!("todo toggle_pin: id={id} → pinned={new_pinned}");
     persist(app, items)
 }
+/// 全量重排（待办窗口拖动排序）：按传入 id 顺序重排整个列表。
+/// 没出现的 id 按原相对顺序补尾（数据同步间隙兜底），多余的忽略；顺序没变不写盘。
+pub fn reorder_all(app: &AppHandle, ordered_ids: &[String]) -> Vec<TodoItem> {
+    let items = load_items(app);
+    let (reordered, changed) = apply_order(items, ordered_ids);
+    if !changed {
+        return reordered;
+    }
+    log::info!("todo reorder_all: {} 项重排", ordered_ids.len());
+    persist(app, reordered)
+}
 
-/// 便签板 ✕：仅 todo → done=true + pinned=false
+/// 纯逻辑：按 want 序重排全部条目。want 里多余的 id 忽略、漏掉的按原相对顺序补尾，
+/// 重复 id 只保留首个（页面传来的顺序，防御性去重避免同一项写两份）。
+fn apply_order(items: Vec<TodoItem>, ordered_ids: &[String]) -> (Vec<TodoItem>, bool) {
+    let current: Vec<String> = items.iter().map(|i| i.id.clone()).collect();
+    let mut want: Vec<String> = ordered_ids
+        .iter()
+        .filter(|id| current.contains(id))
+        .cloned()
+        .collect();
+    let mut seen = std::collections::HashSet::new();
+    want.retain(|id| seen.insert(id.clone()));
+    for id in &current {
+        if !want.contains(id) {
+            want.push(id.clone());
+        }
+    }
+    if want == current {
+        return (items, false);
+    }
+    let by_id: std::collections::HashMap<&str, &TodoItem> =
+        items.iter().map(|i| (i.id.as_str(), i)).collect();
+    let ordered: Vec<TodoItem> = want
+        .iter()
+        .filter_map(|id| by_id.get(id.as_str()).map(|it| (*it).clone()))
+        .collect();
+    (ordered, true)
+}
+
 #[allow(dead_code)] // 便签板 ✕ 经事件转发调用（P3）
 pub fn complete(app: &AppHandle, id: &str) -> Vec<TodoItem> {
     let mut items = load_items(app);
@@ -379,10 +483,17 @@ pub fn compute_due_reminders(items: &[TodoItem], now_iso: &str) -> Vec<TodoItem>
     items
         .iter()
         .filter(|it| {
-            it.reminder.as_deref().map(|r| !r.is_empty()).unwrap_or(false)
+            it.reminder
+                .as_deref()
+                .map(|r| !r.is_empty())
+                .unwrap_or(false)
                 && !it.reminder_fired
                 && !(it.kind == "todo" && it.done)
-                && it.reminder.as_deref().map(|r| r <= now_iso).unwrap_or(false)
+                && it
+                    .reminder
+                    .as_deref()
+                    .map(|r| r <= now_iso)
+                    .unwrap_or(false)
         })
         .cloned()
         .collect()
@@ -427,8 +538,17 @@ pub fn strip_html(html: &str) -> String {
     }
     // 3) 闭合块级标签 → 空格
     for pat in [
-        "</p>", "</div>", "</h1>", "</h2>", "</h3>", "</h4>", "</h5>", "</h6>", "</li>",
-        "</blockquote>", "</tr>",
+        "</p>",
+        "</div>",
+        "</h1>",
+        "</h2>",
+        "</h3>",
+        "</h4>",
+        "</h5>",
+        "</h6>",
+        "</li>",
+        "</blockquote>",
+        "</tr>",
     ] {
         s = s.replace(pat, " ");
     }
@@ -564,6 +684,20 @@ pub async fn todo_toggle_pin(app: AppHandle, id: String) -> Vec<TodoItem> {
     items
 }
 
+/// 待办窗口拖动排序：页面拖完传期望的全量顺序，落盘后走统一副作用
+/// （贴屏板顺序 = 数据顺序的 pinned 子序列，主列表重排后轮播顺序保持一致）。
+/// 拖动排序只在手动模式下有意义：首次拖动服务端自动持久化 manualSort（页面只翻
+/// 内存态，不落盘 —— 重启后靠这里保证「我的排列还在」）。
+#[tauri::command]
+pub async fn todo_reorder(app: AppHandle, ids: Vec<String>) -> Vec<TodoItem> {
+    let items = reorder_all(&app, &ids);
+    if !load_settings(&app).manual_sort {
+        update_settings(&app, &serde_json::json!({ "manualSort": true }));
+    }
+    crate::modules::windows::todo_windows::after_todo_change(&app);
+    items
+}
+
 #[tauri::command]
 pub fn todo_get_settings(app: AppHandle) -> TodoSettings {
     load_settings(&app)
@@ -602,19 +736,84 @@ mod tests {
     fn due_reminder_requires_all_four_conditions() {
         let now = "2026-09-17T12:00:00.000Z";
         // 到期（四条件全满足）
-        assert_eq!(compute_due_reminders(&[item(Some("2026-09-17T11:00:00.000Z"), false, "todo", false)], now).len(), 1);
+        assert_eq!(
+            compute_due_reminders(
+                &[item(Some("2026-09-17T11:00:00.000Z"), false, "todo", false)],
+                now
+            )
+            .len(),
+            1
+        );
         // 边界：恰好等于 now 也触发（<= 语义）
-        assert_eq!(compute_due_reminders(&[item(Some(now), false, "todo", false)], now).len(), 1);
+        assert_eq!(
+            compute_due_reminders(&[item(Some(now), false, "todo", false)], now).len(),
+            1
+        );
         // 未到期
-        assert_eq!(compute_due_reminders(&[item(Some("2026-09-17T13:00:00.000Z"), false, "todo", false)], now).len(), 0);
+        assert_eq!(
+            compute_due_reminders(
+                &[item(Some("2026-09-17T13:00:00.000Z"), false, "todo", false)],
+                now
+            )
+            .len(),
+            0
+        );
         // 已触发
-        assert_eq!(compute_due_reminders(&[item(Some("2026-09-17T11:00:00.000Z"), true, "todo", false)], now).len(), 0);
+        assert_eq!(
+            compute_due_reminders(
+                &[item(Some("2026-09-17T11:00:00.000Z"), true, "todo", false)],
+                now
+            )
+            .len(),
+            0
+        );
         // 已完成的待办
-        assert_eq!(compute_due_reminders(&[item(Some("2026-09-17T11:00:00.000Z"), false, "todo", true)], now).len(), 0);
+        assert_eq!(
+            compute_due_reminders(
+                &[item(Some("2026-09-17T11:00:00.000Z"), false, "todo", true)],
+                now
+            )
+            .len(),
+            0
+        );
         // 已完成的备忘：memo 无 done 语义，仍触发
-        assert_eq!(compute_due_reminders(&[item(Some("2026-09-17T11:00:00.000Z"), false, "memo", true)], now).len(), 1);
+        assert_eq!(
+            compute_due_reminders(
+                &[item(Some("2026-09-17T11:00:00.000Z"), false, "memo", true)],
+                now
+            )
+            .len(),
+            1
+        );
         // 无 reminder
-        assert_eq!(compute_due_reminders(&[item(None, false, "todo", false)], now).len(), 0);
+        assert_eq!(
+            compute_due_reminders(&[item(None, false, "todo", false)], now).len(),
+            0
+        );
+    }
+
+    #[test]
+    fn reorder_all_follows_given_order() {
+        let mut mk = |id: &str| -> TodoItem {
+            let mut it = item(None, false, "todo", false);
+            it.id = id.into();
+            it
+        };
+        let items = vec![mk("a"), mk("b"), mk("c")];
+
+        // 正常重排
+        let (out, changed) = apply_order(items.clone(), &["c".into(), "a".into(), "b".into()]);
+        assert!(changed);
+        assert_eq!(out.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), ["c", "a", "b"]);
+
+        // 重复 id 去重 + 漏掉的补尾（b 没传，按原相对顺序垫底）
+        let (out, changed) = apply_order(items.clone(), &["b".into(), "b".into()]);
+        assert!(changed);
+        assert_eq!(out.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), ["b", "a", "c"]);
+
+        // 全量同序：不报变化
+        let (_, changed) = apply_order(items, &["a".into(), "b".into(), "c".into()]);
+        assert!(!changed);
     }
 
     #[test]

@@ -1,11 +1,24 @@
 // src/views/AboutView.vue
 // 关于视图 —— 独立小窗（hash 路由 /about），样式沿用 Electron 版关于页的拟态风格
 <script setup lang="ts">
+import { ref, onMounted } from 'vue'
 import { t } from '../stores/i18n'
 
-function close() { window.electronAPI.closeAboutWindow() }
+// 版本号从 Rust 侧取（tauri.conf.json 的 package.version）；
+// 之前模板直接引用未定义的 appVersion，页面版本号一直空白。
+const appVersion = ref('')
+
+onMounted(async () => {
+  try {
+    appVersion.value = await window.muerzhiAPI.getAppVersion()
+  } catch {
+    appVersion.value = ''
+  }
+})
+
+function close() { window.muerzhiAPI.closeAboutWindow() }
 function openRepo() {
-  window.electronAPI.openExternal('https://github.com/CKKLIN/MUERZHI-Multi-functional-AI-Floating-Ball')
+  window.muerzhiAPI.openExternal('https://github.com/CKKLIN/MUERZHI-Multi-functional-AI-Floating-Ball')
 }
 </script>
 

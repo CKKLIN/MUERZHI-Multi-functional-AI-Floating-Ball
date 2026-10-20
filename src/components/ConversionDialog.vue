@@ -21,14 +21,14 @@ const gifPath = ref('')
 
 function handleOpenFolder() {
   if (gifPath.value) {
-    window.electronAPI.openFileLocation(gifPath.value)
+    window.muerzhiAPI.openFileLocation(gifPath.value)
   }
 }
 
 let cleanup: (() => void) | null = null
 
 onMounted(async () => {
-  cleanup = window.electronAPI.onConversionProgress((p) => {
+  cleanup = window.muerzhiAPI.onConversionProgress((p) => {
     progress.value = p.percent
     statusText.value = t('convert.progress', { n: Math.round(p.percent) })
   })
@@ -38,7 +38,7 @@ onMounted(async () => {
 
     statusText.value = t('convert.startDots')
 
-    const result = await window.electronAPI.convertToGif(props.filePath, outputPath, {
+    const result = await window.muerzhiAPI.convertToGif(props.filePath, outputPath, {
       width: 480,
       fps: 10,
     })
@@ -49,7 +49,7 @@ onMounted(async () => {
       statusText.value = t('convert.doneEx')
       progress.value = 100
 
-      const size = await window.electronAPI.getFileSize(outputPath)
+      const size = await window.muerzhiAPI.getFileSize(outputPath)
       store.addRecording({
         id: crypto.randomUUID(),
         filePath: outputPath,

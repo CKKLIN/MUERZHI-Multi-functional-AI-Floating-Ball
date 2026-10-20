@@ -25,6 +25,7 @@ pub fn set_floating_ball_settings(app: AppHandle, patch: Value) -> Value {
     let current = BallSettings::load(&app);
     let locale_changed = patch.get("locale").is_some();
     let open_at_login_changed = patch.get("openAtLogin").is_some();
+    log::info!("set_floating_ball_settings: {patch}（openAtLogin={open_at_login_changed}, locale={locale_changed}）");
 
     let next = current.merged_with(&patch);
     if let Err(e) = next.save(&app) {
@@ -50,11 +51,11 @@ pub fn set_floating_ball_settings(app: AppHandle, patch: Value) -> Value {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-struct AgentSettings {
+pub struct AgentSettings {
     #[serde(default)]
-    auto_allow: bool,
+    pub auto_allow: bool,
     #[serde(default)]
-    auto_allow_sessions: Vec<String>,
+    pub auto_allow_sessions: Vec<String>,
     #[serde(default = "default_card_expire_enabled")]
     card_expire_enabled: bool,
     #[serde(default = "default_card_expire_seconds")]
@@ -103,8 +104,15 @@ pub fn agent_get_auto_allow(app: AppHandle) -> bool {
     AgentSettings::load(&app).auto_allow
 }
 
+/// 供 agent/server 的自动审批判定用（push_card 没有 AppHandle 参数）：
+/// 返回全局开关 + 会话白名单快照
+pub fn agent_auto_allow_snapshot(app: &AppHandle) -> AgentSettings {
+    AgentSettings::load(app)
+}
+
 #[tauri::command]
 pub fn agent_set_auto_allow(app: AppHandle, enabled: bool) {
+    log::info!("agent_set_auto_allow: {enabled}");
     let mut s = AgentSettings::load(&app);
     s.auto_allow = enabled;
     s.save(&app);
@@ -116,7 +124,12 @@ pub fn agent_get_auto_allow_sessions(app: AppHandle) -> Vec<String> {
 }
 
 #[tauri::command]
-pub fn agent_set_auto_allow_session(app: AppHandle, sessionId: String, enabled: bool) -> Vec<String> {
+pub fn agent_set_auto_allow_session(
+    app: AppHandle,
+    sessionId: String,
+    enabled: bool,
+) -> Vec<String> {
+    log::info!("agent_set_auto_allow_session: {sessionId} → {enabled}");
     let mut s = AgentSettings::load(&app);
     if enabled {
         if !s.auto_allow_sessions.contains(&sessionId) {
@@ -143,12 +156,21 @@ pub fn agent_get_card_expiry(app: AppHandle) -> Value {
 
 #[tauri::command]
 pub fn agent_set_card_expiry(app: AppHandle, enabled: bool, seconds: u64) {
+    log::info!("agent_set_card_expiry: enabled={enabled}, seconds={seconds}");
     let mut s = AgentSettings::load(&app);
     s.card_expire_enabled = enabled;
     // 对齐 agent-bridge.ts clamp [10, 1800]
     s.card_expire_seconds = seconds.clamp(10, 1800);
     s.save(&app);
-    // server.restartHeadTimer() 的等价动作在 P3 agent-server 落地时接
+    // 落盘后立即作用到运行中的队首计时器（对齐 agent-bridge.ts 的 server.restartHeadTimer()）。
+    // 只落盘不重启计时 → 设置改了不生效，必须重启整个应用才对得上（实测确认过这个现象）。
+    // enabled=false → ms=0 表示永不过期，与 bridge::start 的折算口径一致。
+    let ms = if s.card_expire_enabled {
+        s.card_expire_seconds * 1000
+    } else {
+        0
+    };
+    crate::modules::agent::server::AgentServer::global().set_head_timeout_ms(ms);
 }
 
 // ---------- ai-island-settings ----------
@@ -184,9 +206,23 @@ impl AiIslandSettings {
     }
 }
 
-/// 供窗口模块读取横条态（避免各自解析文件）
+/// flat 的内存缓存（0=未加载 1=false 2=true）：resize_ai_island 在**每次 agent 状态
+/// 广播**都会调用（hook 事件 → notify → applyState → resizeIsland），原实现每次
+/// 都读盘 + 反序列化 —— 每次工具调用两次事件就是两次读盘。
+static AI_ISLAND_FLAT_CACHE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// 供窗口模块读取横条态（避免各自解析文件；首次读盘后走内存缓存）
 pub fn ai_island_flat(app: &AppHandle) -> bool {
-    AiIslandSettings::load(app).flat
+    use std::sync::atomic::Ordering;
+    match AI_ISLAND_FLAT_CACHE.load(Ordering::SeqCst) {
+        1 => false,
+        2 => true,
+        _ => {
+            let v = AiIslandSettings::load(app).flat;
+            AI_ISLAND_FLAT_CACHE.store(if v { 2 } else { 1 }, Ordering::SeqCst);
+            v
+        }
+    }
 }
 
 #[tauri::command]
@@ -199,8 +235,11 @@ pub fn get_ai_island_settings(app: AppHandle) -> Value {
 pub fn set_ai_island_settings(app: AppHandle, patch: Value) -> Value {
     let mut s = AiIslandSettings::load(&app);
     if let Some(v) = patch.get("flat").and_then(|v| v.as_bool()) {
+        log::info!("set_ai_island_settings: flat={v}");
         s.flat = v;
         s.save(&app);
+        // 同步内存缓存（resize_ai_island 的热点读走缓存，不再读盘）
+        AI_ISLAND_FLAT_CACHE.store(if v { 2 } else { 1 }, std::sync::atomic::Ordering::SeqCst);
         // 作用到活动岛（对齐 applyAiIslandSettings）
         crate::modules::windows::ai_island::push_flat(&app, v);
     }
@@ -211,21 +250,21 @@ pub fn set_ai_island_settings(app: AppHandle, patch: Value) -> Value {
 
 #[tauri::command]
 pub fn show_ai_window(app: AppHandle) {
+    log::info!("show_ai_window");
     windows::open_or_focus(&app, "ai", "/ai");
 }
 
 #[tauri::command]
 pub fn show_settings_window(app: AppHandle) {
+    log::info!("show_settings_window");
     windows::open_or_focus(&app, "settings", "/settings");
 }
 
 #[tauri::command]
 pub fn show_main_window(app: AppHandle) {
-    use tauri::Manager;
-    if let Some(win) = app.get_webview_window("main") {
-        let _ = win.show();
-        let _ = win.set_focus();
-    }
+    log::info!("show_main_window");
+    // 立即显示；页面加载期由 index.html 的加载占位兜底（见 windows::show_main_window 文档）
+    windows::show_main_window(&app);
 }
 
 // ---------- 托盘气泡通知（对齐 tray.displayBalloon）----------
@@ -249,10 +288,12 @@ pub fn balloon(title: &str, body: &str) {
 
 #[tauri::command]
 pub fn notify_conversion_start() {
+    log::info!("notify_conversion_start");
     balloon("二支录制", "视频转换中…");
 }
 
 #[tauri::command]
 pub fn notify_conversion_done(filePath: String) {
+    log::info!("notify_conversion_done: {filePath}");
     balloon("二支录制", &format!("转换完成：{filePath}"));
 }

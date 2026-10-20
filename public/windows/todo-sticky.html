@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <!-- 贴屏便签板 — 移植自 todo-sticky.ts buildBoardHtml()
-     单个合并窗口：pinned 待办轮播（圆点/箭头切换），点便签打开待办，✕ 取消贴屏。
-     Rust 经 window.renderNotes(list, idx) 推数据；点按经 emit('todo-sticky-unpin'/'todo-sticky-open') 回传。 -->
+     单个合并窗口：pinned 待办轮播（圆点/箭头切换），点便签打开待办，✓ 已完成，✕ 取消贴屏。
+     排序在待办主窗口拖动，板上顺序跟随数据。Rust 经 window.renderNotes(list, idx) 推数据；
+     点按经 emit('todo-sticky-unpin'/'todo-sticky-done'/'todo-sticky-open') 回传。 -->
 <html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box;user-select:none}
 html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-family:'Segoe UI',system-ui,sans-serif}
@@ -12,20 +13,26 @@ html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-fam
 .counter{margin-left:auto;font-size:9px;color:#b6b7c1;font-variant-numeric:tabular-nums}
 .close{width:22px;height:22px;border:none;border-radius:6px;background:transparent;color:#9a9aa6;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .close:hover{background:#eef0f5;color:#1d1d1f}
+#doneBtn:hover{background:#e8f6ee;color:#16a34a}
 .note{flex:1;min-height:0;display:flex;position:relative;cursor:pointer}
 .accent{position:absolute;left:0;top:0;bottom:0;width:3px;background:#60a5fa}
 .in{padding:7px 10px 4px 13px;display:flex;flex-direction:column;min-width:0;width:100%}
 .t{font-size:12px;font-weight:700;color:#1d1d1f;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .b{font-size:11px;color:#6e6e76;line-height:1.4;margin-top:2px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+/* 正文可选中复制（全局 * 上是 user-select:none，只对文本节点放开）；拖选后松手不触发「打开待办」 */
+.t,.b{user-select:text;-webkit-user-select:text;cursor:text}
 .board.todo .t{white-space:normal;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;word-break:break-word}
-.tip{position:absolute;top:4px;left:12px;right:6px;z-index:8;max-height:calc(100% - 8px);overflow:auto;padding:6px 8px;border-radius:8px;background:rgba(29,29,31,0.94);color:#fff;font-size:11px;line-height:1.5;white-space:normal;word-break:break-word;box-shadow:0 4px 12px rgba(0,0,0,0.25);opacity:0;pointer-events:none;transform:translateY(-3px);transition:opacity .15s ease,transform .15s ease}
+/* 全文提示改为可交互（pointer-events:auto）：截断的全文直接在这里选中复制，
+   悬停保持可见（tip 是 note 子元素，:hover 不断）；点击/滚轮经冒泡或直达照常工作 */
+.tip{position:absolute;top:4px;left:12px;right:6px;z-index:8;max-height:calc(100% - 8px);overflow:auto;padding:6px 8px;border-radius:8px;background:rgba(29,29,31,0.94);color:#fff;font-size:11px;line-height:1.5;white-space:normal;word-break:break-word;box-shadow:0 4px 12px rgba(0,0,0,0.25);opacity:0;pointer-events:auto;user-select:text;-webkit-user-select:text;cursor:text;transform:translateY(-3px);transition:opacity .15s ease,transform .15s ease}
 .tip::-webkit-scrollbar{width:3px}
 .tip::-webkit-scrollbar-track{background:transparent}
 .tip::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.28);border-radius:2px}
 .tip::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.45)}
 .note:hover .tip{opacity:1;transform:none}
 .tip.none{display:none}
-.open-hint{margin-top:auto;align-self:flex-end;font-size:8.5px;color:#c6c7d1}
+.hint-row{margin-top:auto;display:flex;align-items:center;justify-content:flex-end}
+.open-hint{font-size:8.5px;color:#c6c7d1}
 .board.done .t{text-decoration:line-through;color:#9a9aa6}
 .board.done .b{color:#a8a8b0}
 .foot{height:26px;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 6px;flex-shrink:0;border-top:1px solid #f0f1f5}
@@ -39,14 +46,17 @@ html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-fam
     <img class="logo" src="/logo.png">
     <div class="brand">MUERZHI</div>
     <div class="counter" id="counter"></div>
-    <button class="close" id="closeBtn">✕</button>
+    <button class="close" id="doneBtn" title="标记完成">✓</button>
+    <button class="close" id="closeBtn" title="取消贴屏">✕</button>
   </div>
   <div class="note" id="note">
     <div class="accent" id="accent"></div>
     <div class="in">
       <div class="t" id="t"></div>
       <div class="b" id="b"></div>
-      <div class="open-hint" id="openHint">打开待办</div>
+      <div class="hint-row">
+        <div class="open-hint" id="openHint">打开待办</div>
+      </div>
     </div>
     <div class="tip none" id="tip"></div>
   </div>
@@ -60,7 +70,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-fam
 const emit = window.__TAURI__.event.emit
 const invoke = window.__TAURI__.core.invoke
 
-let I18N = { noContent: '（无内容）', open: '打开待办', unpin: '取消贴屏' }
+let I18N = { noContent: '（无内容）', open: '打开待办', unpin: '取消贴屏', markDone: '标记完成' }
 let NOTES = [], IDX = 0, LAST = null
 
 invoke('get_app_i18n').then((b) => {
@@ -69,8 +79,11 @@ invoke('get_app_i18n').then((b) => {
     noContent: m['todo.noContent'] || I18N.noContent,
     open: m['todo.open'] || I18N.open,
     unpin: m['todo.unpin'] || I18N.unpin,
+    markDone: m['todo.markDone'] || I18N.markDone,
   }
   document.getElementById('openHint').textContent = I18N.open
+  document.getElementById('doneBtn').title = I18N.markDone
+  document.getElementById('closeBtn').title = I18N.unpin
   draw()
 }).catch(() => {})
 
@@ -87,16 +100,25 @@ function isTrunc(el) {
   if (!el || el.style.display === 'none') return false
   return el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1
 }
+// 拖选正文后松手仍会冒出 click —— 有选区时不算「点便签」，别拉起待办窗口
+function hadSelection() {
+  const sel = window.getSelection()
+  return !!sel && String(sel).length > 0
+}
 
+document.getElementById('doneBtn').addEventListener('click', (e) => { e.stopPropagation(); act('done') })
 document.getElementById('closeBtn').addEventListener('click', (e) => { e.stopPropagation(); act('unpin') })
-document.getElementById('note').addEventListener('click', () => act('open'))
+// 拖选正文松手仍会冒 click —— 有选区时不算「点便签」，别拉起待办窗口
+document.getElementById('note').addEventListener('click', () => { if (!hadSelection()) act('open') })
 document.getElementById('prev').addEventListener('click', () => go(-1))
 document.getElementById('next').addEventListener('click', () => go(1))
 
-// 便签卡内全文提示：滚轮滚动（tip 是 pointer-events:none 装饰层，转发给 tip）
+// 便签卡内全文提示滚动：tip 落在 tip 上时原生滚动（tip 已可交互），这里只兜底转发
+// 「tip 没盖住、但 tip 本身可滚」的区域（tip 只盖内容区上半截时鼠标在下半截）
 document.getElementById('note').addEventListener('wheel', function (e) {
   const tip = document.getElementById('tip')
   if (!tip || tip.className.indexOf('none') >= 0) return
+  if (e.target === tip) return
   if (tip.scrollHeight > tip.clientHeight) {
     tip.scrollTop += e.deltaY
     e.preventDefault()
@@ -150,4 +172,9 @@ function renderNotes(list, idx) {
   draw()
 }
 window.renderNotes = renderNotes
+
+// 页面就绪上报：Rust 收到后补推一次 pinned 列表。
+// 建窗后立刻 eval 时页面还没加载完，`if (window.renderNotes)` 为假会把首推数据吞掉
+// （对齐 floating-ball.html 的 badge-ready 模式），否则启动时已贴屏的板子空白。
+emit('todo-sticky-ready')
 </script></body></html>

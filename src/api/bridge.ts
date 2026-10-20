@@ -1,6 +1,6 @@
-// electronAPI → Tauri 桥
-// 目标：在 Tauri/WebView2 环境下提供与 electron/preload/index.ts 完全同名的 window.electronAPI，
-// 使 src/ 下渲染层代码零改动。
+// muerzhiAPI → Tauri 桥
+// 目标：渲染层统一通过 window.muerzhiAPI 调用后端能力（invoke + 事件订阅）；
+// 原生 HTML 窗口页直接用 window.__TAURI__。
 //
 // 实现约定：
 // - invoke('<camel-command>', { args })：Rust 侧命令用 snake_case，invoke 用 camelCase 参数名
@@ -12,6 +12,7 @@
 
 import { invoke as tauriInvoke } from '@tauri-apps/api/core'
 import { listen as tauriListen, type UnlistenFn } from '@tauri-apps/api/event'
+import log from '../log'
 
 type Progress = { percent: number; targetSize: number }
 
@@ -23,8 +24,58 @@ type CaptureSourceLike = {
   thumbnail: string
 }
 
+// 每一次 invoke 都留痕（命令名 + 参数 + 结果/错误）：渲染层视角的完整操作时间线，
+// 与 Rust 侧 log::info! 落同一份日志文件。参数可能很大（writeFile 的字节列表、
+// saveRecordings 的全量历史）——按 300 字符截断，够定位调用又不刷屏。
+function brief(v: unknown): string {
+  if (v === undefined) return ''
+  try {
+    const s = JSON.stringify(v)
+    if (s === undefined) return String(v)
+    return s.length > 300 ? `${s.slice(0, 300)}…(${s.length})` : s
+  } catch {
+    return String(v)
+  }
+}
+
+const TRACE_ARGS: Record<string, (args?: Record<string, unknown>) => unknown> = {
+  // 二进制/大对象参数不落日志（writeFile 的 data 是几十万长度的数字数组）
+  write_file: (args) => ({ filePath: args?.filePath, bytes: (args?.data as unknown[])?.length }),
+  read_file: (args) => ({ filePath: args?.filePath }),
+  append_file: (args) => ({ filePath: args?.filePath, bytes: (args?.data as unknown[])?.length, reset: args?.reset }),
+  load_recordings: () => undefined,
+  save_recordings: (args) => ({ count: (args?.recordings as unknown[])?.length }),
+}
+
+// 轮询/查询类命令：只在出错时留日志（成功打点每 5s 一条，会把日志刷成噪声）
+const QUIET_COMMANDS = new Set([
+  'agent_get_status', // AiSettingsPanel 5s 轮询
+  'recording_get_status',
+  'get_app_i18n',
+  'get_floating_ball_settings',
+  'todo_get',
+  'todo_get_settings',
+  'get_ai_island_settings',
+  'get_app_version',
+  // 试音电平以 20Hz 上报（useAudioCapture.updateLevel）：静默路径上每条 invoke 打 2 条
+  // 日志、每条日志又一次 plugin-log IPC + 文件追加，试音期间约 40 条/秒写盘
+  'emit_preview_audio_level',
+])
+
 async function cmd<T>(name: string, args?: Record<string, unknown>): Promise<T> {
-  return tauriInvoke(name, args) as Promise<T>
+  const quiet = QUIET_COMMANDS.has(name)
+  if (!quiet) {
+    const detail = TRACE_ARGS[name] ? brief(TRACE_ARGS[name](args)) : brief(args)
+    log.info(`[invoke] ${name} ${detail}`)
+  }
+  try {
+    const result = await tauriInvoke(name, args)
+    if (!quiet) log.info(`[invoke] ${name} ✓`)
+    return result as T
+  } catch (e) {
+    log.error(`[invoke] ${name} ✗`, e)
+    throw e
+  }
 }
 
 // 事件订阅统一封装：渲染层拿到同步的退订函数（Electron 语义），内部异步解绑
@@ -41,7 +92,7 @@ function on(channel: string, handler: (payload: unknown) => void): () => void {
   }
 }
 
-const electronAPI = {
+const muerzhiAPI = {
   // ===== Screen capture（P4：Rust 侧 DXGI 抓帧出缩略图；sourceId 为 `screen:下标`）=====
   getSources: (types?: string[]) => cmd<CaptureSourceLike[]>('get_sources', { types }),
   getSystemAudioSources: () => cmd<{ id: string; name: string }[]>('get_system_audio_sources'),
@@ -98,8 +149,12 @@ const electronAPI = {
       data: Array.from(new Uint8Array(data)),
       filePath,
     }),
+  // Windows 上 wry 只拦截 `http://local-video.*`（自定义协议的官方映射形态，
+  // 与 @tauri-apps/api 的 convertFileSrc 同构）；直接用 local-video:/// 开头
+  // 不匹配 WebResourceRequested 的过滤器 → 请求无人应答 → 播放黑屏。
+  // 整路径 encodeURIComponent，Rust 侧 parse_path 解码回原路径。
   toLocalVideoUrl: (filePath: string) =>
-    `local-video:///${filePath.replace(/\\/g, '/')}`,
+    `http://local-video.localhost/${encodeURIComponent(filePath.replace(/\\/g, '/'))}`,
   readFile: (filePath: string) => cmd<ArrayBuffer>('read_file', { filePath }),
   fileExists: (filePath: string) => cmd<boolean>('file_exists', { filePath }),
   deleteFile: (filePath: string) => cmd<boolean>('delete_file', { filePath }),
@@ -156,12 +211,22 @@ const electronAPI = {
       console.error('openExternal failed', e)
     }
   },
+  // 用系统默认程序打开本地文件（录制历史整行点击 → 系统视频播放器）。
+  // 走 Rust 命令而非 plugin-opener 的 openPath：后者是 JS 命令，受 capabilities 的
+  // opener scope 限制，`opener:default` 不含 allow-open-path 时会静默 ForbiddenPath。
   openPath: async (filePath: string) => {
     try {
-      const { openPath } = await import('@tauri-apps/plugin-opener')
-      await openPath(filePath)
+      await cmd<void>('open_local_path', { path: filePath })
     } catch (e) {
       console.error('openPath failed', e)
+    }
+  },
+  /** 在文件管理器中打开日志目录（定位到当前日志文件；设置页「打开日志目录」用）*/
+  openLogDir: async () => {
+    try {
+      await cmd<void>('open_log_dir')
+    } catch (e) {
+      console.error('openLogDir failed', e)
     }
   },
 
@@ -203,14 +268,20 @@ const electronAPI = {
   recordingStart: (options: Record<string, unknown>) => cmd<string>('recording_start', { options }),
   recordingPause: () => cmd<void>('recording_pause'),
   recordingResume: () => cmd<void>('recording_resume'),
-  recordingStop: () => cmd<string>('recording_stop'),
+  recordingStop: () =>
+    cmd<{ outputPath: string; thumbnail?: string | null }>('recording_stop'),
+  /** 录制中开关麦克风（工具条按钮录制中保留可点）：Rust 实时增停音频段 */
+  recordingSetMic: (on: boolean) => cmd<boolean>('recording_set_mic', { on }),
+  /** 录制中开关摄像头：停/起预览窗的 MediaRecorder 分段，成品按时间窗口叠画中画 */
+  recordingSetCamera: (on: boolean, deviceId?: string) =>
+    cmd<boolean>('recording_set_camera', { on, deviceId: deviceId ?? null }),
   recordingGetStatus: () =>
     cmd<{ state: 'idle' | 'recording' | 'paused' | 'converting'; frames: number; tracks: number; elapsedSec: number }>(
       'recording_get_status',
     ),
   onRecordingState: (callback: (data: { state: string; id?: string; tracks?: number }) => void) =>
     on('recording-state', callback),
-  onRecordingStopped: (callback: (data: { id: string; outputPath: string; elapsed: number; fileName: string }) => void) =>
+  onRecordingStopped: (callback: (data: { id: string; outputPath: string; elapsed: number; fileName: string; thumbnail?: string | null }) => void) =>
     on('recording-stopped', callback),
   /** Rust 侧 WASAPI 实时电平（20Hz）——录制中主窗口被最小化时，渲染层的本地分析器拿不到数据 */
   onAudioLevels: (callback: (data: { mic: number; sys: number }) => void) =>
@@ -234,11 +305,16 @@ const electronAPI = {
         resolve(result)
       }
       offSelected = on('region-selected', (payload) => {
-        const r = payload as { x: number; y: number; width: number; height: number }
-        finish({ x: r.x, y: r.y, width: r.width, height: r.height, sourceId: 'screen:0' })
+        // sourceId 由 Rust 按选区中心所在显示器推导（screen:{下标}）：
+        // 曾硬编码 screen:0，在屏幕 2 上框选会录成屏幕 1 的内容
+        const r = payload as { x: number; y: number; width: number; height: number; sourceId?: string }
+        finish({ x: r.x, y: r.y, width: r.width, height: r.height, sourceId: r.sourceId || 'screen:0' })
       })
       offCancelled = on('region-cancelled', () => finish(null))
       tauriInvoke('start_region_select').catch(() => finish(null))
+      // 兜底：选区窗异常退出（崩溃/强关）时两个事件都到不了——不设超时的话
+      // 两个监听器与未 settle 的 Promise 永久滞留，多次触发会持续累积
+      setTimeout(() => finish(null), 120_000)
     }),
   showRegionBorder: (region: { x: number; y: number; width: number; height: number }, audioState?: { micEnabled: boolean; sysEnabled: boolean; cameraEnabled?: boolean; cameraDeviceId?: string }) =>
     cmd<void>('show_region_border', { region, audioState }),
@@ -252,17 +328,21 @@ const electronAPI = {
   getAiIslandSettings: () => cmd<{ flat: boolean }>('get_ai_island_settings'),
   setAiIslandSettings: (patch: Record<string, unknown>) => cmd<{ flat: boolean }>('set_ai_island_settings', { patch }),
   hideCameraPreview: () => cmd<void>('hide_camera_preview'),
-  /** 画笔标注窗开/关（笔迹画在桌面上，由屏幕采集直接录进成品）*/
-  toggleAnnotation: (show: boolean, color?: string, width?: number) =>
-    cmd<boolean>('toggle_annotation', { show, color, width }),
-  hideAnnotation: () => cmd<void>('hide_annotation'),
   /** 摄像头预览窗当前几何（物理像素；合成画中画时换算位置用）*/
   cameraGeometry: () =>
     cmd<{ x: number; y: number; width: number; height: number } | null>('camera_geometry_cmd'),
   toggleCameraPreview: (show: boolean, cameraDeviceId?: string) => cmd<void>('toggle_camera_preview', { show, cameraDeviceId }),
   setIslandState: (state: 'idle' | 'recording' | 'paused', elapsedSeconds?: number) => cmd<void>('set_island_state', { state, elapsedSeconds }),
   updateToolbarState: (state: 'idle' | 'recording' | 'paused', elapsedSeconds?: number) => cmd<void>('update_toolbar_state', { state, elapsedSeconds }),
-  // P4：电平由 Rust 侧 WASAPI 统一推送（见 onAudioLevels），渲染层无需再上报
+  // 预览电平上报：录制中由 Rust WASAPI ticker 推；**未录制**时那条链路没人往 atomics 写，
+  // 电平恒 0，工具条音量表不动。渲染层的 WebView2 试音流自己算 RMS，经此命令转给
+  // 原生工具条/悬浮岛（见 useAudioCapture.updateLevel）。
+  emitPreviewAudioLevel: (level: number) => cmd<void>('emit_preview_audio_level', { level }),
+  // 麦克风/摄像头开关状态 → 工具条与悬浮岛按钮的点亮/熄灭。
+  // 它们的按钮亮灭是**建窗时**从 URL 初值取的，之后没有回推通道：在工具条上点开关，
+  // 按钮自己不变（用户反馈「开关时那两个按钮要有状态显示」）。
+  pushIslandAudioState: (state: { micEnabled: boolean; cameraEnabled: boolean }) =>
+    cmd<void>('push_island_audio_state', { state }),
   onToolbarAction: (callback: (action: string) => void) =>
     on('toolbar-action', callback),
 
@@ -284,6 +364,8 @@ const electronAPI = {
   // ===== Recordings persistence =====
   loadRecordings: () => cmd<unknown[]>('load_recordings'),
   saveRecordings: (recordings: unknown[]) => cmd<boolean>('save_recordings', { recordings }),
+  /** 为既有 mp4 记录补抽首帧缩略图（返回 base64 data URL；非 mp4/失败返回 null） */
+  generateThumbnail: (filePath: string) => cmd<string | null>('generate_thumbnail', { filePath }),
 
   // ===== Floating ball（P2 已实装：ball_* 命令 + floating-ball.html）=====
   showFloatingBall: () => cmd<void>('show_floating_ball'),
@@ -328,6 +410,8 @@ const electronAPI = {
   todoDelete: (id: string) => cmd<unknown[]>('todo_delete', { id }),
   todoToggleDone: (id: string) => cmd<unknown[]>('todo_toggle_done', { id }),
   todoTogglePin: (id: string) => cmd<unknown[]>('todo_toggle_pin', { id }),
+  /** 拖动排序：ids 为期望的全量顺序 */
+  todoReorder: (ids: string[]) => cmd<unknown[]>('todo_reorder', { ids }),
   onTodoFocusItem: (callback: (id: string) => void) =>
     on('todo-focus-item', callback),
   onTodoDataChanged: (callback: (items: unknown[]) => void) =>
@@ -340,7 +424,7 @@ const electronAPI = {
   todoSetSettings: (patch: Record<string, unknown>) => cmd<Record<string, unknown>>('todo_set_settings', { patch }),
 }
 
-export function installElectronApiBridge() {
-  ;(window as unknown as { electronAPI: unknown }).electronAPI = electronAPI
-  console.info('[bridge] electronAPI → Tauri 桥已注入（P0 stub 版）')
+export function installApiBridge() {
+  ;(window as unknown as { muerzhiAPI: unknown }).muerzhiAPI = muerzhiAPI
+  log.info('[bridge] muerzhiAPI → Tauri 桥已注入')
 }

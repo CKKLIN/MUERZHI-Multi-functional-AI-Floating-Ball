@@ -1,22 +1,21 @@
 {
   "name": "MUERZHI",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.1.1",
   "scripts": {
     "dev:web": "vite",
+    "dev:web:fast": "npm run build:web && vite preview --port 21047 --host 127.0.0.1 --strictPort",
     "build:web": "vite build",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
+    "dev": "tauri dev",
+    "dev:fast": "tauri dev --config src-tauri/tauri.fast.json",
+    "build": "tauri build",
     "preview": "vite preview"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
-    "@tauri-apps/plugin-autostart": "^2.5.1",
     "@tauri-apps/plugin-dialog": "^2.7.3",
-    "@tauri-apps/plugin-global-shortcut": "^2.3.2",
     "@tauri-apps/plugin-log": "^2.9.1",
-    "@tauri-apps/plugin-notification": "^2.4.0",
     "@tauri-apps/plugin-opener": "^2.5.5"
   },
   "devDependencies": {

@@ -62,6 +62,8 @@ export interface TodoItem {
 export interface TodoSettings {
   badgeVisible: boolean
   windowAlwaysOnTop: boolean
+  /** 手动排序（拖动排序后自动开启；关闭恢复自动排序） */
+  manualSort: boolean
   stickyBoardPos: { x: number; y: number } | null
 }
 
@@ -93,7 +95,7 @@ export interface SaveDialogResult {
   filePath: string | null
 }
 
-export interface ElectronAPI {
+export interface MuerzhiAPI {
   // Screen capture
   getSources: (types?: string[]) => Promise<CaptureSource[]>
   getSystemAudioSources: () => Promise<{ id: string; name: string }[]>
@@ -137,6 +139,8 @@ export interface ElectronAPI {
   openFileLocation: (filePath: string) => Promise<void>
   openExternal: (url: string) => Promise<void>
   openPath: (filePath: string) => Promise<void>
+  /** 在文件管理器中打开日志目录（定位到当前日志文件）*/
+  openLogDir: () => Promise<void>
 
   // App info
   getAppVersion: () => Promise<string>
@@ -164,10 +168,12 @@ export interface ElectronAPI {
   recordingStart: (options: RecordingStartOptions) => Promise<string>
   recordingPause: () => Promise<void>
   recordingResume: () => Promise<void>
-  recordingStop: () => Promise<string>
+  recordingStop: () => Promise<{ outputPath: string; thumbnail?: string | null }>
+  recordingSetMic: (on: boolean) => Promise<boolean>
+  recordingSetCamera: (on: boolean, deviceId?: string) => Promise<boolean>
   recordingGetStatus: () => Promise<{ state: 'idle' | 'recording' | 'paused' | 'converting'; frames: number; tracks: number; elapsedSec: number }>
   onRecordingState: (callback: (data: { state: string; id?: string; tracks?: number }) => void) => () => void
-  onRecordingStopped: (callback: (data: { id: string; outputPath: string; elapsed: number; fileName: string }) => void) => () => void
+  onRecordingStopped: (callback: (data: { id: string; outputPath: string; elapsed: number; fileName: string; thumbnail?: string | null }) => void) => () => void
   /** Rust 侧 WASAPI 实时电平（20Hz）；主窗口最小化时本地分析器拿不到数据 */
   onAudioLevels: (callback: (data: { mic: number; sys: number }) => void) => () => void
 
@@ -177,9 +183,6 @@ export interface ElectronAPI {
   hideRegionBorder: () => Promise<void>
   hideBorderOnly: () => Promise<void>
   hideCameraPreview: () => Promise<void>
-  /** 画笔标注窗开/关（笔迹画在桌面上，由屏幕采集直接录进成品）*/
-  toggleAnnotation: (show: boolean, color?: string, width?: number) => Promise<boolean>
-  hideAnnotation: () => Promise<void>
   /** 摄像头预览窗当前几何（物理像素）*/
   cameraGeometry: () => Promise<{ x: number; y: number; width: number; height: number } | null>
   toggleCameraPreview: (show: boolean, cameraDeviceId?: string) => Promise<void>
@@ -187,6 +190,10 @@ export interface ElectronAPI {
   hideFloatingIsland: () => Promise<void>
   setIslandState: (state: 'idle' | 'recording' | 'paused', elapsedSeconds?: number) => Promise<void>
   updateToolbarState: (state: 'idle' | 'recording' | 'paused', elapsedSeconds?: number) => Promise<void>
+  /** 渲染层试音电平 → 原生工具条/悬浮岛音量表（未录制时 WASAPI 无数据，靠这条） */
+  emitPreviewAudioLevel: (level: number) => Promise<void>
+  /** 麦克风/摄像头开关状态 → 原生按钮点亮/熄灭 */
+  pushIslandAudioState: (state: { micEnabled: boolean; cameraEnabled: boolean }) => Promise<void>
   onToolbarAction: (callback: (action: string) => void) => () => void
 
   // Media devices
@@ -195,6 +202,8 @@ export interface ElectronAPI {
   // Recordings persistence
   loadRecordings: () => Promise<Recording[]>
   saveRecordings: (recordings: Recording[]) => Promise<boolean>
+  /** 为既有 mp4 记录补抽首帧缩略图（返回 base64 data URL；非 mp4/失败返回 null） */
+  generateThumbnail: (filePath: string) => Promise<string | null>
 
   // Scheduled recording
   onScheduledRecording: (callback: () => void) => () => void
@@ -281,7 +290,7 @@ export interface AgentBridgeStatus {
 
 declare global {
   interface Window {
-    electronAPI: ElectronAPI
+    muerzhiAPI: MuerzhiAPI
   }
 }
 

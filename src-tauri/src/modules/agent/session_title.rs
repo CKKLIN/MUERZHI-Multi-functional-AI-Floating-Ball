@@ -24,7 +24,9 @@ impl TitleCache {
     pub fn global() -> &'static TitleCache {
         use std::sync::OnceLock;
         static S: OnceLock<TitleCache> = OnceLock::new();
-        S.get_or_init(|| TitleCache { cache: Mutex::new(None) })
+        S.get_or_init(|| TitleCache {
+            cache: Mutex::new(None),
+        })
     }
 
     fn sessions_dir() -> PathBuf {
@@ -37,22 +39,40 @@ impl TitleCache {
     fn scan(&self) -> HashMap<String, ClaudeSessionTitle> {
         let mut map: HashMap<String, ClaudeSessionTitle> = HashMap::new();
         let dir = Self::sessions_dir();
-        let Ok(entries) = std::fs::read_dir(&dir) else { return map };
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            return map;
+        };
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) != Some("json") {
                 continue;
             }
-            let Ok(text) = std::fs::read_to_string(&path) else { continue };
-            let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else { continue };
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+                continue;
+            };
             let session_id = v.get("sessionId").and_then(|x| x.as_str()).unwrap_or("");
-            let name = v.get("name").and_then(|x| x.as_str()).unwrap_or("").trim().to_string();
+            let name = v
+                .get("name")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string();
             if session_id.is_empty() || name.is_empty() {
                 continue;
             }
-            let name_source = v.get("nameSource").and_then(|x| x.as_str()).map(|s| s.to_string());
+            let name_source = v
+                .get("nameSource")
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string());
             let started_at = v.get("startedAt").and_then(|x| x.as_i64()).unwrap_or(0);
-            let entry_new = ClaudeSessionTitle { name, name_source, started_at };
+            let entry_new = ClaudeSessionTitle {
+                name,
+                name_source,
+                started_at,
+            };
             match map.get(session_id) {
                 Some(existing) => {
                     if better(&entry_new, existing) {
@@ -80,14 +100,25 @@ impl TitleCache {
             let scanned = self.scan();
             *guard = Some((scanned, Instant::now()));
         }
-        guard.as_ref().and_then(|(m, _)| m.get(session_id)).map(|e| e.name.clone())
+        guard
+            .as_ref()
+            .and_then(|(m, _)| m.get(session_id))
+            .map(|e| e.name.clone())
     }
 }
 
 /// 择优选：真实标题优先；同为真实/占位时取 startedAt 较大者（对齐 betterEntry）
 fn better(a: &ClaudeSessionTitle, b: &ClaudeSessionTitle) -> bool {
-    let a_real = a.name_source.as_deref().map(|s| s != "derived").unwrap_or(false);
-    let b_real = b.name_source.as_deref().map(|s| s != "derived").unwrap_or(false);
+    let a_real = a
+        .name_source
+        .as_deref()
+        .map(|s| s != "derived")
+        .unwrap_or(false);
+    let b_real = b
+        .name_source
+        .as_deref()
+        .map(|s| s != "derived")
+        .unwrap_or(false);
     if a_real != b_real {
         return a_real;
     }

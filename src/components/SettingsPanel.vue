@@ -13,7 +13,7 @@ onMounted(async () => {
   // 它要的是 endpoint id，与 navigator.mediaDevices 的 deviceId **不通用**
   // （列表用旧值时会静默落到系统默认设备）。这一步只读枚举，不点亮麦克风指示灯。
   try {
-    audioDevices.value = await window.electronAPI.listAudioDevices()
+    audioDevices.value = await window.muerzhiAPI.listAudioDevices()
   } catch {
     audioDevices.value = []
   }
@@ -31,7 +31,7 @@ onMounted(async () => {
 
 
 async function selectOutputDir() {
-  const result = await window.electronAPI.showOpenDialog({
+  const result = await window.muerzhiAPI.showOpenDialog({
     title: t('settings.chooseDir'),
     defaultPath: settingsStore.outputDir,
     properties: ['openDirectory'],
@@ -47,7 +47,11 @@ function save() {
 }
 
 function showAbout() {
-  window.electronAPI.showAboutWindow()
+  window.muerzhiAPI.showAboutWindow()
+}
+
+function openLogDir() {
+  window.muerzhiAPI.openLogDir()
 }
 
 
@@ -144,15 +148,12 @@ function showAbout() {
               <span>{{ t('settings.shortcutCamera') }}</span>
               <kbd>{{ settingsStore.shortcuts.toggleCamera }}</kbd>
             </div>
-            <!-- <div class="shortcut-item">
-              <span>切换画笔</span>
-              <kbd>{{ settingsStore.shortcuts.toggleDrawing }}</kbd>
-            </div> -->
           </div>
         </div>
       </div>
 
       <div class="about-footer">
+        <button class="about-btn" @click="openLogDir">{{ t('settings.openLogDir') }}</button>
         <button class="about-btn" @click="showAbout()">{{ t('settings.about') }}</button>
       </div>
     </div>
@@ -223,6 +224,7 @@ kbd {
   padding: 16px 0;
   display: flex;
   justify-content: center;
+  gap: 10px;
   flex-shrink: 0;
 }
 

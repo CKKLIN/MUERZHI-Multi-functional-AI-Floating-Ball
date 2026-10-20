@@ -1,4 +1,4 @@
-import { ref, shallowRef } from 'vue'
+import { ref, shallowRef, onUnmounted } from 'vue'
 import { useRecordingStore } from '../stores/recording'
 import { useSettingsStore } from '../stores/settings'
 import log from '../log'
@@ -14,7 +14,7 @@ type DisplayGeom = { x: number; y: number; width: number; height: number; scale:
 
 /** 显示器几何：bounds 是物理像素；scale 用来把选区（逻辑像素）换算成物理像素 */
 async function displayGeom(displayIndex: number): Promise<DisplayGeom> {
-  const displays = await window.electronAPI.getAllDisplays()
+  const displays = await window.muerzhiAPI.getAllDisplays()
   const d = displays.find((x) => x.id === displayIndex) || displays[0]
   if (!d) return { x: 0, y: 0, width: 0, height: 0, scale: 1 }
   return {
@@ -68,30 +68,14 @@ export function useRecording() {
     }, 1000)
   }
 
+  // 兜底：组件卸载（正常停止路径之外的窗口关闭等）时计时器必须停，
+  // 否则泄漏的 interval 每秒把已卸载页面的 elapsedSeconds +1
+  onUnmounted(stopTimer)
+
   function stopTimer() {
     if (countInterval) {
       clearInterval(countInterval)
       countInterval = null
-    }
-  }
-
-  /**
-   * 切换画笔标注。
-   *
-   * 实现方式与旧 Electron 版完全不同：不再在渲染层画布上作画、也不用 strokes.webm 后期
-   * 合成，而是让 Rust 开一个**覆盖录制区域的透明置顶画布窗**、笔迹直接画在桌面上 ——
-   * 屏幕采集（WGC）会把笔迹连同桌面一起录进成品，零后期成本、零对齐误差。
-   * 因此这里不需要绘制回调，参数保留只为兼容调用方签名。
-   */
-  async function setDrawAnnotations(_fn: (ctx: CanvasRenderingContext2D) => void, show: boolean) {
-    try {
-      await window.electronAPI.toggleAnnotation(
-        show,
-        settingsStore.drawColor,
-        settingsStore.drawWidth,
-      )
-    } catch (err: unknown) {
-      log.error('切换画笔标注失败', err)
     }
   }
 
@@ -121,25 +105,25 @@ export function useRecording() {
     // 画中画几何：摄像头预览窗在屏幕上的位置换算成成品画面里的左上角坐标。
     // 预览窗由 Rust 管理（用户可拖拽），这里只把「相对录制画面原点」的偏移交给合成用。
     //
-    // ⚠️ 量纲：cameraGeometry()（窗口 outer_position/outer_size）与 getAllDisplays().bounds
-    // 都是**物理像素**，而选区（region-selector.html 的 e.screenX）是**逻辑像素** —— 三者
-    // 混着减在高 DPI 屏上会整体偏移（实测 dpr 1.5 时摄像头窗物理 x=2348 却被当成 2348-选区
-    // 逻辑坐标），故这里统一先把原点换成物理像素，与 crop_video 的换算口径完全一致。
+    // ⚠️ 量纲（与 Rust crop_video 同一口径，见 recording/mod.rs 的注释）：
+    // cameraGeometry()（窗口 outer_position/outer_size）是**物理像素**；
+    // region 也是**物理像素**（选区页 toPhysical 上报）——直接用，不再乘缩放比。
+    // 早先这里按「region 是逻辑像素」换算（region×scale + 屏原点），150% 屏上
+    // 把物理选区又放大 1.5 倍，PiP 位置整体偏移（用户反馈「录出来的视频里预览窗
+    // 不在我拖动的位置」）。
     let cameraRect: { x: number; y: number; width: number; height: number } | null = null
     if (store.isCameraEnabled) {
-      const geo = await window.electronAPI.cameraGeometry()
+      const geo = await window.muerzhiAPI.cameraGeometry()
       if (geo) {
         let origin: { x: number; y: number }
         let canvas: { width: number; height: number }
         if (region) {
-          // 区域录制：成品 = 录制显示器画面裁剪出的选区，原点 = 该屏物理原点 + 选区偏移
-          // （与 Rust crop_video 的 逻辑×缩放比 公式同一口径；选区只在主屏产生）
-          const g = await displayGeom(0)
-          origin = {
-            x: g.x + Math.round(region.x * g.scale),
-            y: g.y + Math.round(region.y * g.scale),
-          }
-          canvas = { width: region.width * g.scale, height: region.height * g.scale }
+          // 区域录制：成品 = 「目标显示器画面裁出选区」。裁剪把 region.x/y 平移到
+          // 视频 (0,0)（Rust：crop = region − 目标屏原点），所以画中画换算原点
+          // 就是选区左上角本身（虚拟桌面物理坐标），与落在哪块屏无关 ——
+          // 曾写 displayGeom(0).origin + region，主屏不在 (0,0) 的机器上会偏。
+          origin = { x: region.x, y: region.y }
+          canvas = { width: region.width, height: region.height }
         } else if (displayIds.length > 1) {
           // 多屏：成品是各屏按物理 bounds 叠加的画布，原点 = 最小 bounds（同 merge_multi_screen）
           const geoms = await Promise.all(displayIds.map(displayGeom))
@@ -185,23 +169,19 @@ export function useRecording() {
     }
 
     // 采集期间主窗口让位（WGC 抓的是整块屏，主窗口挡在桌面上会被录进去）
-    window.electronAPI.minimizeWindow()
+    window.muerzhiAPI.minimizeWindow()
 
     try {
-      await window.electronAPI.recordingStart(options)
+      await window.muerzhiAPI.recordingStart(options)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
-      window.electronAPI.showWindow()
+      window.muerzhiAPI.showWindow()
       throw new Error(`录制启动失败: ${msg}`)
     }
 
     recordingStartedAt = Date.now()
     startTimer()
     store.setState('recording')
-    // 录制区域此刻才确定（区域/单屏/多屏），标注窗按它定尺寸后再显示
-    if (store.isDrawingEnabled) {
-      await setDrawAnnotations(() => {}, true)
-    }
     const modeLabel = displayIds.length > 1
       ? `multi-screen (${displayIds.length} displays)`
       : region ? `region: ${region.width}x${region.height}` : 'full screen'
@@ -210,7 +190,7 @@ export function useRecording() {
 
   async function pause() {
     try {
-      await window.electronAPI.recordingPause()
+      await window.muerzhiAPI.recordingPause()
       stopTimer()
       store.setState('paused')
       log.info('Recording paused')
@@ -221,7 +201,7 @@ export function useRecording() {
 
   async function resume() {
     try {
-      await window.electronAPI.recordingResume()
+      await window.muerzhiAPI.recordingResume()
       startTimer()
       store.setState('recording')
       log.info('Recording resumed')
@@ -244,13 +224,14 @@ export function useRecording() {
     const height = store.selectedRegion ? Math.round(store.selectedRegion.height) : 0
 
     store.setState('converting')
-    window.electronAPI.notifyConversionStart()
-    if (reopenOnStop) setTimeout(() => window.electronAPI.showWindow(), 50)
+    window.muerzhiAPI.notifyConversionStart()
+    if (reopenOnStop) setTimeout(() => window.muerzhiAPI.showWindow(), 50)
 
     try {
-      const finalPath = await window.electronAPI.recordingStop()
+      const result = await window.muerzhiAPI.recordingStop()
+      const finalPath = result.outputPath
       const fileName = finalPath.split(/[\\/]/).pop() || finalPath
-      const size = await window.electronAPI.getFileSize(finalPath)
+      const size = await window.muerzhiAPI.getFileSize(finalPath)
       store.addRecording({
         id: crypto.randomUUID(),
         filePath: finalPath,
@@ -258,11 +239,11 @@ export function useRecording() {
         duration: elapsed,
         fileSize: size,
         createdAt: Date.now(),
-        thumbnail: undefined,
+        thumbnail: result.thumbnail || undefined,
         width: width || undefined,
         height: height || undefined,
       })
-      window.electronAPI.notifyConversionDone(finalPath)
+      window.muerzhiAPI.notifyConversionDone(finalPath)
       log.info('[recording] 已保存', finalPath)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -283,7 +264,6 @@ export function useRecording() {
     previewStream,
     cameraStream,
     cameraPosition,
-    setDrawAnnotations,
     setCameraPosition,
     setReopenOnStop,
     startCapture,

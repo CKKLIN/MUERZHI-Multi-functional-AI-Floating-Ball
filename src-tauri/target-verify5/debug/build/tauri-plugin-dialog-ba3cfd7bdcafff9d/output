@@ -1,0 +1,7 @@
+cargo:rerun-if-changed=permissions
+cargo:PERMISSION_FILES_PATH=D:\money\MUERZHI-Multi-functional-AI-Floating-Ball\src-tauri\target-verify5\debug\build\tauri-plugin-dialog-ba3cfd7bdcafff9d\out\tauri-plugin-dialog-permission-files
+cargo:rerun-if-env-changed=REMOVE_UNUSED_COMMANDS
+cargo:GLOBAL_API_SCRIPT_PATH=\\?\C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\tauri-plugin-dialog-2.7.3\api-iife.js
+cargo:rustc-check-cfg=cfg(mobile)
+cargo:rustc-check-cfg=cfg(desktop)
+cargo:rustc-cfg=desktop

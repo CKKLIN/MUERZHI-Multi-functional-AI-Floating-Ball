@@ -57,7 +57,7 @@ pub fn settings_path() -> PathBuf {
     home_dir().join(".claude").join("settings.json")
 }
 
-/// clawd-hook.js 路径：打包走 resources，dev 走项目 electron/main
+/// clawd-hook.js 路径：打包走 resources（tauri.conf.json 映射到 exe 旁），dev 走仓库 src-tauri/resources
 pub fn hook_script_path(app: &AppHandle) -> PathBuf {
     if let Ok(res) = app.path().resource_dir() {
         let p = res.join("clawd-hook.js");
@@ -65,10 +65,10 @@ pub fn hook_script_path(app: &AppHandle) -> PathBuf {
             return p;
         }
     }
-    // dev：src-tauri/target/debug → 上四级 = 项目根
+    // dev：src-tauri/target/debug → 上四级 = 项目根（electron/ 目录已删除，真实文件在 src-tauri/resources）
     if let Ok(exe) = std::env::current_exe() {
         if let Some(root) = exe.ancestors().nth(4) {
-            let p = root.join("electron").join("main").join("clawd-hook.js");
+            let p = root.join("src-tauri").join("resources").join("clawd-hook.js");
             if p.exists() {
                 return p;
             }
@@ -80,7 +80,15 @@ pub fn hook_script_path(app: &AppHandle) -> PathBuf {
 /// 探测 node 可执行文件（where node）
 fn detect_node() -> String {
     use std::process::Command;
-    if let Ok(out) = Command::new("where").arg("node").output() {
+    let mut cmd = Command::new("where");
+    cmd.arg("node");
+    // 修复/安装集成时探测，控制台子进程不隐藏会闪窗
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000);
+    }
+    if let Ok(out) = cmd.output() {
         let s = String::from_utf8_lossy(&out.stdout);
         if let Some(first) = s.lines().next() {
             let t = first.trim();
@@ -143,8 +151,12 @@ fn is_ours(hook: &Value) -> bool {
 
 /// 移除旧/已存在的自家 hooks（保留用户其他 hook）
 fn remove_old_hooks(settings: &mut Value) {
-    let Some(hooks) = settings.get_mut("hooks") else { return };
-    let Some(map) = hooks.as_object_mut() else { return };
+    let Some(hooks) = settings.get_mut("hooks") else {
+        return;
+    };
+    let Some(map) = hooks.as_object_mut() else {
+        return;
+    };
     // 旧格式：hooks 为数组（元素含 name+events）
     for (_, v) in map.iter_mut() {
         if let Some(groups) = v.as_array_mut() {
@@ -168,42 +180,63 @@ fn remove_old_hooks(settings: &mut Value) {
 }
 
 /// 校验 hook 形态是否符合预期（对齐 hasCorrectHooks）
+///
+/// 遍历事件下**所有** group/hook（TS 用 .some），自家 hook 不是第一个时同样算已安装。
 fn has_correct_hooks(settings: &Value, port: Option<u16>) -> bool {
-    let Some(hooks) = settings.get("hooks").and_then(|v| v.as_object()) else { return false };
+    let Some(hooks) = settings.get("hooks").and_then(|v| v.as_object()) else {
+        return false;
+    };
     for event in HOOK_EVENTS {
-        let Some(groups) = hooks.get(event).and_then(|v| v.as_array()) else { return false };
-        let Some(first) = groups.first() else { return false };
-        let Some(list) = first.get("hooks").and_then(|v| v.as_array()) else { return false };
-        let Some(hook) = list.first() else { return false };
-        if event == "PermissionRequest" {
-            let ty = hook.get("type").and_then(|v| v.as_str()).unwrap_or("");
-            let url = hook.get("url").and_then(|v| v.as_str()).unwrap_or("");
-            let timeout = hook.get("timeout").and_then(|v| v.as_u64()).unwrap_or(0);
-            if ty != "http" || !url.contains("/permission") || timeout < HOOK_HTTP_TIMEOUT_S {
+        let Some(groups) = hooks.get(event).and_then(|v| v.as_array()) else {
+            return false;
+        };
+        let ok = groups.iter().any(|g| {
+            let Some(list) = g.get("hooks").and_then(|v| v.as_array()) else {
                 return false;
-            }
-            if let Some(p) = port {
-                if !url.contains(&format!(":{p}/")) {
-                    return false;
+            };
+            list.iter().any(|hook| {
+                if event == "PermissionRequest" {
+                    let ty = hook.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                    let url = hook.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                    let timeout = hook.get("timeout").and_then(|v| v.as_u64()).unwrap_or(0);
+                    if ty != "http" || !url.contains("/permission") || timeout < HOOK_HTTP_TIMEOUT_S {
+                        return false;
+                    }
+                    if let Some(p) = port {
+                        if !url.contains(&format!(":{p}/")) {
+                            return false;
+                        }
+                    }
+                    true
+                } else {
+                    let ty = hook.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                    let cmd = hook.get("command").and_then(|v| v.as_str()).unwrap_or("");
+                    let shell = hook.get("shell").and_then(|v| v.as_str()).unwrap_or("");
+                    ty == "command"
+                        && cmd.starts_with('&')
+                        && cmd.contains("clawd-hook.js")
+                        && shell == "powershell"
                 }
-            }
-        } else {
-            let ty = hook.get("type").and_then(|v| v.as_str()).unwrap_or("");
-            let cmd = hook.get("command").and_then(|v| v.as_str()).unwrap_or("");
-            let shell = hook.get("shell").and_then(|v| v.as_str()).unwrap_or("");
-            if ty != "command" || !cmd.starts_with('&') || !cmd.contains("clawd-hook.js") || shell != "powershell" {
-                return false;
-            }
+            })
+        });
+        if !ok {
+            return false;
         }
     }
     true
 }
 
 /// 安装 hooks（幂等：已正确则 no-op）
+///
+/// 端口必须来自**实际监听**的 server：端口漂移（60000 被占时服务顺延到 60001+）后，
+/// 用 DEFAULT_PORT 兜底写出的 URL 是死的 —— Claude 每次审批都会 ECONNREFUSED。
+/// server 未就绪时返回错误，由调用方（bridge::start / health 看护）稍后重试。
 pub fn install(app: &AppHandle) -> Result<(), String> {
     let mut settings = read_settings();
-    let port = crate::modules::agent::server::AgentServer::global().get_port();
-    if has_correct_hooks(&settings, port) {
+    let port = crate::modules::agent::server::AgentServer::global()
+        .get_port()
+        .ok_or_else(|| "agent server 未监听，hooks 暂不安装（等就绪后重试）".to_string())?;
+    if has_correct_hooks(&settings, Some(port)) {
         return Ok(());
     }
     remove_old_hooks(&mut settings);
@@ -211,9 +244,21 @@ pub fn install(app: &AppHandle) -> Result<(), String> {
     let node = detect_node();
     let script = hook_script_path(app);
     let script_str = script.to_string_lossy().to_string();
-    let port = port.unwrap_or(crate::modules::agent::server::DEFAULT_PORT);
 
-    let mut hooks_map = serde_json::Map::new();
+    // 逐事件键**追加**自家 group，不覆盖整个 hooks 表、也不覆盖同事件的用户 hook：
+    // 早先 obj.insert("hooks", hooks_map) 会把用户在 SubagentStop/PreCompact 等未受管
+    // 事件上配的 hook 全部抹掉（实测）；改成 insert(event,...) 也仍会清掉用户自己配在
+    // PreToolUse 等受管同名事件上的 hook。remove_old_hooks 已先摘掉自家旧 group，
+    // 剩下的都是用户的 —— 追加在末尾即可共存。
+    let root = settings
+        .as_object_mut()
+        .ok_or_else(|| "claude settings 根节点不是对象".to_string())?;
+    let hooks_entry = root
+        .entry("hooks")
+        .or_insert_with(|| Value::Object(serde_json::Map::new()));
+    let Some(hooks_map) = hooks_entry.as_object_mut() else {
+        return Err("claude settings.hooks 不是对象".into());
+    };
     for event in HOOK_EVENTS {
         let hook = if event == "PermissionRequest" {
             json!({
@@ -231,13 +276,20 @@ pub fn install(app: &AppHandle) -> Result<(), String> {
                 "timeout": 5,
             })
         };
-        hooks_map.insert(
-            event.to_string(),
-            json!([{ "matcher": "", "hooks": [hook] }]),
-        );
-    }
-    if let Some(obj) = settings.as_object_mut() {
-        obj.insert("hooks".into(), Value::Object(hooks_map));
+        let group = json!({ "matcher": "", "hooks": [hook] });
+        match hooks_map.get_mut(event) {
+            Some(existing) => {
+                if let Some(arr) = existing.as_array_mut() {
+                    arr.push(group);
+                } else {
+                    // 形态异常（用户把该事件写成了非数组）：不冒险覆盖，退回整体替换
+                    hooks_map.insert(event.to_string(), json!([group]));
+                }
+            }
+            None => {
+                hooks_map.insert(event.to_string(), json!([group]));
+            }
+        }
     }
     if write_settings(&settings) {
         Ok(())
@@ -258,26 +310,51 @@ pub fn uninstall(_app: &AppHandle) -> Result<(), String> {
 }
 
 /// 是否已安装（抽查 SessionStart 的命令串）
+///
+/// 遍历**所有** group：install 改成「追加自家 group 到末尾」后，用户自己配的 hook
+/// 可能排在第一组，只查 groups.first() 会把已安装误报成未安装（进而触发无谓重装，
+/// 重装又会再追加一组）。
 pub fn is_installed() -> bool {
-    let settings = read_settings();
-    let Some(groups) = settings.get("hooks").and_then(|h| h.get(HOOK_EVENTS[0])).and_then(|v| v.as_array()) else {
+    is_installed_in(&read_settings())
+}
+
+/// is_installed 的已加载版本（check_health 复用同一份 settings，不再重复读盘）
+fn is_installed_in(settings: &Value) -> bool {
+    let Some(groups) = settings
+        .get("hooks")
+        .and_then(|h| h.get(HOOK_EVENTS[0]))
+        .and_then(|v| v.as_array())
+    else {
         return false;
     };
-    groups
-        .first()
-        .and_then(|g| g.get("hooks"))
-        .and_then(|h| h.as_array())
-        .map(|arr| arr.iter().any(is_ours))
-        .unwrap_or(false)
+    groups.iter().any(|g| {
+        g.get("hooks")
+            .and_then(|h| h.as_array())
+            .map(|arr| arr.iter().any(is_ours))
+            .unwrap_or(false)
+    })
 }
 
 /// hook 健康检查（对齐 checkHealth）
+///
+/// 端口一致性纳入检查：settings 里的 URL 必须与 server **实际监听**的端口一致 ——
+/// 端口漂移后旧 URL 指向死端口，Claude 每次审批 ECONNREFUSED，但形态校验全过（实测）。
+/// server 未监听时不判端口问题（bridge 启动竞态），交给下次看护周期。
 pub fn check_health(app: &AppHandle) -> (bool, Vec<String>) {
+    // 单次健康检查只读一遍 settings.json（原实现 read_settings×2 + is_installed 里再一次）
+    let settings = read_settings();
     let mut issues = Vec::new();
-    if read_settings().is_null() {
+    if settings.is_null() {
         issues.push("settings.json 不可读".into());
     }
-    if !is_installed() {
+    let port = crate::modules::agent::server::AgentServer::global().get_port();
+    // has_correct_hooks 已覆盖「未安装」+「URL 端口与 server 实际监听不符」两类
+    if port.is_some() && !has_correct_hooks(&settings, port) {
+        issues.push(format!(
+            "hooks 与 server 实际端口不一致（server={port:?}，需重装）"
+        ));
+    }
+    if !is_installed_in(&settings) {
         issues.push("hooks 未安装".into());
     }
     if !hook_script_path(app).exists() {
@@ -288,7 +365,10 @@ pub fn check_health(app: &AppHandle) -> (bool, Vec<String>) {
 
 /// 5 分钟健康看护（首次立即检查）
 pub fn start_watcher(app: AppHandle) {
-    if HookManager::global().watcher_running.swap(true, Ordering::SeqCst) {
+    if HookManager::global()
+        .watcher_running
+        .swap(true, Ordering::SeqCst)
+    {
         return;
     }
     tauri::async_runtime::spawn(async move {
@@ -303,7 +383,9 @@ pub fn start_watcher(app: AppHandle) {
 }
 
 pub fn stop_watcher() {
-    HookManager::global().watcher_running.store(false, Ordering::SeqCst);
+    HookManager::global()
+        .watcher_running
+        .store(false, Ordering::SeqCst);
 }
 
 fn perform_health_check(app: &AppHandle) {

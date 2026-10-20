@@ -13,7 +13,7 @@ const emit = defineEmits<{
 
 const videoRef = ref<HTMLVideoElement | null>(null)
 // 用 local-video:// 协议流式播放本地文件，不读整文件进内存
-const videoUrl = ref(window.electronAPI.toLocalVideoUrl(props.recording.filePath))
+const videoUrl = ref(window.muerzhiAPI.toLocalVideoUrl(props.recording.filePath))
 
 onMounted(() => {
   // 协议 URL 同步可用，无需加载等待
@@ -61,7 +61,7 @@ onUnmounted(() => {
       </div>
       <div class="modal-footer">
         <span class="meta">{{ t('record.duration') }}: {{ recording.duration }}{{ t('video.seconds') }}</span>
-        <button class="btn btn-sm" @click="window.electronAPI.openFileLocation(recording.filePath)">
+        <button class="btn btn-sm" @click="window.muerzhiAPI.openFileLocation(recording.filePath)">
           {{ t('record.openFolder') }}
         </button>
       </div>

@@ -24,7 +24,7 @@ const BALL_MENUS: { key: BallMenuKey; labelKey: string }[] = [
 
 async function loadSettings() {
   try {
-    const s = await window.electronAPI.getFloatingBallSettings()
+    const s = await window.muerzhiAPI.getFloatingBallSettings()
     visible.value = s.visible
     alwaysOnTop.value = s.alwaysOnTop
     openAtLogin.value = s.openAtLogin
@@ -42,7 +42,7 @@ async function setLocale(l: AppLocale) {
   const prev = locale.value
   locale.value = l
   try {
-    const s = await window.electronAPI.setFloatingBallSettings({ locale: l })
+    const s = await window.muerzhiAPI.setFloatingBallSettings({ locale: l })
     locale.value = s.locale
   } catch (e) {
     console.error('[FloatingBallSettingsPanel] setLocale error:', e)
@@ -55,7 +55,7 @@ async function toggleVisible() {
   const prev = visible.value
   visible.value = !prev
   try {
-    const s = await window.electronAPI.setFloatingBallSettings({ visible: visible.value })
+    const s = await window.muerzhiAPI.setFloatingBallSettings({ visible: visible.value })
     visible.value = s.visible
   } catch (e) {
     console.error('[FloatingBallSettingsPanel] toggleVisible error:', e)
@@ -67,7 +67,7 @@ async function toggleAlwaysOnTop() {
   const prev = alwaysOnTop.value
   alwaysOnTop.value = !prev
   try {
-    const s = await window.electronAPI.setFloatingBallSettings({ alwaysOnTop: alwaysOnTop.value })
+    const s = await window.muerzhiAPI.setFloatingBallSettings({ alwaysOnTop: alwaysOnTop.value })
     alwaysOnTop.value = s.alwaysOnTop
   } catch (e) {
     console.error('[FloatingBallSettingsPanel] toggleAlwaysOnTop error:', e)
@@ -79,7 +79,7 @@ async function toggleOpenAtLogin() {
   const prev = openAtLogin.value
   openAtLogin.value = !prev
   try {
-    const s = await window.electronAPI.setFloatingBallSettings({ openAtLogin: openAtLogin.value })
+    const s = await window.muerzhiAPI.setFloatingBallSettings({ openAtLogin: openAtLogin.value })
     openAtLogin.value = s.openAtLogin
   } catch (e) {
     console.error('[FloatingBallSettingsPanel] toggleOpenAtLogin error:', e)
@@ -94,7 +94,7 @@ async function toggleMenuItem(key: BallMenuKey) {
   const prev = { ...menuItems.value }
   menuItems.value = { ...menuItems.value, [key]: !menuItems.value[key] }
   try {
-    const s = await window.electronAPI.setFloatingBallSettings({ menuItems: { ...menuItems.value } })
+    const s = await window.muerzhiAPI.setFloatingBallSettings({ menuItems: { ...menuItems.value } })
     menuItems.value = s.menuItems
   } catch (e) {
     console.error('[FloatingBallSettingsPanel] toggleMenuItem error:', e)
@@ -104,7 +104,7 @@ async function toggleMenuItem(key: BallMenuKey) {
 
 async function resetPosition() {
   try {
-    await window.electronAPI.resetFloatingBallPosition()
+    await window.muerzhiAPI.resetFloatingBallPosition()
   } catch (e) {
     console.error('[FloatingBallSettingsPanel] resetPosition error:', e)
   }
@@ -114,7 +114,7 @@ async function resetPosition() {
 const REPO_URL = 'https://github.com/CKKLIN/MUERZHI-Multi-functional-AI-Floating-Ball'
 
 function openRepo() {
-  window.electronAPI.openExternal(REPO_URL).catch((e) => {
+  window.muerzhiAPI.openExternal(REPO_URL).catch((e) => {
     console.error('[FloatingBallSettingsPanel] openRepo error:', e)
   })
 }

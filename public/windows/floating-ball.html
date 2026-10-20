@@ -15,9 +15,11 @@ html,body{
   background:transparent;
 }
 html::-webkit-scrollbar, body::-webkit-scrollbar{display:none}
-body{display:flex;align-items:center;justify-content:center}
-
-#ball{position:relative;width:66px;height:66px;display:flex;align-items:center;justify-content:center}
+/* #ball 用 fixed+50% 锚定视口中心：窗口 66→360 扩大的那一瞬间，WebView2 还没按
+   新视口做 flex 重排，若靠 body flex 居中，旧帧的 66 内容会贴在窗口左上角渲染
+   （实测「展开先闪到左上再回原地」，跨屏后第一次最明显）。fixed 锚定下无论视口
+   多大、重排与否，球心永远在视口中心，旧帧残影也贴着中心，肉眼不可见。 */
+#ball{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:66px;height:66px;display:flex;align-items:center;justify-content:center}
 body.expanded #ball{width:240px;height:240px}
 
 .ring-svg{position:absolute;width:240px;height:240px;pointer-events:none}
@@ -161,8 +163,9 @@ const invoke = window.__TAURI__.core.invoke
 const emit = window.__TAURI__.event.emit
 const listen = window.__TAURI__.event.listen
 
-// 菜单项由 Rust 侧启动时注入（花瓣数/弧度随可见项变化）
-const ITEMS = window.__BALL_DATA__ || []
+// 菜单项由 Rust 侧 initialization_script 注入（花瓣数/弧度随可见项变化）。
+// 兜底：若注入晚于本脚本执行（旧二进制还是 eval 注入），启动捕获为空 —— ensureMenu 时重读全局
+let ITEMS = Array.isArray(window.__BALL_DATA__) ? window.__BALL_DATA__ : []
 
 let isExpanded = false
 let menuCreated = false
@@ -214,6 +217,9 @@ function makeGradient(id, c1, c2){
 
 function ensureMenu(){
   if(menuCreated) return
+  if(!ITEMS.length && Array.isArray(window.__BALL_DATA__) && window.__BALL_DATA__.length){
+    ITEMS = window.__BALL_DATA__ // 注入晚于脚本执行：从全局补读，否则点开花瓣永远是空的
+  }
   menuCreated = true
   const svg = document.getElementById('ringSvg')
   const cx=120, cy=120, r1=34, r2=75
@@ -313,6 +319,9 @@ function restartBloom(){
 }
 
 // === 手动拖拽（pointer 事件 → emit 到 Rust）===
+// ⚠️ 量纲：e.screenX 是 WebView2 的**逻辑像素**（DIP），Rust 的窗口几何全是**物理像素**。
+// 每次上报都带 window.devicePixelRatio（= 窗口所在屏的缩放比，跨屏时随窗口移动自动变化），
+// Rust 侧用它把逻辑差换算成物理差。不换算时 150% 屏拖拽偏 1/3、跨屏拖拽完全不跟手（实测）。
 let dsX = 0, dsY = 0, dragging = false
 const trigger = document.getElementById('trigger')
 
@@ -321,12 +330,18 @@ trigger.addEventListener('pointerdown', function(e){
   dsX = e.screenX; dsY = e.screenY
   dragging = false
   trigger.setPointerCapture(e.pointerId)
-  invoke('ball_drag_start', { sx: e.screenX, sy: e.screenY })
+  invoke('ball_drag_start', { sx: e.screenX, sy: e.screenY, dpr: window.devicePixelRatio })
 })
 
+// 拖拽移动的 rAF 合帧状态
+let pendingMove = null
+let moveRafId = 0
+
+// 右键中央圆圈 = 展开花瓣菜单（散热入口在菜单里，雪花花瓣）。
+// 之前右键直接触发散热，菜单反而没有入口；展开由 Rust 侧监听 floating-ball-contextmenu 处理
 trigger.addEventListener('contextmenu', function(e){
   e.preventDefault()
-  emit('floating-ball-cooling')
+  emit('floating-ball-contextmenu')
 })
 
 trigger.addEventListener('pointermove', function(e){
@@ -334,9 +349,20 @@ trigger.addEventListener('pointermove', function(e){
   if(!dragging){
     if(Math.abs(e.screenX - dsX) <= 4 && Math.abs(e.screenY - dsY) <= 4) return
     dragging = true
-    invoke('ball_drag_clear', { sx: e.screenX, sy: e.screenY })
+    invoke('ball_drag_clear', { sx: e.screenX, sy: e.screenY, dpr: window.devicePixelRatio })
   }
-  invoke('ball_move', { sx: e.screenX, sy: e.screenY })
+  // rAF 合帧：pointermove 以鼠标事件率触发（60-125Hz+），每事件一次 IPC 毫无必要 ——
+  // 每帧只上报最新坐标，Rust 侧 100ms 穿透轮询的粒度本来就更粗
+  pendingMove = { sx: e.screenX, sy: e.screenY, dpr: window.devicePixelRatio }
+  if(!moveRafId) {
+    moveRafId = requestAnimationFrame(function(){
+      moveRafId = 0
+      if(pendingMove) {
+        invoke('ball_move', pendingMove)
+        pendingMove = null
+      }
+    })
+  }
 })
 
 trigger.addEventListener('pointerup', function(e){
@@ -351,6 +377,10 @@ trigger.addEventListener('pointerup', function(e){
     dragging = false
     return
   }
+  // 纯点击（未达拖动阈值）：只清 Rust 侧 drag origin，不做贴边判定 ——
+  // ball_drag_end 会顺带吸边（球离边 <40px 时点一下就被吸走），点击不该移动位置。
+  // 残留的旧偏移会让下一次 pointermove 触发的跟随循环瞬移到上次按下的位置（实测）
+  invoke('ball_drag_cancel')
   if(isExpanded){
     isExpanded = false
     invoke('ball_collapse')
@@ -383,6 +413,14 @@ document.addEventListener('click',function(e){
   if(!isExpanded) return
   if(document.body.classList.contains('cooling')) return
   if(e.target.closest('#trigger') || e.target.closest('.arc-item')) return
+  invoke('ball_collapse')
+})
+
+// 展开态失焦自动收起：点击别的窗口 / 切走时，别把开着的花瓣留在桌面上（散热动画中例外）
+window.addEventListener('blur',function(){
+  if(!isExpanded) return
+  if(document.body.classList.contains('cooling')) return
+  isExpanded = false
   invoke('ball_collapse')
 })
 

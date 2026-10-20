@@ -14,6 +14,7 @@ import { useSettingsStore } from '../stores/settings'
 import { useRecording } from '../composables/useRecording'
 import { useAudioCapture } from '../composables/useAudioCapture'
 import { t } from '../stores/i18n'
+import log from '../log'
 
 const store = useRecordingStore()
 const settingsStore = useSettingsStore()
@@ -79,7 +80,7 @@ async function handleStart() {
     let sourceId = store.selectedSource?.id || ''
     const region = store.recordingMode === 'region' ? store.selectedRegion! : undefined
     if (!sourceId && region) {
-      const sources = await window.electronAPI.getSources(['screen'])
+      const sources = await window.muerzhiAPI.getSources(['screen'])
       if (sources.length > 0) {
         sourceId = sources[0].id
       }
@@ -93,8 +94,8 @@ async function handleStart() {
   } catch (err: any) {
     alert(err.message)
     audio.cleanup()
-    window.electronAPI.hideRegionBorder()
-    window.electronAPI.showWindow()
+    window.muerzhiAPI.hideRegionBorder()
+    window.muerzhiAPI.showWindow()
     store.resetState()
   }
 }
@@ -108,13 +109,13 @@ function handleResume() {
 }
 
 async function handleStop() {
-  window.electronAPI.hideRegionBorder()
+  window.muerzhiAPI.hideRegionBorder()
   recording.stop() // 不 await：正常停止后立即释放摄像头/音频，Rust 侧 ffmpeg 合成在后台进行
   await audio.cleanup()
   previewMicTracks = []
   previewSysTracks = []
   stopCamera()
-  window.electronAPI.showAiIsland()
+  window.muerzhiAPI.showAiIsland()
 }
 
 // 释放主（录屏）窗口占用的全部资源：录制中先落盘停止，再清掉摄像头/音频/预览流/贴边取景框
@@ -131,7 +132,7 @@ async function releaseRecordingResources() {
       // 显式 await 落盘：正常停止(fire-and-forget)后 handleRecordingStop 自己会读 elapsedSeconds；
       // 但关闭路径随后要 resetState()，若 stop 未被 await，resetState 会抢先清零 elapsedSeconds，
       // 而 handleRecordingStop 保存时长时读到 0 → 这次关闭的录制时长会被记成 0。
-      window.electronAPI.hideRegionBorder()
+      window.muerzhiAPI.hideRegionBorder()
       await recording.stop()
       await audio.cleanup()
       previewMicTracks = []
@@ -145,9 +146,9 @@ async function releaseRecordingResources() {
       stopCamera()
     }
     // 无论是否录制中，都关掉录制用 overlay（取景框/悬浮岛/摄像头预览）
-    window.electronAPI.hideCameraPreview()
-    window.electronAPI.hideRegionBorder()
-    window.electronAPI.hideFloatingIsland()
+    window.muerzhiAPI.hideCameraPreview()
+    window.muerzhiAPI.hideRegionBorder()
+    window.muerzhiAPI.hideFloatingIsland()
     store.resetState()
   } catch (err: any) {
     console.warn('释放录屏窗口资源失败:', err?.message)
@@ -188,16 +189,16 @@ watch(activeTab, (tab) => {
   if (tab !== 'record') {
     recording.cameraStream.value?.getTracks().forEach(t => t.stop())
     recording.cameraStream.value = null
-    window.electronAPI.hideCameraPreview()
+    window.muerzhiAPI.hideCameraPreview()
   } else if (store.isCameraEnabled && !recording.cameraStream.value) {
     startCamera()
-    window.electronAPI.toggleCameraPreview(true, settingsStore.cameraDeviceId)
+    window.muerzhiAPI.toggleCameraPreview(true, settingsStore.cameraDeviceId)
   }
 })
 
 async function handleFullscreen() {
-  const sources = await window.electronAPI.getSources(['screen'])
-  const displays = await window.electronAPI.getAllDisplays()
+  const sources = await window.muerzhiAPI.getSources(['screen'])
+  const displays = await window.muerzhiAPI.getAllDisplays()
 
   if (sources.length <= 1 || displays.length <= 1) {
     // 单屏：直接全屏录制
@@ -210,10 +211,10 @@ async function handleFullscreen() {
         recording.cameraStream.value?.getTracks().forEach(t => t.stop())
         recording.cameraStream.value = null
       }
-      window.electronAPI.minimizeWindow()
+      window.muerzhiAPI.minimizeWindow()
       await new Promise(r => setTimeout(r, 200))
-      window.electronAPI.hideAiIsland()
-      await window.electronAPI.showFloatingIsland({ micEnabled: store.isMicrophoneEnabled, sysEnabled: store.isSystemAudioEnabled, cameraEnabled: store.isCameraEnabled, cameraDeviceId: settingsStore.cameraDeviceId })
+      window.muerzhiAPI.hideAiIsland()
+      await window.muerzhiAPI.showFloatingIsland({ micEnabled: store.isMicrophoneEnabled, sysEnabled: store.isSystemAudioEnabled, cameraEnabled: store.isCameraEnabled, cameraDeviceId: settingsStore.cameraDeviceId })
       if (store.isMicrophoneEnabled || (store.isSystemAudioEnabled && settingsStore.systemAudioSourceId)) {
         startAudioPreview()
       }
@@ -260,13 +261,13 @@ async function selectScreen(displayId?: number) {
     recording.cameraStream.value?.getTracks().forEach(t => t.stop())
     recording.cameraStream.value = null
   }
-  window.electronAPI.minimizeWindow()
+  window.muerzhiAPI.minimizeWindow()
   await new Promise(r => setTimeout(r, 200))
 
   // 悬浮岛显示在主屏幕（目标显示器或主显示器）
   const islandDisplayId = displayId ?? undefined
-  window.electronAPI.hideAiIsland()
-  await window.electronAPI.showFloatingIsland(
+  window.muerzhiAPI.hideAiIsland()
+  await window.muerzhiAPI.showFloatingIsland(
     { micEnabled: store.isMicrophoneEnabled, sysEnabled: store.isSystemAudioEnabled, cameraEnabled: store.isCameraEnabled, cameraDeviceId: settingsStore.cameraDeviceId },
     islandDisplayId,
   )
@@ -276,7 +277,7 @@ async function selectScreen(displayId?: number) {
 }
 
 async function handleSelectRegion() {
-  const region = await window.electronAPI.selectRegion()
+  const region = await window.muerzhiAPI.selectRegion()
   if (region) {
     store.selectedRegion = region
     store.recordingMode = 'region'
@@ -286,19 +287,23 @@ async function handleSelectRegion() {
       recording.cameraStream.value?.getTracks().forEach(t => t.stop())
       recording.cameraStream.value = null
     }
-    window.electronAPI.showRegionBorder(region, { micEnabled: store.isMicrophoneEnabled, sysEnabled: store.isSystemAudioEnabled, cameraEnabled: store.isCameraEnabled, cameraDeviceId: settingsStore.cameraDeviceId })
-    window.electronAPI.minimizeWindow()
-    window.electronAPI.hideAiIsland()
+    window.muerzhiAPI.showRegionBorder(region, { micEnabled: store.isMicrophoneEnabled, sysEnabled: store.isSystemAudioEnabled, cameraEnabled: store.isCameraEnabled, cameraDeviceId: settingsStore.cameraDeviceId })
+    window.muerzhiAPI.minimizeWindow()
+    window.muerzhiAPI.hideAiIsland()
     if (store.isMicrophoneEnabled || (store.isSystemAudioEnabled && settingsStore.systemAudioSourceId)) {
       startAudioPreview()
     }
+  } else {
+    // 取消选区：进选区时主窗口已被最小化（start_region_select），这里必须恢复 ——
+    // 否则取消后主窗口一直缩在任务栏，用户以为应用没反应。
+    window.muerzhiAPI.showWindow()
   }
 }
 
 // 截图：截取全屏保存到桌面
 async function handleScreenshot() {
   try {
-    await window.electronAPI.takeScreenshot()
+    await window.muerzhiAPI.takeScreenshot()
   } catch (err: any) {
     console.error('截图失败', err)
   }
@@ -306,7 +311,7 @@ async function handleScreenshot() {
 
 // 录制列表事件
 function handlePlayRecording(rec: Recording) {
-  window.electronAPI.openPath(rec.filePath)
+  window.muerzhiAPI.openPath(rec.filePath)
 }
 
 function handleExportGif(rec: Recording) {
@@ -318,7 +323,7 @@ function handleExportGif(rec: Recording) {
 async function handleDeleteRecording(id: string) {
   const rec = store.recordings.find(r => r.id === id)
   if (rec) {
-    await window.electronAPI.deleteFile(rec.filePath)
+    await window.muerzhiAPI.deleteFile(rec.filePath)
   }
   store.removeRecording(id)
 }
@@ -329,7 +334,21 @@ function handleCameraPositionUpdate(pos: { x: number; y: number; width: number; 
 }
 
 // 切换功能
-function toggleCamera() {
+async function toggleCamera() {
+  // 录制/暂停中：走 Rust 实时开关（停/起预览窗的 MediaRecorder 分段，
+  // 成品按时间窗口叠画中画），不触碰本地预览流
+  if (store.canStop) {
+    const next = !store.isCameraEnabled
+    try {
+      await window.muerzhiAPI.recordingSetCamera(next, settingsStore.cameraDeviceId)
+    } catch (err) {
+      log.error('切换摄像头失败', err)
+      return
+    }
+    store.isCameraEnabled = next
+    pushAudioStateToIslands()
+    return
+  }
   store.isCameraEnabled = !store.isCameraEnabled
   if (store.isCameraEnabled) {
     startCamera()
@@ -338,31 +357,61 @@ function toggleCamera() {
   }
   // 录制前状态：同步摄像头预览窗口
   if (store.canStart) {
-    window.electronAPI.toggleCameraPreview(store.isCameraEnabled, settingsStore.cameraDeviceId)
+    window.muerzhiAPI.toggleCameraPreview(store.isCameraEnabled, settingsStore.cameraDeviceId)
   }
+  // 把新状态推回工具条/悬浮岛：它们的按钮亮灭是**建窗时**从 URL 初值取的，
+  // 之后没有任何回推通道 —— 在工具条上点麦克风/摄像头，按钮自己不会变亮/熄灭
+  // （用户反馈「开关时那两个按钮要有状态显示」）。
+  pushAudioStateToIslands()
 }
 
-function toggleMic() {
+async function toggleMic() {
+  // 录制/暂停中：走 Rust 实时开关（增停麦克风采集段，成品按时间轴补静音），
+  // 不动本地试音流
+  if (store.canStop) {
+    const next = !store.isMicrophoneEnabled
+    try {
+      await window.muerzhiAPI.recordingSetMic(next)
+    } catch (err) {
+      log.error('切换麦克风失败', err)
+      return
+    }
+    store.isMicrophoneEnabled = next
+    pushAudioStateToIslands()
+    return
+  }
   store.isMicrophoneEnabled = !store.isMicrophoneEnabled
   settingsStore.saveSettings()
-  if (store.isMicrophoneEnabled && store.canStart) {
-    startAudioPreview()
+  if (store.canStart) {
+    if (store.isMicrophoneEnabled) {
+      startAudioPreview()
+    } else {
+      // 关麦：只释放麦克风轨道，系统声保持不变（audio.cleanup 会把 sys 也停掉，
+      // 用户只关麦克风却连带静音系统声是错的）。停掉后重建一次预览，让仍开启的
+      // 系统声继续有电平；两者都关时 startAudioPreview 内部自然收敛为空。
+      previewMicTracks.forEach(t => t.stop())
+      previewMicTracks = []
+      if (previewSysTracks.length > 0) {
+        startAudioPreview()
+      } else {
+        audio.stopLevelMonitoring()
+      }
+    }
   }
+  pushAudioStateToIslands()
+}
+
+/** 把当前麦克风/摄像头开关状态推给工具条与悬浮岛（点亮/熄灭对应按钮） */
+function pushAudioStateToIslands() {
+  window.muerzhiAPI.pushIslandAudioState({
+    micEnabled: store.isMicrophoneEnabled,
+    cameraEnabled: store.isCameraEnabled,
+  })
 }
 
 function toggleSystemAudio() {
   store.isSystemAudioEnabled = !store.isSystemAudioEnabled
   settingsStore.saveSettings()
-}
-
-function toggleDrawing() {
-  store.isDrawingEnabled = !store.isDrawingEnabled
-  // 笔迹画在 Rust 的透明置顶窗里（屏幕采集直接录到），渲染层不再承担画布。
-  // 待录制态只记开关（此时录制区域还没定，开窗尺寸会错）——startCapture 会在
-  // 录制启动、区域确定后按这个开关开窗；录制中切换则立刻开/关。
-  if (!store.canStart) {
-    recording.setDrawAnnotations(() => {}, store.isDrawingEnabled)
-  }
 }
 
 // 点击外部关闭下拉菜单
@@ -376,7 +425,7 @@ function onClickOutside(e: MouseEvent) {
 }
 
 // 全局快捷键
-const cleanupShortcut = window.electronAPI.onGlobalShortcut((action: string) => {
+const cleanupShortcut = window.muerzhiAPI.onGlobalShortcut((action: string) => {
   if (action === 'startStop') {
     if (store.canStart) handleStart()
     else if (store.canStop) handleStop()
@@ -387,26 +436,27 @@ const cleanupShortcut = window.electronAPI.onGlobalShortcut((action: string) => 
 })
 
 // 边框工具栏按钮事件
-const cleanupToolbar = window.electronAPI.onToolbarAction((action: string) => {
+const cleanupToolbar = window.muerzhiAPI.onToolbarAction((action: string) => {
   if (action === 'start' && store.canStart) handleStart()
   else if (action === 'pause' && store.canPause) handlePause()
   else if (action === 'resume' && store.canResume) handleResume()
   else if (action === 'stop' && store.canStop) handleStop()
-  else if (action === 'toggle-mic' && store.canStart) toggleMic()
+  // 设备开关录制中同样响应（按钮录制中保留可点，走 Rust 实时增停段）
+  else if (action === 'toggle-mic' && (store.canStart || store.canStop)) toggleMic()
   else if (action === 'toggle-sys' && store.canStart) toggleSystemAudio()
-  else if (action === 'toggle-camera' && store.canStart) toggleCamera()
+  else if (action === 'toggle-camera' && (store.canStart || store.canStop)) toggleCamera()
   else if (action === 'close') {
-    window.electronAPI.hideFloatingIsland()
-    window.electronAPI.hideRegionBorder()
+    window.muerzhiAPI.hideFloatingIsland()
+    window.muerzhiAPI.hideRegionBorder()
     if (store.canStop) {
       handleStop()
     } else {
-      window.electronAPI.showWindow()
+      window.muerzhiAPI.showWindow()
       store.resetState()
       // 未开启录制就关闭悬浮岛：resetState 只清 isCameraEnabled 布尔，不会停掉渲染层
       // 已acquired的 rendering.cameraStream 硬件流 —— 须显式 stopCamera()，否则摄像头不释放。
       stopCamera()
-      window.electronAPI.showAiIsland()
+      window.muerzhiAPI.showAiIsland()
     }
   }
 })
@@ -427,10 +477,6 @@ function onKeyDown(e: KeyboardEvent) {
     e.preventDefault()
     if (store.canStart) toggleCamera()
   }
-  if (e.ctrlKey && e.shiftKey && e.key === 'D') {
-    e.preventDefault()
-    if (store.canStart) toggleDrawing()
-  }
   if (e.key === 'Escape') {
     if (showVideoPlayer.value) showVideoPlayer.value = false
   }
@@ -439,50 +485,60 @@ function onKeyDown(e: KeyboardEvent) {
 // 录制状态变化时同步更新边框工具栏和悬浮岛
 watch(() => store.state, (state) => {
   if (state === 'recording') {
-    window.electronAPI.updateToolbarState('recording', store.elapsedSeconds)
-    window.electronAPI.setIslandState('recording', store.elapsedSeconds)
+    window.muerzhiAPI.updateToolbarState('recording', store.elapsedSeconds)
+    window.muerzhiAPI.setIslandState('recording', store.elapsedSeconds)
   } else if (state === 'paused') {
-    window.electronAPI.updateToolbarState('paused')
-    window.electronAPI.setIslandState('paused')
+    // 暂停必须显式带上当前时长：不带的话 Rust 侧收到 None（页面收到 null 保持现值是
+    // 兜底），但页面计时器已停、UI 上显示的就是这个值 —— 传真值让暂停期间显示正确时长
+    window.muerzhiAPI.updateToolbarState('paused', store.elapsedSeconds)
+    window.muerzhiAPI.setIslandState('paused', store.elapsedSeconds)
   } else {
-    window.electronAPI.updateToolbarState('idle')
-    window.electronAPI.hideFloatingIsland()
-    window.electronAPI.showAiIsland()
+    window.muerzhiAPI.updateToolbarState('idle')
+    window.muerzhiAPI.hideFloatingIsland()
+    window.muerzhiAPI.showAiIsland()
   }
 })
 
+// 卸载清理链的句柄必须放 setup 顶层：onUnmounted 回调引用 onMounted 作用域里的
+// 局部变量会直接 ReferenceError，其后所有清理（监听器退订/音频流/计时器）全部中断
+let cleanupBeforeQuit: (() => void) | null = null
+
 onMounted(() => {
+  // 录制历史只在这里加载（原先在 App.vue 全局加载，导致每个辅助窗口都整份拷贝）
+  store.loadRecordings()
   window.addEventListener('keydown', onKeyDown)
   window.addEventListener('click', onClickOutside)
-  const cleanupBeforeQuit = window.electronAPI.onBeforeQuit(() => {
+  cleanupBeforeQuit = window.muerzhiAPI.onBeforeQuit(() => {
     recording.stop()
     stopCamera()
     audio.cleanup()
-    window.electronAPI.hideRegionBorder()
-    window.electronAPI.hideFloatingBall()
+    window.muerzhiAPI.hideRegionBorder()
+    window.muerzhiAPI.hideFloatingBall()
   })
 
   // 主（录屏）窗口关闭：释放所有与录屏窗口相关的资源。
   // 窗口 hide 而非 destroy，vue onUnmounted 不会触发，故须在此显式释放。
-  const cleanupMainWindowClose = window.electronAPI.onMainWindowClose(() => {
+  const cleanupMainWindowClose = window.muerzhiAPI.onMainWindowClose(() => {
     releaseRecordingResources()
   })
   onUnmounted(() => cleanupMainWindowClose())
 
   // 显示系统级悬浮球
-  window.electronAPI.showFloatingBall()
+  window.muerzhiAPI.showFloatingBall()
 
   // 监听悬浮球操作
-  const cleanupBallAction = window.electronAPI.onFloatingBallAction((action: string) => {
+  const cleanupBallAction = window.muerzhiAPI.onFloatingBallAction((action: string) => {
     const handler = floatingBallActions[action]
     if (handler) handler()
   })
 
   // 音频电平：录制中由 Rust 侧 WASAPI 上报（onAudioLevels 事件，主窗口最小化也在推）；
   // 空闲试音时才走渲染层本地分析器。两者共用 AudioMeter 的 level。
-  const cleanupAudioLevels = window.electronAPI.onAudioLevels(({ mic, sys }) => {
-    audio.micLevel.value = mic
-    audio.sysLevel.value = sys
+  // 事件是 20Hz 的：加死区，变化低于阈值不写 ref，避免无意义的响应式更新
+  const LEVEL_DEADBAND = 0.01
+  const cleanupAudioLevels = window.muerzhiAPI.onAudioLevels(({ mic, sys }) => {
+    if (Math.abs(mic - audio.micLevel.value) >= LEVEL_DEADBAND) audio.micLevel.value = mic
+    if (Math.abs(sys - audio.sysLevel.value) >= LEVEL_DEADBAND) audio.sysLevel.value = sys
   })
   onUnmounted(() => cleanupAudioLevels())
   // 暴露清理函数供 onUnmounted 使用
@@ -494,13 +550,15 @@ onUnmounted(() => {
   window.removeEventListener('click', onClickOutside)
   cleanupShortcut()
   cleanupToolbar()
-  cleanupBeforeQuit()
+  cleanupBeforeQuit?.()
+  if (bubbleTimer) { clearTimeout(bubbleTimer); bubbleTimer = null }
+  if (bubbleMaxTimer) { clearTimeout(bubbleMaxTimer); bubbleMaxTimer = null }
   audio.cleanup()
-  window.electronAPI.hideFloatingIsland()
-  window.electronAPI.hideFloatingBall()
+  window.muerzhiAPI.hideFloatingIsland()
+  window.muerzhiAPI.hideFloatingBall()
   recording.stop()
   stopCamera()
-  window.electronAPI.hideRegionBorder()
+  window.muerzhiAPI.hideRegionBorder()
 })
 
 // 录制时主窗口保持原样，不切换到预览视图
@@ -569,7 +627,7 @@ watch(() => isConverting.value, (val) => {
           <RecordingTimer/>
           <AudioMeter v-if="store.isMicrophoneEnabled" :level="audio.micLevel.value" :label="t('record.mic')"/>
         </div>
-        <RecordingControls @start="handleStart" @pause="handlePause" @resume="handleResume" @stop="handleStop" @toggle-camera="toggleCamera" @toggle-mic="toggleMic" @toggle-drawing="toggleDrawing"/>
+        <RecordingControls @start="handleStart" @pause="handlePause" @resume="handleResume" @stop="handleStop" @toggle-camera="toggleCamera" @toggle-mic="toggleMic"/>
       </div>
 
       <div v-else class="idle-view">
@@ -595,7 +653,7 @@ watch(() => isConverting.value, (val) => {
           </button>
         </div>
 
-        <RecordingControls @start="handleStart" @pause="handlePause" @resume="handleResume" @stop="handleStop" @toggle-camera="toggleCamera" @toggle-mic="toggleMic" @toggle-drawing="toggleDrawing"/>
+        <RecordingControls @start="handleStart" @pause="handlePause" @resume="handleResume" @stop="handleStop" @toggle-camera="toggleCamera" @toggle-mic="toggleMic"/>
         <RecordingsList @play="handlePlayRecording" @export-gif="handleExportGif" @delete="handleDeleteRecording"/>
       </div>
       </template>

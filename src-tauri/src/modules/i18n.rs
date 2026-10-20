@@ -19,7 +19,11 @@ pub enum Locale {
 
 impl Locale {
     pub fn from_str_lossy(v: &str) -> Self {
-        if v.eq_ignore_ascii_case("en") { Locale::En } else { Locale::Zh }
+        if v.eq_ignore_ascii_case("en") {
+            Locale::En
+        } else {
+            Locale::Zh
+        }
     }
 }
 
@@ -89,7 +93,11 @@ impl I18n {
     /// 渲染层 bundle 下发（对齐 getAppI18nBundle）
     pub fn bundle(&self) -> I18nBundle {
         let locale = self.locale();
-        let messages = if locale == Locale::En { &self.en } else { &self.zh };
+        let messages = if locale == Locale::En {
+            &self.en
+        } else {
+            &self.zh
+        };
         I18nBundle {
             locale: if locale == Locale::En { "en" } else { "zh" }.to_string(),
             messages: messages.clone(),

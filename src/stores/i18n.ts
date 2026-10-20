@@ -10,7 +10,7 @@ const state = reactive<{ locale: AppLocale; messages: Record<string, string> }>(
   messages: {},
 })
 
-/** 翻译：渲染层主用入口（主进程侧的翻译在 electron/main/i18n.ts）。缺 key 时回退显示 key 本身（防 UI 空白）。 */
+/** 翻译：渲染层主用入口（Rust 侧的翻译在 src-tauri/src/modules/i18n.rs）。缺 key 时回退显示 key 本身（防 UI 空白）。 */
 export function t(key: string, params?: Record<string, string | number>): string {
   let s = state.messages[key] ?? key
   if (params) {
@@ -27,18 +27,21 @@ export function getLocale(): AppLocale {
 }
 
 /** 窗口启动时初始化（拉 bundle + 订阅广播）。不依赖 mount，挂载前 await 一次避免模板闪 key。 */
+let unlistenLocaleChanged: (() => void) | null = null
+
 export async function initI18n(): Promise<void> {
   try {
-    const bundle = await window.electronAPI.getAppI18n()
+    const bundle = await window.muerzhiAPI.getAppI18n()
     if (bundle) {
       state.locale = bundle.locale
       state.messages = bundle.messages
     }
-    window.electronAPI.onAppLocaleChanged((data) => {
+    // 模块级单例每窗口仅注册一次，unlisten 存住备 dispose（与全项目清理纪律一致）
+    unlistenLocaleChanged = window.muerzhiAPI.onAppLocaleChanged((data) => {
       // 广播只带 locale；消息表以主进程为真源，变更时重新拉取 bundle
       if (data.locale && data.locale !== state.locale) {
         state.locale = data.locale
-        window.electronAPI.getAppI18n().then(b => { if (b) state.messages = b.messages }).catch(() => {})
+        window.muerzhiAPI.getAppI18n().then(b => { if (b) state.messages = b.messages }).catch(() => {})
       }
     })
   } catch (e) {

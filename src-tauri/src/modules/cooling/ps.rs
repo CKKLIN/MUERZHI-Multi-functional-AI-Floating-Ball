@@ -18,54 +18,65 @@ fn base64_encode(data: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
     for chunk in data.chunks(3) {
-        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
         let n = ((b[0] as u32) << 16) | ((b[1] as u32) << 8) | b[2] as u32;
         out.push(TABLE[((n >> 18) & 63) as usize] as char);
         out.push(TABLE[((n >> 12) & 63) as usize] as char);
-        out.push(if chunk.len() > 1 { TABLE[((n >> 6) & 63) as usize] as char } else { '=' });
-        out.push(if chunk.len() > 2 { TABLE[(n & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 1 {
+            TABLE[((n >> 6) & 63) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            TABLE[(n & 63) as usize] as char
+        } else {
+            '='
+        });
     }
     out
 }
 
 /// 运行 PowerShell 脚本，返回 stdout（失败返回 None）
+/// tokio::process + kill_on_drop：超时放弃 future 时连带杀掉子进程，
+/// 避免 powershell 挂起时进程与阻塞池线程双双泄漏（原 spawn_blocking + std::process 版本超时只弃等待不杀进程）。
 pub async fn run_powershell(script: &str, timeout_ms: u64) -> Option<String> {
     let encoded = to_encoded_command(script);
     let script_owned = script.to_string();
-    let out = tokio::time::timeout(
-        Duration::from_millis(timeout_ms),
-        tokio::task::spawn_blocking(move || {
-            #[cfg(windows)]
-            use std::os::windows::process::CommandExt;
-            let mut cmd = Command::new("powershell.exe");
-            cmd.args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded]);
-            #[cfg(windows)]
-            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW（对应 windowsHide: true）
-            cmd.output()
-        }),
-    )
-    .await;
+    let mut cmd = tokio::process::Command::new("powershell.exe");
+    cmd.args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded]);
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW（对应 windowsHide: true）
+    cmd.kill_on_drop(true);
+
+    let out = tokio::time::timeout(Duration::from_millis(timeout_ms), cmd.output()).await;
 
     match out {
-        Ok(Ok(Ok(o))) => {
+        Ok(Ok(o)) => {
             if o.status.success() {
                 Some(String::from_utf8_lossy(&o.stdout).to_string())
             } else {
                 let err = String::from_utf8_lossy(&o.stderr).to_string();
-                log::warn!("powershell failed ({}): {}", err.trim(), summary(&script_owned));
+                log::warn!(
+                    "powershell failed ({}): {}",
+                    err.trim(),
+                    summary(&script_owned)
+                );
                 None
             }
         }
-        Ok(Ok(Err(e))) => {
+        Ok(Err(e)) => {
             log::warn!("powershell spawn failed: {e}");
             None
         }
-        Ok(Err(e)) => {
-            log::warn!("powershell join failed: {e}");
-            None
-        }
         Err(_) => {
-            log::warn!("powershell timeout ({timeout_ms}ms): {}", summary(&script_owned));
+            log::warn!(
+                "powershell timeout ({timeout_ms}ms): {}",
+                summary(&script_owned)
+            );
             None
         }
     }
@@ -105,25 +116,25 @@ pub fn run_powershell_sync(script: &str, timeout_ms: u64) -> Option<String> {
     }
 }
 
-/// 运行 powercfg（argv 数组）
+/// 运行 powercfg（argv 数组）— kill_on_drop 同 run_powershell
 pub async fn run_powercfg(args: &[&str], timeout_ms: u64) -> Option<String> {
     let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-    let out = tokio::time::timeout(
-        Duration::from_millis(timeout_ms),
-        tokio::task::spawn_blocking(move || {
-            #[cfg(windows)]
-            use std::os::windows::process::CommandExt;
-            let mut cmd = Command::new("powercfg");
-            cmd.args(&args);
-            #[cfg(windows)]
-            cmd.creation_flags(0x0800_0000);
-            cmd.output()
-        }),
-    )
-    .await;
+    let mut cmd = tokio::process::Command::new("powercfg");
+    cmd.args(&args);
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000);
+    cmd.kill_on_drop(true);
+    let out = tokio::time::timeout(Duration::from_millis(timeout_ms), cmd.output()).await;
     match out {
-        Ok(Ok(Ok(o))) => Some(String::from_utf8_lossy(&o.stdout).to_string()),
-        _ => None,
+        Ok(Ok(o)) => Some(String::from_utf8_lossy(&o.stdout).to_string()),
+        Ok(Err(e)) => {
+            log::warn!("powercfg spawn failed: {e}");
+            None
+        }
+        Err(_) => {
+            log::warn!("powercfg timeout ({timeout_ms}ms)");
+            None
+        }
     }
 }
 

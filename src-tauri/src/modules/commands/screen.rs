@@ -36,7 +36,11 @@ pub struct DisplayInfo {
 const THUMB_W: u32 = 340;
 const THUMB_H: u32 = 200;
 
-fn dip_bounds(phys: &tauri::PhysicalPosition<i32>, phys_size: &tauri::PhysicalSize<u32>, scale: f64) -> Bounds {
+fn dip_bounds(
+    phys: &tauri::PhysicalPosition<i32>,
+    phys_size: &tauri::PhysicalSize<u32>,
+    scale: f64,
+) -> Bounds {
     Bounds {
         x: (phys.x as f64 / scale).round() as i32,
         y: (phys.y as f64 / scale).round() as i32,
@@ -59,12 +63,26 @@ pub fn get_screen_bounds(app: AppHandle) -> Bounds {
     // 对齐 Electron getPrimaryDisplay().bounds / scaleFactor → DIP
     match app.primary_monitor() {
         Ok(Some(m)) => dip_bounds(m.position(), m.size(), m.scale_factor()),
-        _ => Bounds { x: 0, y: 0, width: 0, height: 0 },
+        _ => Bounds {
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+        },
     }
 }
 
 #[tauri::command]
-pub fn get_all_displays(app: AppHandle) -> Vec<DisplayInfo> {
+pub async fn get_all_displays(app: AppHandle) -> Vec<DisplayInfo> {
+    // 每屏一次 BitBlt 抓帧 + PNG 编码 + base64（高分辨率多屏时是秒级重活），
+    // 丢进阻塞线程池，别卡住 async worker
+    let app2 = app.clone();
+    tokio::task::spawn_blocking(move || build_display_list(&app2))
+        .await
+        .unwrap_or_default()
+}
+
+fn build_display_list(app: &AppHandle) -> Vec<DisplayInfo> {
     let mut displays = Vec::new();
     let Ok(monitors) = app.available_monitors() else {
         return displays;
@@ -130,13 +148,22 @@ pub struct CaptureSource {
 }
 
 #[tauri::command]
-pub fn get_sources(app: AppHandle, types: Option<Vec<String>>) -> Vec<CaptureSource> {
-    // 只支持 ['screen']（窗口捕获未实现）；显式排除时不返回任何源
-    if let Some(t) = &types {
-        if !t.is_empty() && !t.iter().any(|s| s == "screen") {
-            return Vec::new();
-        }
+pub async fn get_sources(app: AppHandle, types: Option<Vec<String>>) -> Vec<CaptureSource> {
+    // 同 get_all_displays：抓帧 + PNG 编码是秒级重活，丢阻塞线程池
+    let want_screen = match &types {
+        // 只支持 ['screen']（窗口捕获未实现）；显式排除时不返回任何源
+        Some(t) => t.is_empty() || t.iter().any(|s| s == "screen"),
+        None => true,
+    };
+    if !want_screen {
+        return Vec::new();
     }
+    tokio::task::spawn_blocking(move || build_capture_sources(&app))
+        .await
+        .unwrap_or_default()
+}
+
+fn build_capture_sources(app: &AppHandle) -> Vec<CaptureSource> {
     let Ok(monitors) = app.available_monitors() else {
         return Vec::new();
     };
@@ -150,7 +177,10 @@ pub fn get_sources(app: AppHandle, types: Option<Vec<String>>) -> Vec<CaptureSou
     for (i, m) in monitors.iter().enumerate() {
         let monitor_name = m.name().cloned().unwrap_or_default();
         let is_primary = primary_name.as_deref() == Some(monitor_name.as_str());
-        let wgc_index = wgc_names.iter().position(|n| n == &monitor_name).unwrap_or(i);
+        let wgc_index = wgc_names
+            .iter()
+            .position(|n| n == &monitor_name)
+            .unwrap_or(i);
         out.push(CaptureSource {
             id: format!("screen:{i}"),
             name: if is_primary {
@@ -197,6 +227,7 @@ pub fn list_audio_devices() -> Vec<serde_json::Value> {
 #[tauri::command]
 pub async fn take_screenshot(app: tauri::AppHandle) -> serde_json::Value {
     use serde_json::json;
+    log::info!("take_screenshot");
     let path = match crate::modules::recording::grab::screenshot_to_desktop(&app) {
         Ok(p) => p,
         Err(e) => {
@@ -204,6 +235,7 @@ pub async fn take_screenshot(app: tauri::AppHandle) -> serde_json::Value {
             return json!({ "success": false, "error": e });
         }
     };
+    log::info!("截图已落盘: {path}");
     let file_name = std::path::Path::new(&path)
         .file_name()
         .map(|s| s.to_string_lossy().to_string())

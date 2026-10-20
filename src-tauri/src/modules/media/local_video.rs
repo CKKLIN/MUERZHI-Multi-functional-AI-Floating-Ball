@@ -5,6 +5,10 @@
 use std::io::{Read, Seek, SeekFrom};
 use tauri::http::{Request, Response, StatusCode};
 
+/// 单次 Range 响应的最大块（浏览器会拿 206 的 Content-Range 自动续传后续块；
+/// `bytes=0-` 直接把 GB 级成品整段读进内存会打爆内存峰值）
+const MAX_RANGE_CHUNK: u64 = 4 * 1024 * 1024;
+
 /// 注册协议（在 Builder::register_uri_scheme_protocol 中调用）
 pub fn handle_local_video(request: Request<Vec<u8>>) -> Response<Vec<u8>> {
     let uri = request.uri().to_string();
@@ -22,7 +26,7 @@ pub fn handle_local_video(request: Request<Vec<u8>>) -> Response<Vec<u8>> {
         return Response::builder()
             .status(StatusCode::NOT_FOUND)
             .body(format!("File not found: {file_path}").into_bytes())
-            .unwrap()
+            .unwrap();
     };
     let size = meta.len();
     let mime = mime_of(&file_path);
@@ -35,7 +39,8 @@ pub fn handle_local_video(request: Request<Vec<u8>>) -> Response<Vec<u8>> {
 
     if let Some(r) = range {
         if let Some((start, end)) = parse_range(&r, size) {
-            let len = end - start + 1;
+            let end = end.min(start + MAX_RANGE_CHUNK - 1);
+            let len = (end - start + 1) as usize;
             let mut file = match std::fs::File::open(path) {
                 Ok(f) => f,
                 Err(e) => {
@@ -51,13 +56,32 @@ pub fn handle_local_video(request: Request<Vec<u8>>) -> Response<Vec<u8>> {
                     .body(b"seek failed".to_vec())
                     .unwrap();
             }
-            let mut buf = vec![0u8; len as usize];
-            let _ = file.read_exact(&mut buf);
+            // 按实际读到的字芔回填头（文件可能比请求时小了）
+            let mut buf = vec![0u8; len];
+            let mut filled = 0usize;
+            while filled < len {
+                match file.read(&mut buf[filled..]) {
+                    Ok(0) => break,
+                    Ok(n) => filled += n,
+                    Err(_) => break,
+                }
+            }
+            buf.truncate(filled);
+            if filled == 0 {
+                return Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(b"read failed".to_vec())
+                    .unwrap();
+            }
+            let actual_end = start + filled as u64 - 1;
             return Response::builder()
                 .status(StatusCode::PARTIAL_CONTENT)
-                .header("Content-Range", format!("bytes {start}-{end}/{size}"))
+                .header(
+                    "Content-Range",
+                    format!("bytes {start}-{actual_end}/{size}"),
+                )
                 .header("Accept-Ranges", "bytes")
-                .header("Content-Length", len.to_string())
+                .header("Content-Length", filled.to_string())
                 .header("Content-Type", mime)
                 .body(buf)
                 .unwrap();
@@ -145,9 +169,20 @@ pub fn mime_of(path: &str) -> String {
     }
 }
 
-/// 构造 local-video:// URL（三斜杠；渲染层 side 也有一份等价实现）
+/// 构造 local-video URL（Windows 上 wry 只拦截 `http://local-video.*` 形态；
+/// 与渲染层 bridge.ts toLocalVideoUrl 等价 —— 整路径 encodeURIComponent 同款编码）
 pub fn to_local_video_url(file_path: &str) -> String {
-    format!("local-video:///{}", file_path.replace('\\', "/"))
+    let normalized = file_path.replace('\\', "/");
+    let encoded: String = normalized
+        .bytes()
+        .map(|b| match b {
+            // encodeURIComponent 的 unescaped 集合：A-Z a-z 0-9 - _ . ! ~ * ' ( )
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'!' | b'~'
+            | b'*' | b'\'' | b'(' | b')' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect();
+    format!("http://local-video.localhost/{encoded}")
 }
 
 #[cfg(test)]
@@ -158,13 +193,33 @@ mod tests {
     fn parses_windows_path_from_url() {
         let uri = "local-video://localhost/C:/Users/me/视频/x.mp4";
         assert_eq!(parse_path(uri).as_deref(), Some("C:/Users/me/视频/x.mp4"));
-        assert_eq!(parse_path("local-video:///C:/a.mp4").as_deref(), Some("C:/a.mp4"));
+        assert_eq!(
+            parse_path("local-video:///C:/a.mp4").as_deref(),
+            Some("C:/a.mp4")
+        );
     }
 
     #[test]
     fn percent_decoding_roundtrip() {
         let uri = "local-video://localhost/C:/My%20Videos/a%2Bb.mp4";
         assert_eq!(parse_path(uri).as_deref(), Some("C:/My Videos/a+b.mp4"));
+    }
+
+    #[test]
+    fn helper_url_roundtrips_through_parse_path() {
+        // 渲染层/Rust 统一走 percent-encode 形态；wry 拦截 http://local-video.localhost/* 后
+        // revert 成 local-video://localhost/* 交给 parse_path —— 两段拼起来必须能还原路径
+        let url = to_local_video_url(r"C:\Users\me\视频\a+b (1).mp4");
+        assert_eq!(
+            url,
+            "http://local-video.localhost/C%3A%2FUsers%2Fme%2F%E8%A7%86%E9%A2%91%2Fa%2Bb%20(1).mp4"
+        );
+        // 模拟 wry revert 后的 URI 形态
+        let reverted = url.replacen("http://local-video.", "local-video://", 1);
+        assert_eq!(
+            parse_path(&reverted).as_deref(),
+            Some("C:/Users/me/视频/a+b (1).mp4")
+        );
     }
 
     #[test]

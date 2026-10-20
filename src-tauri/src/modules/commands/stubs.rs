@@ -4,7 +4,7 @@
 // 故整体抑制 snake_case 命名告警；替换真实现时同样遵循。
 #![allow(non_snake_case)]
 
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 // ===== 截图/选区已实装（P4：commands/screen.rs + windows/region.rs），stub 已移除 =====
 
@@ -17,13 +17,34 @@ pub fn minimize_window(window: tauri::Window) {
 }
 
 #[tauri::command]
-pub fn show_window(window: tauri::Window) {
+pub fn show_window(window: tauri::Window, app: tauri::AppHandle) {
+    // 录屏时主窗口是**最小化**状态（避免挡画面），停止后要它回来 ——
+    // 只 show() 不会从最小化恢复（Windows 的 SW_SHOW 对最小化窗无效，得 SW_RESTORE），
+    // 必须显式 unminimize()，否则用户看到的是「录完主窗口没回来」（任务栏里还是最小化的）。
+    log::info!(
+        "show_window: {}（unminimize + show + 重绘 + focus）",
+        window.label()
+    );
+    // 主窗口走 show_main_window（内部含 unminimize + show + 重绘 + focus）
+    if window.label() == "main" {
+        crate::modules::windows::show_main_window(&app);
+        return;
+    }
+    // 其余标签：命令参数给的是 tauri::Window，经 label 取回 WebviewWindow 走
+    // 统一的 show_and_refresh（unminimize + show + 重绘 + focus，见其文档）
+    if let Some(win) = app.get_webview_window(window.label()) {
+        crate::modules::windows::show_and_refresh(&win);
+        return;
+    }
+    // 非 webview 窗口（理论上到不了这里）退化为裸 show
+    let _ = window.unminimize();
     let _ = window.show();
     let _ = window.set_focus();
 }
 
 #[tauri::command]
 pub fn maximize_window(window: tauri::Window) {
+    log::info!("maximize_window: {}（toggle）", window.label());
     if window.is_maximized().unwrap_or(false) {
         let _ = window.unmaximize();
     } else {
@@ -35,6 +56,7 @@ pub fn maximize_window(window: tauri::Window) {
 pub fn close_window(window: tauri::Window, app: tauri::AppHandle) {
     // 对齐 Electron close-window：通知渲染层释放录制资源 → 隐藏（不销毁，托盘常驻）。
     // CloseRequested 拦截器也会触发同样逻辑，此处显式走一遍保证语义一致。
+    log::info!("close_window: {}（main 隐藏，其余销毁）", window.label());
     if window.label() == "main" {
         let _ = app.emit("app-main-window-close", ());
         let _ = window.hide();
@@ -55,6 +77,7 @@ pub fn close_window(window: tauri::Window, app: tauri::AppHandle) {
 
 #[tauri::command]
 pub fn todo_show_window(app: tauri::AppHandle) {
+    log::info!("todo_show_window");
     crate::modules::windows::open_or_focus(&app, "todo", "/todo");
     // 打开即视为已查看到期项：熄灭角标闪烁（对齐 acknowledgeTodoBadgeFlash）
     crate::modules::windows::todo_windows::set_badge_flash(&app, false);
@@ -62,7 +85,7 @@ pub fn todo_show_window(app: tauri::AppHandle) {
 
 #[tauri::command]
 pub fn todo_close_window(app: tauri::AppHandle) {
-    use tauri::Manager;
+    log::info!("todo_close_window");
     if let Some(win) = app.get_webview_window("todo") {
         let _ = win.hide();
     }
@@ -70,8 +93,9 @@ pub fn todo_close_window(app: tauri::AppHandle) {
 
 #[tauri::command]
 pub fn todo_window_visible(app: tauri::AppHandle) -> bool {
-    use tauri::Manager;
-    app.get_webview_window("todo").map(|w| w.is_visible().unwrap_or(false)).unwrap_or(false)
+    app.get_webview_window("todo")
+        .map(|w| w.is_visible().unwrap_or(false))
+        .unwrap_or(false)
 }
 
 /// 翻转待办窗口置顶并持久化（对齐 toggleTodoWindowAlwaysOnTop）
@@ -82,8 +106,10 @@ pub fn todo_toggle_always_on_top(app: tauri::AppHandle) -> bool {
         &app,
         &serde_json::json!({ "windowAlwaysOnTop": !s.window_always_on_top }),
     );
+    log::info!("todo_toggle_always_on_top → {}", next.window_always_on_top);
     {
-        use tauri::Manager;
+        // 窗口按需创建时还没开过：置顶状态在下次 open_or_focus 建出后由
+        // 渲染层重新拉设置生效，这里对已存在的窗口即时套用即可
         if let Some(win) = app.get_webview_window("todo") {
             let _ = win.set_always_on_top(next.window_always_on_top);
         }

@@ -161,7 +161,8 @@ pub mod imp {
         MinimumUpdateIntervalSettings, SecondaryWindowSettings, Settings,
     };
 
-    pub type Control = CaptureControl<ScreenCaptureHandler, Box<dyn std::error::Error + Send + Sync>>;
+    pub type Control =
+        CaptureControl<ScreenCaptureHandler, Box<dyn std::error::Error + Send + Sync>>;
 
     /// 当前活跃的采集段
     pub struct Active {
@@ -179,13 +180,43 @@ pub mod imp {
     pub struct SharedFrame {
         /// (像素缓冲, 宽, 高) —— None 表示还没收到任何帧
         buf: Mutex<Option<(Vec<u8>, u32, u32)>>,
+        /// pacing 线程换帧时把旧缓冲归还到池里复用 —— 1080p 一帧 8MB，
+        /// 不归还的话每秒 30 次大块分配/释放全砸在分配器上
+        recycle: Mutex<Vec<Vec<u8>>>,
+    }
+
+    impl SharedFrame {
+        /// 取一块可写的帧缓冲：优先复用归还池里的旧缓冲
+        fn take_buffer(&self) -> Vec<u8> {
+            self.recycle.lock().unwrap().pop().unwrap_or_default()
+        }
+
+        /// 发布新帧；被替换掉的旧缓冲若尺寸一致则回收入池
+        fn publish(&self, buf: Vec<u8>, w: u32, h: u32) {
+            let mut guard = self.buf.lock().unwrap();
+            if let Some((old, _, _)) = guard.take() {
+                if old.len() == buf.len() {
+                    self.recycle.lock().unwrap().push(old);
+                }
+            }
+            *guard = Some((buf, w, h));
+        }
+
+        /// pacing 线程换帧后归还旧缓冲
+        fn recycle_buffer(&self, old: Vec<u8>) {
+            self.recycle.lock().unwrap().push(old);
+        }
     }
 
     /// WGC 采集器：帧到达只更新共享缓冲，真正的编码推送交给 pacing 线程
     pub struct ScreenCaptureHandler {
         stop: Arc<AtomicBool>,
+        /// 仅持有引用保活（frames 只由 pacing 线程累加，语义=成品实际帧数）
+        #[allow(dead_code)]
         frames: Arc<AtomicU64>,
         shared: Arc<SharedFrame>,
+        /// as_nopadding_buffer 的行重排草稿（跨帧复用，仅源面带 row padding 时才会写入）
+        packed_scratch: Vec<u8>,
     }
 
     impl GraphicsCaptureApiHandler for ScreenCaptureHandler {
@@ -194,7 +225,12 @@ pub mod imp {
 
         fn new(ctx: Context<Self::Flags>) -> Result<Self, Self::Error> {
             let (cfg, shared) = ctx.flags;
-            Ok(Self { stop: cfg.stop, frames: cfg.frames, shared })
+            Ok(Self {
+                stop: cfg.stop,
+                frames: cfg.frames,
+                shared,
+                packed_scratch: Vec::new(),
+            })
         }
 
         fn on_frame_arrived(
@@ -208,13 +244,14 @@ pub mod imp {
             }
             // 只保留最新一帧：把 GPU 表面拷成 CPU 缓冲并翻正行序（WGC 的 BGRA 是自下而上），
             // 由 pacing 线程按 fps 反复推送。这里不做任何编码，帧到达多快都不影响输出节奏。
+            // 输出缓冲从共享池取（pacing 归还的旧缓冲），行序翻转融合进拷贝过程——
+            // 稳态下每帧零分配、一次拷贝（原实现每帧 3 次分配 + 2 次整帧拷贝 + 1 次行交换）。
             let fb = frame.buffer()?;
             let (w, h) = (fb.width(), fb.height());
-            let mut scratch = Vec::new();
-            let packed = fb.as_nopadding_buffer(&mut scratch);
-            let mut out = packed.to_vec();
-            flip_rows_bgra(&mut out, w, h);
-            *self.shared.buf.lock().unwrap() = Some((out, w, h));
+            let packed = fb.as_nopadding_buffer(&mut self.packed_scratch);
+            let mut out = self.shared.take_buffer();
+            pack_flipped_rows(packed, w, h, &mut out);
+            self.shared.publish(out, w, h);
             // ⚠️ 不要在这里 fetch_add：frames 的语义是「成品里实际有多少帧」，
             // 而成品帧数由 pacing 线程决定（帧到达量随画面动静变化）。两个地方都加
             // 会让计数虚高近一倍（实测 3 秒 165 帧 vs 真实 90 帧），冒烟测试因此误报。
@@ -226,20 +263,23 @@ pub mod imp {
         }
     }
 
-    /// BGRA 行序翻转（WGC 表面是自下而上，MF 编码器要自上而下）
-    fn flip_rows_bgra(buf: &mut [u8], w: u32, h: u32) {
+    /// 把自下而上的 BGRA 紧凑缓冲按行倒序拷成自上而下（融合行序翻转，免临时行缓冲）。
+    /// `out` 跨帧复用：容量足够时不再分配，也不做多余的清零。
+    fn pack_flipped_rows(src: &[u8], w: u32, h: u32, out: &mut Vec<u8>) {
         let stride = (w * 4) as usize;
-        if stride == 0 || h < 2 || buf.len() < stride * h as usize {
+        let need = stride * h as usize;
+        if stride == 0 || h == 0 || src.len() < need {
             return;
         }
-        let mut tmp = vec![0u8; stride];
-        for y in 0..(h as usize / 2) {
-            let top = y * stride;
-            let bottom = (h as usize - 1 - y) * stride;
-            tmp.copy_from_slice(&buf[top..top + stride]);
-            buf.copy_within(bottom..bottom + stride, top);
-            buf[bottom..bottom + stride].copy_from_slice(&tmp);
+        if out.len() < need {
+            out.resize(need, 0);
         }
+        for y in 0..h as usize {
+            let dst = y * stride;
+            let src_row = (h as usize - 1 - y) * stride;
+            out[dst..dst + stride].copy_from_slice(&src[src_row..src_row + stride]);
+        }
+        out.truncate(need);
     }
 
     /// 定速推送线程：以段开始时刻为基准，按 fps 用墙钟时间戳推最后一帧
@@ -249,7 +289,7 @@ pub mod imp {
         paced_stop: Arc<AtomicBool>,
         fps: u32,
         frames: Arc<AtomicU64>,
-    ) -> std::thread::JoinHandle<()> {
+    ) -> Result<std::thread::JoinHandle<()>, String> {
         std::thread::Builder::new()
             .name("wgc-pacer".into())
             .spawn(move || {
@@ -259,16 +299,19 @@ pub mod imp {
                 let mut index: u64 = 0;
                 let mut last: Option<(Vec<u8>, u32, u32)> = None;
                 while !paced_stop.load(Ordering::SeqCst) {
-                    // 取最新帧（有就用新的，没有就复用上一帧——首帧前保持等待）
+                    // 取最新帧（有就用新的，旧缓冲归还共享池复用；没有就复用上一帧——首帧前保持等待）
                     if let Some(fresh) = shared.buf.lock().unwrap().take() {
-                        last = Some(fresh);
+                        if let Some((old, _, _)) = last.replace(fresh) {
+                            shared.recycle_buffer(old);
+                        }
                     }
                     let Some((buf, _w, _h)) = last.as_ref() else {
                         std::thread::sleep(period);
                         continue;
                     };
                     let ts = index as i64 * 10_000_000 / fps.max(1) as i64;
-                    if encoder.send_frame_buffer(buf, ts).is_err() {
+                    if let Err(e) = encoder.send_frame_buffer(buf, ts) {
+                        log::error!("编码器送帧失败，本段提前结束: {e}");
                         break;
                     }
                     frames.fetch_add(1, Ordering::Relaxed);
@@ -285,9 +328,7 @@ pub mod imp {
                 // 正常路径由结束逻辑 finish；这里兜底释放（Drop 里也会 finish）
                 let _ = encoder.finish();
             })
-            .ok()
-            .map(|h| h)
-            .unwrap_or_else(|| std::thread::spawn(|| {}))
+            .map_err(|e| format!("补帧线程启动失败: {e}"))
     }
 
     /// 启动一段采集（同一进程内可并行多段：多屏录制各显示器一段）
@@ -300,16 +341,17 @@ pub mod imp {
             .stack_size(16 * 1024 * 1024)
             .spawn(move || spawn_segment_inner(cfg))
             .map_err(|e| format!("采集线程启动失败: {e}"))?;
-        handle
-            .join()
-            .map_err(|_| "采集线程 panic".to_string())?
+        handle.join().map_err(|_| "采集线程 panic".to_string())?
     }
 
     fn spawn_segment_inner(cfg: SegmentConfig) -> Result<Active, String> {
         // windows-capture 的 Monitor::from_index 是 1-based；本工程对外一律 0-based
         let monitor = Monitor::from_index(cfg.monitor_index + 1)
             .map_err(|e| format!("显示器 #{} 不存在: {e}", cfg.monitor_index))?;
-        let shared: Arc<SharedFrame> = Arc::new(SharedFrame { buf: Mutex::new(None) });
+        let shared: Arc<SharedFrame> = Arc::new(SharedFrame {
+            buf: Mutex::new(None),
+            recycle: Mutex::new(Vec::new()),
+        });
         let settings = Settings::new(
             monitor,
             if cfg.with_cursor {
@@ -345,8 +387,15 @@ pub mod imp {
         )
         .map_err(|e| format!("编码器创建失败: {e}"))?;
 
-        let control = ScreenCaptureHandler::start_free_threaded(settings)
-            .map_err(|e| format!("WGC 启动失败: {e}"))?;
+        let control = match ScreenCaptureHandler::start_free_threaded(settings) {
+            Ok(c) => c,
+            Err(e) => {
+                // 编码器 Drop 时会 finish 写出文件头——不删的话临时目录会留下
+                // 一个没人认领的空 mp4 段
+                let _ = std::fs::remove_file(&cfg.output_path);
+                return Err(format!("WGC 启动失败: {e}"));
+            }
+        };
         let paced_stop = Arc::new(AtomicBool::new(false));
         let pacer = spawn_pacer(
             encoder,
@@ -354,9 +403,22 @@ pub mod imp {
             paced_stop.clone(),
             clamp_fps(cfg.fps),
             cfg.frames.clone(),
+        )?;
+        log::info!(
+            "WGC 采集段已启动（monitor #{}, {}x{}@{}）",
+            cfg.monitor_index,
+            cfg.width,
+            cfg.height,
+            cfg.fps
         );
-        log::info!("WGC 采集段已启动（monitor #{}, {}x{}@{}）", cfg.monitor_index, cfg.width, cfg.height, cfg.fps);
-        Ok(Active { control, stop, path, monitor_index, pacing: Some(pacer), paced_stop })
+        Ok(Active {
+            control,
+            stop,
+            path,
+            monitor_index,
+            pacing: Some(pacer),
+            paced_stop,
+        })
     }
 
     /// 结束一段：停 pacing → finish 编码器 → 停 WGC 并 join → 校验产物
@@ -371,22 +433,67 @@ pub mod imp {
             .stack_size(16 * 1024 * 1024)
             .spawn(move || end_segment_inner(active))
             .map_err(|e| format!("采集收尾线程启动失败: {e}"))?;
-        handle.join().map_err(|_| "采集收尾线程 panic".to_string())?
+        handle
+            .join()
+            .map_err(|_| "采集收尾线程 panic".to_string())?
+    }
+
+    /// join 带超时：正常退出返回 true；超时放弃等待并记日志（挂死的线程不再拖死
+    /// 整条停止流程——代价是泄漏该线程及其看护线程，好过 recording_stop 永不返回）
+    fn join_with_timeout(what: &'static str, h: std::thread::JoinHandle<()>) -> bool {
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let Ok(_join_watcher) = std::thread::Builder::new()
+            .name(format!("{what}-join-watch"))
+            .spawn(move || {
+                let _ = h.join();
+                let _ = tx.send(());
+            })
+        else {
+            return false;
+        };
+        let done = rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .is_ok();
+        if !done {
+            log::error!("{what} 线程 10s 内未退出，放弃等待（线程泄漏，停止流程继续）");
+        }
+        drop(_join_watcher);
+        done
     }
 
     fn end_segment_inner(active: Active) -> Result<String, String> {
-        let Active { control, stop, path, pacing, paced_stop, .. } = active;
+        let Active {
+            control,
+            stop,
+            path,
+            pacing,
+            paced_stop,
+            ..
+        } = active;
         stop.store(true, Ordering::SeqCst);
         paced_stop.store(true, Ordering::SeqCst);
         if let Some(h) = pacing {
-            let _ = h.join();
+            join_with_timeout("wgc-pacer", h);
         }
         // control.stop() 会发 WM_QUIT 并 join（内部已处理线程已退出的竞态）
         let join = std::thread::spawn(move || control.stop().map_err(|e| format!("{e}")));
-        match join.join() {
+        let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
+        let Ok(_stop_watcher) = std::thread::Builder::new()
+            .name("wgc-stop-join-watch".into())
+            .spawn(move || {
+                let r = match join.join() {
+                    Ok(inner) => inner.map_err(|e| format!("{e}")),
+                    Err(_) => Err("WGC 停止线程 panic".to_string()),
+                };
+                let _ = tx.send(r);
+            })
+        else {
+            return Err("WGC 停止看护线程启动失败".into());
+        };
+        match rx.recv_timeout(std::time::Duration::from_secs(10)) {
             Ok(Ok(())) => {}
             Ok(Err(e)) => log::warn!("WGC 停止时 join 报错: {e}"),
-            Err(_) => log::warn!("WGC 停止线程 panic"),
+            Err(_) => log::error!("WGC 停止线程 10s 内未退出，放弃等待（继续后续合成）"),
         }
         // writer flush 后再判存在（finish 是同步的，这里只留一点余量）
         std::thread::sleep(std::time::Duration::from_millis(200));
@@ -544,7 +651,10 @@ mod tests {
             .map(|s| s.trim().to_string())
             .unwrap_or_default();
         println!("WGC 冒烟：{path}（{size} 字节，{n} 帧，时长 {dur}，墙钟 {wall:.1}s）");
-        assert!(dur.starts_with("00:00:02") || dur.starts_with("00:00:03"), "时长 {dur} 与录制时长 {wall:.1}s 不符");
+        assert!(
+            dur.starts_with("00:00:02") || dur.starts_with("00:00:03"),
+            "时长 {dur} 与录制时长 {wall:.1}s 不符"
+        );
         let _ = std::fs::remove_file(&path);
     }
 }

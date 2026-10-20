@@ -209,12 +209,30 @@ function applyI18nText() {
 const OTHER = () => S.other
 
 // ===== 尺寸自适应 =====
+// 去抖 + rAF 合帧：flat 横条切换时 CSS height 过渡会让 ResizeObserver 每帧触发
+// （一次切换 = 18-30 次 invoke），各处 setTimeout(resizeIsland,…) 还会重复排程。
+// 尾延 200ms 覆盖 .3s 过渡的大半，只在尺寸真正变化时上报一次。
+let resizeRafId = 0
+let resizeDebounceId = 0
+let lastW = -1
+let lastH = -1
 function resizeIsland() {
-  const island = document.getElementById('island')
-  const w = island.scrollWidth
-  // offsetHeight 含边框（scrollHeight 不含，会让窗口比胶囊矮 2px 裁掉底边框）
-  const h = island.offsetHeight
-  invoke('resize_ai_island', { contentWidth: w, contentHeight: h })
+  clearTimeout(resizeDebounceId)
+  resizeDebounceId = setTimeout(() => {
+    cancelAnimationFrame(resizeRafId)
+    resizeRafId = requestAnimationFrame(() => {
+      const island = document.getElementById('island')
+      // offsetWidth/offsetHeight 都是 **border box**（含左右/上下各 1px 边框）。
+      // 宽度曾用 scrollWidth（padding box，少 2px）：以前窗口宽 = 内容宽 + 20 透明缓冲，
+      // 2px 误差被缓冲吞掉；现在窗口尺寸严格等于内容尺寸，少报会把右边框裁掉。
+      const w = island.offsetWidth
+      const h = island.offsetHeight
+      if (w === lastW && h === lastH) return
+      lastW = w
+      lastH = h
+      invoke('resize_ai_island', { contentWidth: w, contentHeight: h })
+    })
+  }, 200)
 }
 
 function fitIslandWidth() {
@@ -302,6 +320,11 @@ let qDrafts = []
 
 function currentDraft() {
   return qDrafts[qIndex] || (qDrafts[qIndex] = { selected: new Set(), otherText: '' })
+}
+
+/** 题目内容指纹：用于识别「同一张卡的重复推送」（题面/选项全等才认作同卡） */
+function questionsFingerprint(list) {
+  try { return JSON.stringify(list) } catch { return String(list && list.length) }
 }
 
 function renderCurrentQuestion() {
@@ -414,11 +437,23 @@ function applyQuestion(q) {
     return
   }
   document.getElementById('permCard').classList.remove('show')
-  qList = resolveQuestionList(q)
-  qIndex = 0
-  qAnswerable = !!q.answerable
-  qSessionId = q.sessionId || ''
-  qDrafts = qList.map(() => ({ selected: new Set(), otherText: '' }))
+  const list = resolveQuestionList(q)
+  const answerable = !!q.answerable
+  const sessionId = q.sessionId || ''
+  // 同一张卡的重复推送（Rust push_card 走 eval + emit 双通道，页面两条都监听；
+  // 窗口重建后也会 agent_get_status 重拉）必须保留答题进度与草稿 —— 早先无条件
+  // qDrafts 重置 + qIndex=0，用户勾到第 3 题时一次重推就跳回第 1 题且选项清空。
+  const sameCard = qList.length === list.length
+    && qAnswerable === answerable
+    && qSessionId === sessionId
+    && questionsFingerprint(qList) === questionsFingerprint(list)
+  if (!sameCard) {
+    qList = list
+    qAnswerable = answerable
+    qSessionId = sessionId
+    qDrafts = list.map(() => ({ selected: new Set(), otherText: '' }))
+  }
+  if (!qList.length) qList = list
   renderCurrentQuestion()
   card.classList.add('show')
   fitIslandWidth()
@@ -509,8 +544,13 @@ row.addEventListener('pointerup', endDrag)
 row.addEventListener('pointercancel', endDrag)
 
 // ===== 透明空白区穿透兜底（主通道是 Rust 120ms 轮询）=====
+// 只在交互/穿透**翻转**时 invoke：mousemove 以事件率（60-125Hz+）触发，
+// 每次都 invoke 是持续 IPC 风暴
+let lastInteractive = null
 function updateMouseMode(e) {
   const onIsland = e.target && e.target.closest && !!e.target.closest('.island')
+  if (onIsland === lastInteractive) return
+  lastInteractive = onIsland
   invoke('set_ai_island_mouse_mode', { interactive: onIsland })
 }
 document.addEventListener('mousemove', updateMouseMode)

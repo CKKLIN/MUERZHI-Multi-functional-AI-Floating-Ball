@@ -2,7 +2,7 @@
 <!-- 摄像头预览 — Tauri 版（移植自 electron/camera-preview.html）
      变更：ipcRenderer 的 camera-control → window.__TAURI__ event listen；
      拖拽事件 camera-drag-start/end → invoke（Rust 侧 16ms 轮询跟随，对齐 TS 实现）-->
-<html><head><style>
+<html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:100%;height:100%;overflow:hidden}
 .preview{
@@ -83,15 +83,29 @@ async function startRecording(path) {
   // 追加写是异步 IPC：必须串成链并在 onstop 里等链尾落完再回报 Rust，
   // 否则最后一块（含 webm 尾部）可能还在飞，Rust 已经拿半截文件去 overlay。
   let flushing = Promise.resolve()
+  // 在途块计数（背压用）：落盘跟不上产生速度时暂停 MediaRecorder，
+  // 否则积压的 Blob 与 promise 链在长录制下无上限增长
+  let pending = 0
+  const LOW_WATER = 1
+  const HIGH_WATER = 3
   recorder.ondataavailable = (e) => {
     if (!e.data || e.data.size === 0) return
     const blob = e.data
     const isFirst = first
     first = false
+    pending++
     flushing = flushing.then(async () => {
       const buf = new Uint8Array(await blob.arrayBuffer())
-      await invoke('append_file', { filePath: recordPath, data: Array.from(buf), reset: isFirst })
-    }).catch((err) => console.error('camera chunk append failed:', err))
+      // 二进制走 invoke 的 octet-stream 通道（append_file_raw）：
+      // 旧写法 Array.from(buf) 是 25 万元素的 JSON 数字数组，每秒一次的
+      // 序列化/反序列化 + GC 压力在长录制下很可观
+      await invoke('append_file_raw', toRawPayload(recordPath, isFirst, buf))
+    }).catch((err) => console.error('camera chunk append failed:', err)).finally(() => {
+      pending--
+      if (recorder && pending <= LOW_WATER && recorder.state === 'paused') recorder.resume()
+    })
+    // 背压：在途块超阈值就暂停采集（暂停期间不再产生 dataavailable）
+    if (pending >= HIGH_WATER && recorder.state === 'recording') recorder.pause()
   }
   recorder.onstop = async () => {
     recorder = null
@@ -100,6 +114,17 @@ async function startRecording(path) {
     invoke('camera_record_finished', { filePath: recordPath }).catch(() => {})
   }
   recorder.start(1000)
+}
+
+/** append_file_raw 的载荷：[u32 pathLen LE][path utf8][1B reset][data] */
+function toRawPayload(path, reset, buf) {
+  const pb = new TextEncoder().encode(path)
+  const out = new Uint8Array(4 + pb.length + 1 + buf.length)
+  new DataView(out.buffer).setUint32(0, pb.length, true)
+  out.set(pb, 4)
+  out[4 + pb.length] = reset ? 1 : 0
+  out.set(buf, 5 + pb.length)
+  return out
 }
 
 function stopRecording() {

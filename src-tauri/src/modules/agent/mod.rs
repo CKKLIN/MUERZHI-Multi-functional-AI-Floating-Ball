@@ -3,5 +3,5 @@ pub mod bridge;
 pub mod hooks;
 pub mod permission_match;
 pub mod server;
-pub mod state_machine;
 pub mod session_title;
+pub mod state_machine;

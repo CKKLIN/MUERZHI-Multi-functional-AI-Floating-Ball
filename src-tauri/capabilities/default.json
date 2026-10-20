@@ -2,7 +2,7 @@
   "$schema": "gen/schemas/desktop-schema.json",
   "identifier": "main-capability",
   "description": "MUERZHI 主窗口与辅助窗口能力（迁移期先全开，后续按窗口收紧）",
-  "windows": ["main", "ai", "settings", "todo", "about", "floating-ball", "region-*", "floating-island", "camera-preview", "ai-island", "cooling-overlay", "todo-sticky-*", "todo-reminder"],
+  "windows": ["main", "ai", "settings", "todo", "about", "floating-ball", "region-*", "floating-island", "camera-preview", "ai-island", "cooling-overlay", "todo-sticky", "todo-reminder"],
   "permissions": [
     "core:default",
     "core:window:default",
@@ -24,6 +24,7 @@
     "core:event:allow-emit-to",
     "dialog:default",
     "notification:default",
+    "log:default",
     "global-shortcut:allow-is-registered",
     "autostart:default",
     "opener:default"

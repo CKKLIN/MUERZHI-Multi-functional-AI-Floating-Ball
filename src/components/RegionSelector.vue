@@ -5,7 +5,7 @@ const emit = defineEmits<{
 }>()
 
 async function activate() {
-  const region = await window.electronAPI.selectRegion()
+  const region = await window.muerzhiAPI.selectRegion()
   if (region) {
     emit('select', region)
   } else {
@@ -17,5 +17,5 @@ defineExpose({ activate })
 </script>
 
 <template>
-  <!-- 全屏选区由 Electron 主进程窗口处理，此处无 DOM -->
+  <!-- 全屏选区由 Rust 侧透明置顶窗（region-selector.html）处理，此处无 DOM -->
 </template>

@@ -150,7 +150,8 @@ pub async fn ensure_capability(app: &tauri::AppHandle) -> Capability {
     if let Ok(text) = std::fs::read_to_string(&path) {
         if let Ok(cap) = serde_json::from_str::<Capability>(&text) {
             let now = crate::modules::todo::store::now_ms();
-            if cap.probed_at > 0 && now - cap.probed_at < crate::modules::cooling::CAPABILITY_TTL_MS {
+            if cap.probed_at > 0 && now - cap.probed_at < crate::modules::cooling::CAPABILITY_TTL_MS
+            {
                 return cap;
             }
         }
@@ -179,7 +180,10 @@ pub async fn probe_vendors() -> Capability {
     };
     // 3) Asus（默认禁用，仅探测记录）
     let asus = if ASUS_LEVER_ENABLED {
-        ps::run_powershell(&asus_probe_ps(), 8000).await.map(|o| o.contains("ok")).unwrap_or(false)
+        ps::run_powershell(&asus_probe_ps(), 8000)
+            .await
+            .map(|o| o.contains("ok"))
+            .unwrap_or(false)
     } else {
         false
     };
@@ -206,7 +210,9 @@ pub async fn apply_vendor_lever(cap: &Capability) -> (bool, Option<i32>) {
                     }
                     // 读回不符：回滚
                     let _ = ps::run_powershell(&uniwill_restore_ps(orig), 6000).await;
-                    log::warn!("cooling: uniwill verify failed (now={now} boosted={boosted})，已回滚");
+                    log::warn!(
+                        "cooling: uniwill verify failed (now={now} boosted={boosted})，已回滚"
+                    );
                 }
             }
             None => log::warn!("cooling: uniwill apply failed"),
@@ -306,7 +312,10 @@ mod tests {
 
     #[test]
     fn parses_uniwill_output() {
-        assert_eq!(parse_uniwill_out("ORIG=17;BOOSTED=81;NOW=81"), Some((17, 81, 81)));
+        assert_eq!(
+            parse_uniwill_out("ORIG=17;BOOSTED=81;NOW=81"),
+            Some((17, 81, 81))
+        );
         assert_eq!(parse_uniwill_out("garbage"), None);
     }
 

@@ -4,7 +4,6 @@ interface ShortcutHandlers {
   onStartStop?: () => void
   onPauseResume?: () => void
   onToggleCamera?: () => void
-  onToggleDrawing?: () => void
 }
 
 export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
@@ -26,10 +25,6 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
         case 'c':
           e.preventDefault()
           handlers.onToggleCamera?.()
-          break
-        case 'd':
-          e.preventDefault()
-          handlers.onToggleDrawing?.()
           break
       }
     }

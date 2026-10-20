@@ -8,6 +8,7 @@ import TodoPreview from './TodoPreview.vue'
 import Tooltip from './Tooltip.vue'
 import { t } from '../stores/i18n'
 import { formatTodoDate } from '../utils/todo-date'
+import { hideTip } from '../utils/tip'
 
 const store = useTodoStore()
 
@@ -87,6 +88,187 @@ function plainText(html: string): string {
 
 // 创建时间与提醒时间的格式化统一走 utils/todo-date（此前两套各写各的，列表提醒丢年份、预览又带年份）
 
+// ===== 拖动排序：抓卡片左侧手柄拖动，卡片 1:1 跟手；压过邻卡中线时对方即时让位 =====
+// pointer 事件实现（Tauri Windows dragDropEnabled 会拦截 HTML5 DnD）。
+// 流畅的关键：抓取时一次性量好所有卡槽位，move 期间只做缓存几何判断 + 一次 transform
+// 写入 —— 零 elementFromPoint、零布局读取、拖动中零 Vue 重渲染；让位 = 各卡按自己的
+// 槽距做 transform 滑动（GPU 合成，不触发布局）。
+const dragId = ref('')
+let dragCard: HTMLElement | null = null
+let dragStart: { x: number; y: number } | null = null   // transform = 指针 - 锚点
+let grabOffset: { x: number; y: number } | null = null  // 按下点相对卡片左上（重锚用）
+let dragTfX = 0                                         // 当前已写入的 transform（重锚换算用）
+let dragTfY = 0
+let dragMoved = false                                   // 越过 4px 阈值，进入拖动态
+let listEl: HTMLElement | null = null
+let slots: { id: string; el: HTMLElement; top: number; mid: number }[] = []
+let origin = -1                                         // 被拖卡在展示序中的下标
+let lastTarget = -1                                     // 上次目标插入位（0..n，变化才改让位）
+const shiftMap = new Map<HTMLElement, number>()         // 各卡当前让位位移（重量槽位时扣除）
+
+function cacheSlots() {
+  if (!dragCard) return
+  const cards = Array.from(listEl?.querySelectorAll<HTMLElement>('.card') ?? [])
+  const dr = dragCard.getBoundingClientRect()
+  const dragHomeTop = dr.top - dragTfY                  // 扣掉跟随位移 = 卡槽真实位置
+  slots = cards.map(el => {
+    const r = el.getBoundingClientRect()
+    const top = el === dragCard ? dragHomeTop : r.top - (shiftMap.get(el) ?? 0)
+    return { id: el.dataset.id ?? '', el, top, mid: top + r.height / 2 }
+  })
+  origin = slots.findIndex(s => s.id === dragId.value)
+}
+
+// 让位：拖到插入位 t（0..n）时，中间的卡片各自滑向相邻槽位（按自己的槽距，可变高度也对齐）
+function applyDisplacement(t: number) {
+  lastTarget = t
+  for (let i = 0; i < slots.length; i++) {
+    const el = slots[i].el
+    if (i === origin) continue
+    let ty = 0
+    if (t > origin && i > origin && i < t) ty = -(slots[i].top - slots[i - 1].top)
+    else if (t < origin && i >= t && i < origin) ty = slots[i + 1].top - slots[i].top
+    shiftMap.set(el, ty)
+    if (ty === 0) {
+      if (el.style.transform) el.style.transform = ''
+    } else {
+      el.style.transform = `translateY(${ty}px)`
+    }
+  }
+}
+
+function onListScroll() {
+  if (dragMoved) cacheSlots() // 滚动改变卡片在屏位置：重算槽位（扣除让位/跟随位移）
+}
+
+function liftCard() {
+  if (!dragCard) return
+  dragCard.style.transition = 'none'
+  dragCard.style.willChange = 'transform'
+  dragCard.style.pointerEvents = 'none'
+  dragCard.style.zIndex = '50'
+}
+
+// manualSort 切换会让列表重排：重锚被拖卡（保持抓取偏移不变）+ 重量槽位
+function reanchor(e: PointerEvent) {
+  if (!dragCard || !dragStart || !grabOffset) return
+  const r = dragCard.getBoundingClientRect()
+  dragStart = {
+    x: dragStart.x + r.left - dragTfX - e.clientX + grabOffset.x,
+    y: dragStart.y + r.top - dragTfY - e.clientY + grabOffset.y,
+  }
+  dragTfX = e.clientX - dragStart.x
+  dragTfY = e.clientY - dragStart.y
+  dragCard.style.transform = `translate(${dragTfX}px, ${dragTfY}px) scale(1.04) rotate(0.6deg)`
+}
+
+function onGripDown(e: PointerEvent) {
+  if (e.button !== 0) return
+  const grip = e.currentTarget as HTMLElement
+  const card = grip.closest('.card') as HTMLElement | null
+  if (!card?.dataset.id) return
+  dragId.value = card.dataset.id
+  dragCard = card
+  listEl = card.closest('.list')
+  listEl?.addEventListener('scroll', onListScroll, { passive: true })
+  const r = card.getBoundingClientRect()
+  grabOffset = { x: e.clientX - r.left, y: e.clientY - r.top }
+  dragStart = { x: e.clientX, y: e.clientY } // 锚点=按下点：初始 transform=0，卡片原地
+  dragTfX = 0
+  dragTfY = 0
+  dragMoved = false
+  lastTarget = -1
+  shiftMap.clear()
+  hideTip() // 指针捕获会吞掉 mouseleave：手柄悬停弹出的气泡会挂在旧位置，按下即收
+  grip.setPointerCapture(e.pointerId)
+  e.preventDefault() // 不启文字选择
+}
+
+function onGripMove(e: PointerEvent) {
+  if (!dragId.value || !dragCard || !dragStart) return
+  if (!dragMoved) {
+    if (Math.abs(e.clientX - dragStart.x) + Math.abs(e.clientY - dragStart.y) < 4) return
+    dragMoved = true
+    liftCard()
+    // 首次拖动切手动排序：视图从自动排序切到数据顺序（列表重排），等 DOM 更新后重量槽位 + 重锚
+    if (!store.settings.manualSort) {
+      store.settings = { ...store.settings, manualSort: true }
+      nextTick(() => {
+        cacheSlots()
+        reanchor(e)
+      })
+    } else {
+      cacheSlots()
+    }
+  }
+  dragTfX = e.clientX - dragStart.x
+  dragTfY = e.clientY - dragStart.y
+  dragCard.style.transform = `translate(${dragTfX}px, ${dragTfY}px) scale(1.04) rotate(0.6deg)`
+  // 目标插入位：纯缓存几何（中点比较），0..n
+  let t = 0
+  for (const s of slots) if (e.clientY > s.mid) t++
+  if (t !== lastTarget) applyDisplacement(t)
+}
+
+function onGripUp(e: PointerEvent) {
+  const grip = e.currentTarget as HTMLElement
+  if (grip.hasPointerCapture?.(e.pointerId)) grip.releasePointerCapture(e.pointerId)
+  const target = lastTarget
+  const org = origin
+  const wasDrag = dragMoved
+  // 复位让位与跟随样式。必须瞬时复位（transition:none）：带着 0.2s 过渡清 transform
+  // 会让被让开的卡片先滑回旧槽、紧跟着重排又跳到新槽 —— 两段叠加就是「整屏抖一下」
+  const flattened: HTMLElement[] = []
+  for (const [el, ty] of shiftMap) {
+    if (ty !== 0) {
+      el.style.transition = 'none'
+      el.style.transform = ''
+      flattened.push(el)
+    }
+  }
+  shiftMap.clear()
+  if (dragCard) {
+    dragCard.style.transition = 'none'
+    dragCard.style.willChange = ''
+    dragCard.style.pointerEvents = ''
+    dragCard.style.zIndex = ''
+    dragCard.style.transform = ''
+    flattened.push(dragCard)
+  }
+  const id = dragId.value
+  dragCard = null
+  dragStart = null
+  dragId.value = ''
+  dragMoved = false
+  const t = target
+  lastTarget = -1
+  origin = -1
+  listEl?.removeEventListener('scroll', onListScroll)
+  hideTip() // 松手时 hover 链重算，落点附近的悬停提示会立即弹出 —— 拖完不该带提示
+  if (!wasDrag || !listEl) {
+    requestAnimationFrame(() => {
+      for (const el of flattened) el.style.transition = ''
+    })
+    return
+  }
+  // 落位：t>org → 最终位 t−1；t<org → t；t∈{org, org+1} → 原位（不落盘）
+  const finalIdx = t > org ? t - 1 : t
+  if (finalIdx === org || finalIdx < 0 || finalIdx >= slots.length) {
+    requestAnimationFrame(() => {
+      for (const el of flattened) el.style.transition = ''
+    })
+    return
+  }
+  const ids = slots.map(s => s.id)
+  ids.splice(org, 1)
+  ids.splice(finalIdx, 0, id)
+  store.commitOrder(ids)
+  // 重排落位（一帧内完成）后再恢复卡片过渡动画（hover 上浮等）
+  requestAnimationFrame(() => {
+    for (const el of flattened) el.style.transition = ''
+  })
+}
+
 async function onSave(draft: TodoDraft) {
   try {
     if (isNew.value) {
@@ -103,7 +285,7 @@ async function onSave(draft: TodoDraft) {
 }
 
 function togglePin() {
-  window.electronAPI.todoToggleAlwaysOnTop().then(next => {
+  window.muerzhiAPI.todoToggleAlwaysOnTop().then(next => {
     store.settings.windowAlwaysOnTop = next
   }).catch(() => {})
 }
@@ -115,17 +297,19 @@ async function onPreviewDelete() {
 }
 
 let unsubDataChanged: (() => void) | null = null
+let unsubFocusItem: (() => void) | null = null
 
 onMounted(() => {
   store.load()
   // 贴屏便签点击“打开待办”→ 主进程广播定位到该条预览
-  window.electronAPI.onTodoFocusItem(async (id) => {
+  // （返回的退订函数必须保存：丢弃的话组件卸载即泄漏监听器，重复挂载后一次事件触发多次）
+  unsubFocusItem = window.muerzhiAPI.onTodoFocusItem(async (id) => {
     if (!store.loaded) await store.load()
     store.startPreview(id)
   })
   // 便签板等主进程侧改数据（如 ✕ 取消贴屏）时，推送全量 items 刷新列表镜像，
   // 保证贴屏按钮等状态及时同步
-  unsubDataChanged = window.electronAPI.onTodoDataChanged((items) => {
+  unsubDataChanged = window.muerzhiAPI.onTodoDataChanged((items) => {
     store.items = items
   })
   moveSegIndicator()
@@ -134,6 +318,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   unsubDataChanged?.()
+  unsubFocusItem?.()
   window.removeEventListener('resize', moveSegIndicator)
 })
 </script>
@@ -175,6 +360,11 @@ onUnmounted(() => {
                   <input type="checkbox" :checked="store.settings.windowAlwaysOnTop"
                     @change="togglePin()" />
                 </label>
+                <label class="mi">
+                  <span>{{ t('todo.manualSort') }}</span>
+                  <input type="checkbox" :checked="store.settings.manualSort"
+                    @change="store.setManualSort(!store.settings.manualSort)" />
+                </label>
               </div>
             </template>
           </div>
@@ -211,7 +401,11 @@ onUnmounted(() => {
           <button class="empty-add" @click="store.startCreate()">＋ {{ t('todo.add') }}</button>
         </div>
 
-        <div v-for="it in store.filtered" :key="it.id" class="card" :class="[PRIO_CLASS[it.priority], { done: it.type === 'todo' && it.done }]">
+        <div v-for="it in store.filtered" :key="it.id" class="card" :data-id="it.id"
+          :class="[PRIO_CLASS[it.priority], { done: it.type === 'todo' && it.done, dragging: dragId === it.id }]">
+          <div class="grip" v-tip="t('todo.dragSort')" @pointerdown="onGripDown" @pointermove="onGripMove" @pointerup="onGripUp" @pointercancel="onGripUp">
+            <svg viewBox="0 0 10 14" width="9" height="13" fill="currentColor"><circle cx="3" cy="2" r="1.4"/><circle cx="7" cy="2" r="1.4"/><circle cx="3" cy="7" r="1.4"/><circle cx="7" cy="7" r="1.4"/><circle cx="3" cy="12" r="1.4"/><circle cx="7" cy="12" r="1.4"/></svg>
+          </div>
           <button class="check" v-if="it.type === 'todo'" :class="{ on: it.done }"
             @click="store.toggleDone(it.id)"><span v-if="it.done">✓</span></button>
           <button class="check check-memo" v-else></button>
@@ -298,7 +492,7 @@ onUnmounted(() => {
 .cnt { margin-left: 4px; font-size: 11px; color: var(--accent); font-weight: 700; }
 
 /* 列表 */
-.list { flex: 1; overflow: auto; padding: 2px 16px 18px; }
+.list { flex: 1; overflow: auto; padding: 7px 16px 18px; }
 .hint { text-align: center; color: var(--text-muted); font-size: 13px; }
 .empty { padding: 64px 12px; text-align: center; }
 .empty-add { margin-top: 14px; padding: 6px 18px; border: 1px solid rgba(255,255,255,0.7); border-top-color: rgba(255,255,255,0.9); border-left-color: rgba(255,255,255,0.85); border-right-color: rgba(200,200,210,0.4); border-bottom-color: rgba(190,190,200,0.5); border-radius: 9px; background: var(--surface-grad); color: var(--text-secondary); font-size: 13px; cursor: pointer; box-shadow: var(--bevel-shadow); transition: all 0.2s var(--bevel-ease); }
@@ -306,16 +500,24 @@ onUnmounted(() => {
 
 /* Apple 式 3D 卡片：柔和多层阴影 + 顶部高光 + 悬停上浮；参考录屏窗口的"环境辉光"做发光立体 */
 .card {
+  position: relative;
   display: flex; align-items: center; gap: 10px;
   background: linear-gradient(180deg, #ffffff 0%, #fcfcfd 100%);
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 12px 14px; margin-bottom: 9px;
   box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 6px 14px -4px rgba(0,0,0,0.05), inset 0 1px 0 rgba(255,255,255,0.9);
-  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease, opacity 0.15s ease;
 }
 .card:hover { transform: translateY(-3px); }
 .card:active { transform: translateY(0) scale(0.995); }
+
+/* 拖动排序：左侧手柄（低透明度常驻，悬停加深）；拖动中被拖卡抬起跟手 */
+.grip { width: 12px; align-self: stretch; display: flex; align-items: center; justify-content: center; cursor: grab; color: var(--text-muted); opacity: 0.3; flex-shrink: 0; touch-action: none; }
+.card:hover .grip { opacity: 0.85; }
+.grip:active { cursor: grabbing; }
+.grip svg { flex-shrink: 0; }
+.card.dragging { opacity: 0.95; cursor: grabbing; box-shadow: 0 18px 36px -8px rgba(0,0,0,0.28), 0 32px 56px -16px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.9); }
 
 /* 卡片底色 + 环境辉光随优先级：越重要光越亮、越"浮"（录屏记录点式发光立体） */
 .card.p-urgent {

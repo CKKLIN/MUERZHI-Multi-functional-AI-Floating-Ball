@@ -1,39 +1,82 @@
 <!DOCTYPE html>
-<!-- 录制悬浮岛 — 移植自 region-selector.ts 的 showFloatingIsland（340×72 顶居中胶囊）
-     recording 时 500ms 轮询光标在岛内 → show，离开 → 500ms 后 hide（Rust 侧实现）。
-     状态经 applyIslandState(state, elapsed)；按钮 emit island-action。 -->
+<!-- 录制悬浮岛 — 全屏/多屏录制时的悬浮控制条（340×44 胶囊 + 28px 提示带）
+     状态经 applyIslandState(state, elapsed) 由 Rust eval 推送：
+       idle / recording / paused 三态切换按钮可见性；
+       show / hide 只控显隐（录制中岛自动收起，鼠标移到岛的位置再由 hover 轮询唤出）。
+     开关态经 applyIslandControls({mic,cam}) 推送：mic/cam 按钮点亮表示麦克风/摄像头已开。
+     按钮点击 emit('island-action', <action>) → Rust 转成 toolbar-action 广播给主窗口。
+     图标一律内联 SVG：不依赖 emoji 字体（Segoe UI Emoji 缺字/编码错位时按钮会变成方块或乱码）。 -->
 <html>
 <head>
+<meta charset="utf-8">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;user-select:none}
 html,body{width:100%;height:100%;overflow:hidden;background:transparent}
-body{display:flex;flex-direction:column;align-items:center}
+body{display:flex;flex-direction:column;align-items:center;justify-content:center;-webkit-font-smoothing:antialiased}
+
 .island{
-  height:44px;display:flex;align-items:center;gap:8px;padding:0 16px;
-  background:rgba(24,26,34,0.95);color:#fff;border-radius:22px;
-  font-family:'Segoe UI',system-ui,sans-serif;font-size:12px;
-  box-shadow:0 4px 16px rgba(0,0,0,0.35);
-  transition:opacity .25s ease,transform .25s ease;
+  height:44px;display:flex;align-items:center;gap:6px;padding:0 12px;
+  background:linear-gradient(180deg,rgba(36,40,52,.96) 0%,rgba(18,20,28,.97) 100%);
+  color:#eef1f7;border-radius:22px;border:1px solid rgba(255,255,255,.09);
+  font-family:'Segoe UI',system-ui,'Microsoft YaHei',sans-serif;font-size:12px;
+  box-shadow:0 5px 18px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.07);
+  backdrop-filter:blur(14px) saturate(1.25);
+  overflow:hidden;flex:0 0 auto;margin:12px 0 16px;
+  transition:opacity .22s ease,transform .22s cubic-bezier(.2,.8,.2,1),box-shadow .2s ease;
 }
-body.hidden-island .island{opacity:0;transform:translateY(-8px)}
-.tip-strip{height:28px;flex:0 0 auto;pointer-events:none}
+/* 录制中给整条胶囊一圈极淡的红光：一眼能看出"在录" */
+body.recording .island{
+  box-shadow:0 5px 18px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,77,106,.55),0 0 20px rgba(255,77,106,.3);
+}
+body.hidden-island .island{opacity:0;transform:translateY(-10px) scale(.98)}
+/* 隐藏态停掉呼吸灯动画：窗口仍留在屏幕原位等待悬停唤出，
+   动画继续跑只会白耗合成器电力（用户看不见） */
+body.hidden-island .rec-dot{animation:none;box-shadow:none}
+
+/* 录制指示点：待机是灰点，录制中变红并呼吸 */
 .rec-dot{
-  width:6px;height:6px;border-radius:50%;background:#e94560;flex:0 0 auto;
+  width:8px;height:8px;border-radius:50%;flex:0 0 auto;
+  background:rgba(255,255,255,.22);transition:background .25s ease,box-shadow .25s ease;
 }
-body.recording .rec-dot{animation:dotPulse 1s ease-in-out infinite}
-@keyframes dotPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.75)}}
-.timer{font:13px Consolas,monospace;min-width:48px;text-align:center}
+body.recording .rec-dot{background:#ff4d6a;box-shadow:0 0 12px rgba(255,77,106,.9);animation:dotPulse 1.4s ease-in-out infinite}
+body.paused .rec-dot{background:#ffd93d;box-shadow:0 0 8px rgba(255,217,61,.5)}
+@keyframes dotPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.88;transform:scale(.92)}}
+
+.timer{
+  font:600 13px/1 ui-monospace,'Cascadia Mono',Consolas,monospace;
+  font-variant-numeric:tabular-nums;letter-spacing:.4px;
+  min-width:46px;text-align:center;color:#f4f6fb;
+}
+body.paused .timer{color:#ffd93d}
+
+/* 1.5px：1px 在 150% 缩放下只落 1 个设备像素、实测对比掉到 1.8:1 */
+.sep{width:1.5px;height:18px;flex:0 0 auto;border-radius:1px;background:linear-gradient(180deg,transparent,rgba(255,255,255,.34),transparent)}
+
 .btn{
-  min-width:32px;height:32px;border:none;border-radius:16px;background:transparent;
-  color:#dfe3ea;cursor:pointer;display:flex;align-items:center;justify-content:center;
-  font-size:13px;transition:background .15s ease;
+  width:32px;height:32px;flex:0 0 auto;border:0;border-radius:10px;background:transparent;
+  color:#c8d0e0;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:background .15s ease,color .15s ease,transform .08s ease,box-shadow .15s ease;
 }
-.btn:hover{background:rgba(255,255,255,0.14)}
-.btn.rec{background:#e94560}
-.btn.rec:hover{background:#ff5b78}
-.meter{display:flex;gap:2px;align-items:flex-end;height:16px}
-.meter-bar{width:3px;height:5px;background:rgba(255,255,255,0.25);border-radius:1px;transition:height .08s,background .08s}
-.meter-bar.on{height:14px;background:#4ecdc4}
+.btn:hover{background:rgba(255,255,255,.1);color:#fff}
+.btn:active{transform:scale(.92)}
+.btn:focus-visible{outline:2px solid rgba(233,69,96,.6);outline-offset:1px}
+.btn svg{width:16px;height:16px;display:block}
+/* 录制/暂停中隐藏麦克风/摄像头按钮：主窗口对这两个动作只在 canStart（未开录）时响应，
+   留着它们只会「点了没反应」；顺带让胶囊在录制态更短（不给窗口留裁切风险） */
+/* 麦克风/摄像头按钮录制中保留（同 toolbar.html，见其注释） */
+/* 开关已打开（麦克风/摄像头） */
+.btn.on{color:#3ddc97;background:rgba(61,220,151,.13)}
+.btn.on:hover{background:rgba(61,220,151,.2)}
+/* 主操作（开始录制） */
+.btn.primary{background:#e94560;color:#fff;box-shadow:0 2px 12px rgba(233,69,96,.45)}
+.btn.primary:hover{background:#ff5b78}
+/* 停止：与开始同为实心主操作（录制中它就是最主要的按钮），同色令牌避免两个红不一致 */
+.btn.stop{background:#e94560;color:#fff;box-shadow:0 2px 12px rgba(233,69,96,.45)}
+.btn.stop:hover{background:#ff5b78}
+
+.meter{display:flex;gap:2px;align-items:flex-end;height:14px;width:38px;flex:0 0 auto}
+.meter-bar{width:3px;height:6px;background:rgba(255,255,255,.38);border-radius:2px;transition:height .08s ease,background .08s ease}
+.meter-bar.on{height:14px;background:#3ddc97}
 .meter-bar.warn{background:#ffd93d}
 .meter-bar.hot{background:#e94560}
 [hidden]{display:none !important}
@@ -41,18 +84,42 @@ body.recording .rec-dot{animation:dotPulse 1s ease-in-out infinite}
 </head>
 <body>
 <div class="island" id="island">
-  <span class="rec-dot"></span>
+  <span class="rec-dot" id="recDot"></span>
   <span class="timer" id="timer">00:00</span>
-  <button class="btn" id="micBtn" title="麦克风">🎙</button>
+  <span class="sep"></span>
+  <button class="btn toggle" id="micBtn" title="麦克风">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="9" y="2.5" width="6" height="11" rx="3"/>
+      <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>
+    </svg>
+  </button>
   <div class="meter" id="micMeter"></div>
-  <button class="btn" id="camBtn" title="摄像头">📷</button>
-  <button class="btn" id="startBtn" title="开始">●</button>
-  <button class="btn" id="stopBtn" title="停止" hidden>■</button>
-  <button class="btn" id="pauseBtn" title="暂停" hidden>⏸</button>
-  <button class="btn" id="resumeBtn" title="继续" hidden>▶</button>
-  <button class="btn" id="closeBtn" title="关闭">✕</button>
+  <button class="btn toggle" id="camBtn" title="摄像头">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="2.5" y="6.5" width="13" height="11" rx="3"/>
+      <path d="M15.5 11.2 21 8.2v7.6l-5.5-3"/>
+    </svg>
+  </button>
+  <span class="sep"></span>
+  <button class="btn primary" id="startBtn" title="开始录制">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5" fill="currentColor"/></svg>
+  </button>
+  <button class="btn stop" id="stopBtn" title="停止录制" hidden>
+    <svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="3" fill="currentColor"/></svg>
+  </button>
+  <button class="btn" id="pauseBtn" title="暂停" hidden>
+    <svg viewBox="0 0 24 24"><rect x="7.2" y="6" width="3" height="12" rx="1.4" fill="currentColor"/><rect x="13.8" y="6" width="3" height="12" rx="1.4" fill="currentColor"/></svg>
+  </button>
+  <button class="btn" id="resumeBtn" title="继续" hidden>
+    <svg viewBox="0 0 24 24"><path d="M8 5.5 19 12 8 18.5z" fill="currentColor"/></svg>
+  </button>
+  <span class="sep"></span>
+  <button class="btn" id="closeBtn" title="关闭">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+      <path d="M6.5 6.5l11 11M17.5 6.5 6.5 17.5"/>
+    </svg>
+  </button>
 </div>
-<div class="tip-strip"></div>
 <script>
 const emit = window.__TAURI__.event.emit
 
@@ -95,12 +162,21 @@ function applyIslandState(s, seconds) {
   state = s
   if (typeof seconds === 'number') elapsed = seconds
   document.body.classList.toggle('recording', s === 'recording')
+  document.body.classList.toggle('paused', s === 'paused')
   if (s === 'recording') { renderTimer(); startTicking() }
   else if (s === 'paused') { renderTimer(); stopTicking() }
   else { elapsed = 0; renderTimer(); stopTicking() }
   setButtons(s)
 }
 window.applyIslandState = applyIslandState
+
+/** 开关态（麦克风/摄像头是否已开）：点亮对应按钮。开窗时由 URL 查询参数带入初值，
+ *  之后主窗口切换开关时再推送。 */
+window.applyIslandControls = function (c) {
+  if (!c) return
+  document.getElementById('micBtn').classList.toggle('on', !!c.mic)
+  document.getElementById('camBtn').classList.toggle('on', !!c.cam)
+}
 
 window.updateMeter = function (level) {
   const active = level <= 0 ? 0 : Math.round(level * METER_BARS)
@@ -123,6 +199,10 @@ const actions = {
 for (const [id, action] of Object.entries(actions)) {
   document.getElementById(id)?.addEventListener('click', () => emit('island-action', action))
 }
+
+// 初值来自 URL（show_floating_island 按当前麦克风/摄像头开关拼参数）
+const query = new URLSearchParams(location.search)
+window.applyIslandControls({ mic: query.get('mic') === '1', cam: query.get('cam') === '1' })
 
 applyIslandState('idle', 0)
 </script>

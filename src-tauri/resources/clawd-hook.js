@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// electron/main/clawd-hook.js
+// src-tauri/resources/clawd-hook.js
 // Zero-dependency Node.js hook script — invoked by Claude Code CLI
 // Usage: node clawd-hook.js <EventName>
 // Reads event JSON from stdin, derives state from event name, POSTs to local server
@@ -9,18 +9,29 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 
-// 日志文件
+// 日志文件（单文件上限 4MB：hook 每事件都写日志且永不轮换曾堆到 82MB 磁盘被吃满；
+// 超限把当前文件改名为 .bak 一份，总量封顶 ~8MB）
 const LOG_FILE = path.join(os.homedir(), ".erzhi-recording", "hook.log");
 const DEBUG_LOG = path.join(os.homedir(), ".erzhi-recording", "hook-debug.log");
+const LOG_MAX_BYTES = 4 * 1024 * 1024;
+
+function rotateIfNeeded(file) {
+  try {
+    if (fs.statSync(file).size > LOG_MAX_BYTES) {
+      try { fs.unlinkSync(file + ".bak"); } catch {} // Windows rename 不覆盖已有目标，先删旧 .bak
+      fs.renameSync(file, file + ".bak");
+    }
+  } catch {}
+}
 
 function hookLog(...args) {
   const line = `[${new Date().toISOString()}] [CLAWD-HOOK] ${args.join(" ")}\n`;
-  try { fs.appendFileSync(LOG_FILE, line); } catch {}
+  try { rotateIfNeeded(LOG_FILE); fs.appendFileSync(LOG_FILE, line); } catch {}
 }
 
 function hookDebug(...args) {
   const line = `[${new Date().toISOString()}] [DEBUG] ${args.join(" ")}\n`;
-  try { fs.appendFileSync(DEBUG_LOG, line); } catch {}
+  try { rotateIfNeeded(DEBUG_LOG); fs.appendFileSync(DEBUG_LOG, line); } catch {}
 }
 
 function readStdin() {
@@ -38,9 +49,11 @@ function readRuntimePort() {
     const runtimePath = path.join(os.homedir(), ".erzhi-recording", "runtime.json");
     const raw = fs.readFileSync(runtimePath, "utf8");
     const config = JSON.parse(raw);
-    return config.port || 23338;
+    // 读不到 port 就返回 null（不再回落到 Electron 时代的 23338 —— Tauri 迁移后
+    // 服务在 60000-60019，落上去必然 ECONNREFUSED，且静默失败只有 hook.log 有痕迹）
+    return config.port || null;
   } catch {
-    return 23338;
+    return null;
   }
 }
 
@@ -123,6 +136,14 @@ async function main() {
   }
 
   const port = readRuntimePort();
+  if (!port) {
+    // 服务没起（应用未运行/runtime.json 缺失）→ 回空 JSON，Claude Code 走自己的原生
+    // 权限提示/默认处理。早先回落到 Electron 时代的 23338 必然 ECONNREFUSED，
+    // 而 /permission 静默失败意味着审批永远拿不到决策、用户那边毫无反馈。
+    hookLog("NO PORT: agent server 未运行，回退原生处理");
+    process.stdout.write(JSON.stringify({}) + "\n");
+    return;
+  }
   const sessionId = event.session_id || event.sessionId || "";
   const state = EVENT_TO_STATE[eventName] || "idle";
   const toolName = event.tool_name || event.toolName || "";

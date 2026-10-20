@@ -93,7 +93,10 @@ make distclean >/dev/null 2>&1 || true
 #   裁剪/多屏合并 (hw encode 回退)    : encoders h264_nvenc/qsv/amf + libx264，filters crop/pad/format
 #   多屏 overlay 合成               : filters scale/setsar/overlay/color
 #   GIF 两遍 (palettegen/paletteuse): filters fps/palettegen/paletteuse + scale lanczos，
-#                                     palette 走 PNG（demuxer/encoder/decoder png + demuxer/muxer image2）
+#                                     palette 走 PNG（demuxer/encoder/decoder png + demuxer/muxer image2）；
+#                                     还要 **encoder/muxer/decoder gif** —— 少了 gif 编码器时
+#                                     第二遍报 "Default encoder for format gif (codec gif) is
+#                                     probably disabled"（实测两遍都跑完却产不出 .gif）
 #   暂停分段拼接 (-f concat)         : demuxer concat + bsf h264_mp4toannexb
 #                                     （concat demuxer 逐段要求 Annex-B 码流，少了这个 bsf
 #                                      报 "Bitstream filter not found"；同参数段 -c copy 无损拼接）
@@ -125,8 +128,8 @@ echo "[2/4] configuring (minimal feature set)..."
   --enable-swscale \
   --enable-swresample \
   --enable-zlib \
-  --enable-encoder=libx264,aac,h264_nvenc,h264_qsv,h264_amf,png \
-  --enable-decoder=vp8,vp9,h264,aac,opus,vorbis,png,pcm_s16le,rawvideo \
+  --enable-encoder=libx264,aac,h264_nvenc,h264_qsv,h264_amf,png,gif \
+  --enable-decoder=vp8,vp9,h264,aac,opus,vorbis,png,pcm_s16le,rawvideo,gif \
   --enable-demuxer=matroska,mov,gif,image2,rawvideo,s16le,wav,concat   --enable-bsf=h264_mp4toannexb \
   --enable-muxer=mov,mp4,matroska,gif,image2 \
   --enable-filter=crop,pad,format,scale,setsar,overlay,fps,palettegen,paletteuse,color,hwupload,null,anull,amix,aresample,concat,apad,volumedetect \

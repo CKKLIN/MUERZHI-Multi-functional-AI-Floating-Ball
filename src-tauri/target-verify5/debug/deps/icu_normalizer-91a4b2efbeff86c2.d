@@ -1,0 +1,10 @@
+D:\money\MUERZHI-Multi-functional-AI-Floating-Ball\src-tauri\target-verify5\debug\deps\icu_normalizer-91a4b2efbeff86c2.d: C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\icu_normalizer-2.3.0\src\lib.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\icu_normalizer-2.3.0\src\properties.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\icu_normalizer-2.3.0\src\provider.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\icu_normalizer-2.3.0\src\uts46.rs
+
+D:\money\MUERZHI-Multi-functional-AI-Floating-Ball\src-tauri\target-verify5\debug\deps\libicu_normalizer-91a4b2efbeff86c2.rlib: C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\icu_normalizer-2.3.0\src\lib.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\icu_normalizer-2.3.0\src\properties.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\icu_normalizer-2.3.0\src\provider.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\icu_normalizer-2.3.0\src\uts46.rs
+
+D:\money\MUERZHI-Multi-functional-AI-Floating-Ball\src-tauri\target-verify5\debug\deps\libicu_normalizer-91a4b2efbeff86c2.rmeta: C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\icu_normalizer-2.3.0\src\lib.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\icu_normalizer-2.3.0\src\properties.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\icu_normalizer-2.3.0\src\provider.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\icu_normalizer-2.3.0\src\uts46.rs
+
+C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\icu_normalizer-2.3.0\src\lib.rs:
+C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\icu_normalizer-2.3.0\src\properties.rs:
+C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\icu_normalizer-2.3.0\src\provider.rs:
+C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\icu_normalizer-2.3.0\src\uts46.rs:

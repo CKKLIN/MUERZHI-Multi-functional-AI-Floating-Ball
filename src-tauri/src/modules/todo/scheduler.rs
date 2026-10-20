@@ -15,13 +15,18 @@ impl SchedulerState {
     pub fn global() -> &'static SchedulerState {
         use std::sync::OnceLock;
         static S: OnceLock<SchedulerState> = OnceLock::new();
-        S.get_or_init(|| SchedulerState { running: AtomicBool::new(false) })
+        S.get_or_init(|| SchedulerState {
+            running: AtomicBool::new(false),
+        })
     }
 }
 
 /// 启动调度（幂等）：先同步补扫一次，再起 30s 轮询
 pub fn start(app: &AppHandle) {
-    if SchedulerState::global().running.swap(true, Ordering::SeqCst) {
+    if SchedulerState::global()
+        .running
+        .swap(true, Ordering::SeqCst)
+    {
         return;
     }
     check_reminders(app);
@@ -40,7 +45,9 @@ pub fn start(app: &AppHandle) {
 
 #[allow(dead_code)] // before-quit 清理（P3 接线）
 pub fn stop() {
-    SchedulerState::global().running.store(false, Ordering::SeqCst);
+    SchedulerState::global()
+        .running
+        .store(false, Ordering::SeqCst);
 }
 
 /// 单次检查（对齐 todo-scheduler.ts checkReminders）
@@ -61,9 +68,12 @@ pub fn check_reminders(app: &AppHandle) {
             text.chars().take(24).collect::<String>()
         };
         let body: String = text.chars().take(90).collect();
+        log::info!("到期提醒触发: id={}（{}）「{}」", it.id, it.kind, title);
         crate::modules::windows::todo_windows::show_todo_reminder(app, title, body);
         store::mark_reminder_fired(app, &it.id);
     }
+    // 标记已触发改了数据（reminderFired）→ 同步角标/贴纸/渲染层列表镜像
+    crate::modules::windows::todo_windows::after_todo_change(app);
     // 待办窗口不可见时闪烁角标提醒
     let visible = app
         .get_webview_window("todo")
@@ -73,4 +83,3 @@ pub fn check_reminders(app: &AppHandle) {
         crate::modules::windows::todo_windows::set_badge_flash(app, true);
     }
 }
-

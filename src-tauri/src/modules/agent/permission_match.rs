@@ -31,7 +31,13 @@ pub fn permission_content_signature(v: &Value) -> String {
             let sorted: BTreeMap<&String, &Value> = map.iter().collect();
             let parts: Vec<String> = sorted
                 .iter()
-                .map(|(k, v)| format!("{}:{}", serde_json::to_string(k).unwrap_or_default(), permission_content_signature(v)))
+                .map(|(k, v)| {
+                    format!(
+                        "{}:{}",
+                        serde_json::to_string(k).unwrap_or_default(),
+                        permission_content_signature(v)
+                    )
+                })
                 .collect();
             format!("{{{}}}", parts.join(","))
         }
@@ -113,14 +119,27 @@ mod tests {
     fn signature_is_key_order_insensitive() {
         let a: Value = serde_json::from_str(r#"{"a":1,"b":[2,3]}"#).unwrap();
         let b: Value = serde_json::from_str(r#"{"b":[2,3],"a":1}"#).unwrap();
-        assert_eq!(permission_content_signature(&a), permission_content_signature(&b));
+        assert_eq!(
+            permission_content_signature(&a),
+            permission_content_signature(&b)
+        );
     }
 
     #[test]
     fn matches_by_tool_use_id_first() {
         let cards = vec![
-            card("s1", "Bash", serde_json::json!({"command": "ls"}), Some("tu_1")),
-            card("s1", "Bash", serde_json::json!({"command": "pwd"}), Some("tu_2")),
+            card(
+                "s1",
+                "Bash",
+                serde_json::json!({"command": "ls"}),
+                Some("tu_1"),
+            ),
+            card(
+                "s1",
+                "Bash",
+                serde_json::json!({"command": "pwd"}),
+                Some("tu_2"),
+            ),
         ];
         let evt = CompletionEvent {
             tool_use_id: Some("tu_2".into()),
@@ -155,12 +174,21 @@ mod tests {
             tool_name: Some("Bash".into()),
             tool_input: None,
         };
-        assert_eq!(find_permission_to_resolve(&cards, "s1", &evt), None, "多张同名无签名 → 不关");
+        assert_eq!(
+            find_permission_to_resolve(&cards, "s1", &evt),
+            None,
+            "多张同名无签名 → 不关"
+        );
     }
 
     #[test]
     fn same_name_single_card_matches_by_fallback() {
-        let cards = vec![card("s1", "Bash", serde_json::json!({"command": "ls"}), None)];
+        let cards = vec![card(
+            "s1",
+            "Bash",
+            serde_json::json!({"command": "ls"}),
+            None,
+        )];
         let evt = CompletionEvent {
             tool_use_id: None,
             tool_name: Some("Bash".into()),

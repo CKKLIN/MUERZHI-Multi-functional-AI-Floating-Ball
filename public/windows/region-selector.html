@@ -2,8 +2,9 @@
 <!-- 区域选择窗口 — 移植自 electron/region-selector.html
      ⚠️ 这个文件必须是完整 HTML：整页由浏览器解析，缺 <!DOCTYPE>/<body> 时文件会被当作纯文本
      渲染，内联脚本永不执行（表现为「点区域录制没反应、选区窗一片空白」）。
-     底图：经 grab_screen_thumbnail 拿主屏 PNG data URL 铺 canvas —— Tauri 没有 desktopCapturer，
-     但 Rust 侧 DXGI 抓帧等价，不再需要「看穿桌面」这种在 Windows 上做不到的方案。 -->
+     底图：经 grab_virtual_desktop_backdrop 拿**每块显示器**的 PNG data URL + 物理 bounds，
+     按位置贴到 canvas —— Tauri 没有 desktopCapturer，但 Rust 侧 GDI 抓帧等价，不再需要
+     「看穿桌面」这种在 Windows 上做不到的方案。窗口覆盖整个虚拟桌面（否则副屏选不到）。 -->
 <html>
 <head>
 <meta charset="utf-8">
@@ -18,7 +19,8 @@ html, body {
   font-family: 'Segoe UI', system-ui, sans-serif;
 }
 #bg { position: fixed; inset: 0; z-index: 0; }
-#overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 1; }
+/* 遮罩 0.28：比原先 0.45 明显通透，底图内容能看清（用户要求「不要那么灰」） */
+#overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.28); z-index: 1; }
 #rect {
   position: fixed;
   border: 2px solid #e94560;
@@ -47,6 +49,28 @@ html, body {
   z-index: 4;
   pointer-events: none;
 }
+/* 切屏按钮：多屏时出现，点一下把选区窗重建到另一块屏（DPI 上下文随之切换） */
+#screens {
+  position: fixed;
+  top: 12px; left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  gap: 8px;
+  z-index: 5;
+}
+#screens.show { display: flex; }
+.screen-btn {
+  padding: 5px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.72);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.screen-btn:hover { background: rgba(233, 69, 96, 0.35); border-color: #e94560; }
+.screen-btn.on { background: rgba(233, 69, 96, 0.55); border-color: #e94560; color: #fff; }
 </style>
 </head>
 <body>
@@ -54,12 +78,16 @@ html, body {
 <div id="overlay"></div>
 <div id="rect"></div>
 <div id="size"></div>
+<div id="screens"></div>
 <div id="hint">点击并拖动选择录制区域 · ESC 取消</div>
 <script>
 const invoke = window.__TAURI__.core.invoke
 
 let startX = 0
 let startY = 0
+// 起点的**屏幕**逻辑坐标：上报时用（绘制用 client 坐标，两者不可混用）
+let startScreenX = 0
+let startScreenY = 0
 let dragging = false
 
 const rectEl = document.getElementById('rect')
@@ -68,58 +96,254 @@ const hintEl = document.getElementById('hint')
 const bgCanvas = document.getElementById('bg')
 const bgCtx = bgCanvas.getContext('2d')
 
-/** 画布铺满窗口（窗口尺寸由 Rust 按主屏物理像素 / 缩放比设定） */
+/** 画布铺满窗口（窗口尺寸由 Rust 按虚拟桌面物理像素 / 该显示器缩放比设定） */
 function sizeCanvas() {
-  const w = window.innerWidth
-  const h = window.innerHeight
-  bgCanvas.width = w
-  bgCanvas.height = h
+  applyCanvasSize()
+}
+
+/**
+ * 期望的画布尺寸（CSS px）= 目标屏物理尺寸 / 该屏 scale。
+ *
+ * 切屏时**不能只信 window.innerWidth**：Rust 改完窗口几何到 WebView2 感知并更新
+ * innerWidth 之间有延迟，此刻 innerWidth 还是旧屏的 CSS 尺寸（从 1920x1080 的副屏
+ * 切到 2560x1440 的主屏时仍报 1280x720），底图就按旧尺寸画在一块比窗口小的区域，
+ * 视觉上表现为「一个变小的选区窗跑到了另一块屏上」（实测）。故画布尺寸一律由注入的
+ * 布局数据推导，与 innerWidth 的更新时机解耦。
+ */
+// 画布几何：**绘图缓冲区用物理像素、CSS 尺寸用逻辑像素**
+//
+// ⚠️ 两者必须分开设，否则底图模糊（用户反馈「静态底图不太清晰」）：
+//   - `canvas.width/height`  = 绘图缓冲区分辨率 → 必须是**物理像素**（meta.w/h），
+//     抓来的底图本身就是全分辨率物理像素图，1:1 填进缓冲区才是清晰的。
+//   - `canvas.style.width/height` = 元素占多大布局空间 → 逻辑像素（meta.w/scale）。
+//
+// 早先两者都用逻辑像素（1707×960），等于把 2560 宽的图缩小塞进 1707 宽的缓冲区，
+// 再由 CSS 放大回 2560 物理像素 —— 二次缩放，文字发虚。
+function expectedCanvasSize() {
+  const meta = window.__REGION_ORIGIN__
+  if (meta && meta.w && meta.h && meta.scale) {
+    return {
+      // 绘图缓冲：物理像素（1:1 匹配抓图分辨率）
+      bw: meta.w,
+      bh: meta.h,
+      // 布局尺寸：逻辑像素
+      w: Math.round(meta.w / meta.scale),
+      h: Math.round(meta.h / meta.scale),
+    }
+  }
+  return {
+    bw: window.innerWidth,
+    bh: window.innerHeight,
+    w: window.innerWidth,
+    h: window.innerHeight,
+  }
+}
+
+function applyCanvasSize() {
+  const { bw, bh, w, h } = expectedCanvasSize()
+  if (bgCanvas.width !== bw || bgCanvas.height !== bh) {
+    bgCanvas.width = bw
+    bgCanvas.height = bh
+  }
   bgCanvas.style.width = w + 'px'
   bgCanvas.style.height = h + 'px'
 }
 
-/** 主屏底图：DXGI 抓一帧（PNG data URL）后按窗口尺寸拉伸铺满 */
+/**
+ * 当前屏底图：按目标显示器的物理 bounds + scale 贴满画布。
+ *
+ * 选区窗**只覆盖一块屏**（Rust 按鼠标所在屏建窗，可经切屏按钮换屏）—— DPI 感知 V2
+ * 下跨屏大窗口只有单一 DPI 上下文（wry 用 GetDpiForWindow），副屏上 clientX 与副屏
+ * 物理像素比例会错，导致框出来的宽度偏小。单屏窗口让比例天然唯一。
+ *
+ * 量纲：底图 bounds 与画布尺寸都是物理/CSS 对应关系，画布尺寸由注入的
+ * `w/scale`、`h/scale` 推导（见 expectedCanvasSize），不依赖 window.innerWidth ——
+ * 切屏时 innerWidth 相对窗口几何更新有延迟，用它会画出「一块变小的旧尺寸区域」。
+ */
 async function loadBackdrop() {
-  sizeCanvas()
+  applyCanvasSize()
+  if (window.renderScreenButtons) window.renderScreenButtons()
+  // 清空重画，避免切屏后残留上一块屏的底图
+  bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height)
   try {
-    const url = await invoke('grab_screen_thumbnail', { maxWidth: 0, maxHeight: 0 })
-    if (!url) return
-    const img = new Image()
-    img.onload = () => bgCtx.drawImage(img, 0, 0, bgCanvas.width, bgCanvas.height)
-    img.src = url
+    const parts = await invoke('grab_virtual_desktop_backdrop')
+    if (!parts || !parts.length) return
+    const meta = window.__REGION_ORIGIN__ || { x: 0, y: 0, w: 0, h: 0, scale: window.devicePixelRatio || 1 }
+    // 只画与本窗目标屏重合的那张（窗口恰好贴一块屏，命中一块；重叠布局时取交集最大者）
+    let best = null
+    let bestArea = 0
+    for (const p of parts) {
+      const ox = Math.max(0, Math.min(p.x + p.width, meta.x + meta.w) - Math.max(p.x, meta.x))
+      const oy = Math.max(0, Math.min(p.y + p.height, meta.y + meta.h) - Math.max(p.y, meta.y))
+      const area = ox * oy
+      if (area > bestArea) { bestArea = area; best = p }
+    }
+    if (!best) return
+    const im = await new Promise(res => {
+      const img = new Image()
+      img.onload = () => res(img)
+      img.onerror = () => res(null)
+      img.src = best.dataUrl
+    })
+    if (!im) return
+    // 目标屏恰好贴满整个窗口：x/y 恒为 0，尺寸用**物理像素**（= 绘图缓冲区坐标系，
+    // 与抓图的原始分辨率 1:1），底图才清晰。canvas 的 CSS 尺寸是逻辑像素，
+    // 浏览器会按 devicePixelRatio 把缓冲区映射到屏幕，物理像素 1:1 正好。
+    const { bw: cw, bh: ch } = expectedCanvasSize()
+    bgCtx.drawImage(im, 0, 0, cw, ch)
   } catch (err) {
     // 抓不到底图不致命：仍可凭 overlay 上的光标与尺寸提示完成选区
     console.error('backdrop failed:', err)
+  } finally {
+    // 只有拿到布局才报就绪：脚本末尾那次 loadBackdrop() 可能早于 Rust 注入
+    // （__REGION_ORIGIN__ 还没到），那时显示窗口会是「无布局的空遮罩」。
+    if (window.__REGION_ORIGIN__) signalReady()
+  }
+}
+
+// 首帧真正上屏后通知 Rust 显示窗口。
+// 双 rAF：等两次绘制回调，确保遮罩+底图都已合成上屏；再 setTimeout 0 让合成器
+// 完成提交。窗口建好后是 visible(false)（Windows 窗口层忽略 alpha，提前显示必然
+// 闪一次色块）—— 只在这里 show，用户看到的就是一次完整的遮罩，无中间态。
+let readySignaled = false
+function signalReady() {
+  if (readySignaled) return
+  readySignaled = true
+  const fire = () => invoke('region_selector_ready').catch(() => {})
+  if (window.requestAnimationFrame) {
+    requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(fire, 0)))
+  } else {
+    setTimeout(fire, 50)
   }
 }
 
 sizeCanvas()
-window.addEventListener('resize', sizeCanvas)
+window.addEventListener('resize', () => {
+  // 窗口几何变化后按注入布局重铺（innerWidth 此刻可能还没跟上，故不用它定尺寸）
+  applyCanvasSize()
+})
+// Rust 注入布局的入口（首次页面加载完成 / 切屏时都走这里）。
+// 切屏是「复用同一窗口 + 改位置尺寸」，不重建窗口 —— close() 销毁是异步的，
+// 重建会撞「a webview with label `region-selector` already exists」而静默失败。
+window.applyRegionLayout = (layout) => {
+  window.__REGION_ORIGIN__ = layout
+  // 换屏后旧的框选/尺寸提示不再有意义，清掉并恢复提示文案
+  rectEl.style.display = 'none'
+  sizeEl.style.display = 'none'
+  dragging = false
+  hintEl.style.display = ''
+  // 画布尺寸从注入的布局推导（不等 innerWidth），可立即重绘
+  loadBackdrop()
+  renderScreenButtons()
+  // 切屏是新窗口：重置就绪标记，让新窗口在自己的首帧后再次 show
+  // （新窗同样以 visible(false) 出生，走 region_selector_ready 才显示）
+  readySignaled = false
+}
+
+// ===== 坐标系 =====
+// 绘制与上报都基于 client（视口 CSS 像素），上报时按「窗口原点 + 本屏 scale」换算成
+// 虚拟桌面**物理**像素：
+//   物理 x = __REGION_ORIGIN__.x + clientX * scale
+// 选区窗严格贴合一块显示器（Rust 按鼠标所在屏建窗），故视口内 DPI 比例唯一（scale），
+// 这个换算是精确的。不用 e.screenX —— 那在多屏异缩放下与视口不在同一换算基准
+// （实测用它绘制时红框跑到旁边的屏；用它上报时主屏对、副屏宽度偏小）。
+function toPhysical(clientX, clientY) {
+  const meta = window.__REGION_ORIGIN__ || { x: 0, y: 0, scale: window.devicePixelRatio || 1 }
+  const scale = meta.scale || 1
+  return {
+    x: Math.round(meta.x + clientX * scale),
+    y: Math.round(meta.y + clientY * scale),
+  }
+}
+
+// ===== 切屏 =====
+// 选区窗只覆盖一块屏（DPI 单一才准），多屏时提供按钮切到另一块 —— Rust 重建窗口，
+// 注入新的 __REGION_ORIGIN__（新原点/scale）后本页重新加载布局。
+const screensEl = document.getElementById('screens')
+function currentMonitorIndex() {
+  const meta = window.__REGION_ORIGIN__
+  const mons = (meta && meta.monitors) || []
+  let best = -1
+  let bestArea = 0
+  mons.forEach((m, i) => {
+    const ox = Math.max(0, Math.min(m.x + m.width, meta.x + meta.w) - Math.max(m.x, meta.x))
+    const oy = Math.max(0, Math.min(m.y + m.height, meta.y + meta.h) - Math.max(m.y, meta.y))
+    const a = ox * oy
+    if (a > bestArea) { bestArea = a; best = i }
+  })
+  return best
+}
+function renderScreenButtons() {
+  const mons = (window.__REGION_ORIGIN__ && window.__REGION_ORIGIN__.monitors) || []
+  if (mons.length <= 1) { screensEl.classList.remove('show'); return }
+  const cur = currentMonitorIndex()
+  screensEl.innerHTML = ''
+  mons.forEach((_, i) => {
+    const b = document.createElement('button')
+    b.className = 'screen-btn' + (i === cur ? ' on' : '')
+    b.textContent = '屏幕 ' + (i + 1)
+    b.addEventListener('click', () => invoke('region_switch_monitor', { index: i }))
+    screensEl.appendChild(b)
+  })
+  screensEl.classList.add('show')
+}
+// 切屏时按钮点击不应启动框选
+screensEl.addEventListener('mousedown', e => e.stopPropagation())
+window.renderScreenButtons = renderScreenButtons
+renderScreenButtons()
+// 底图加载排在切屏按钮之后：loadBackdrop 内部会调 renderScreenButtons，需要它已定义
 loadBackdrop()
+/** 物理坐标 → 画布 CSS 坐标（toPhysical 的逆运算） */
+function toCanvas(physX, physY) {
+  const meta = window.__REGION_ORIGIN__ || { x: 0, y: 0, scale: window.devicePixelRatio || 1 }
+  const scale = meta.scale || 1
+  return { x: (physX - meta.x) / scale, y: (physY - meta.y) / scale }
+}
 
 document.addEventListener('mousedown', (e) => {
-  startX = e.screenX
-  startY = e.screenY
+  if (e.target && e.target.closest && e.target.closest('#screens')) return
+  // 起点存**物理像素**：切屏后视口的 client 语义可能滞后（innerWidth/坐标系未跟上），
+  // 用物理坐标做唯一真源，绘制时再反算回 CSS，跨屏切换才不会错位。
+  const p = toPhysical(e.clientX, e.clientY)
+  startX = p.x
+  startY = p.y
   dragging = true
   hintEl.style.display = 'none'
+  // 提示框此刻必然渲染过（display 由 CSS 控制），量一次供整场拖拽使用
+  hintSize.w = sizeEl.offsetWidth || 60
+  hintSize.h = sizeEl.offsetHeight || 20
 })
+
+// 尺寸提示框的固定尺寸（pointerdown 时测一次；mousemove 内读 offset 会强制重排）
+const hintSize = { w: 0, h: 0 }
 
 document.addEventListener('mousemove', (e) => {
   if (!dragging) return
-  const x = Math.min(startX, e.screenX)
-  const y = Math.min(startY, e.screenY)
-  const w = Math.abs(e.screenX - startX)
-  const h = Math.abs(e.screenY - startY)
+  const p = toPhysical(e.clientX, e.clientY)
+  const a = toCanvas(Math.min(startX, p.x), Math.min(startY, p.y))
+  // 红框/尺寸提示都是 CSS 定位（逻辑像素），用 expectedCanvasSize 的 w/h
+  const { w: viewW, h: viewH } = expectedCanvasSize()
+  const w = Math.abs(p.x - startX) / (window.__REGION_ORIGIN__?.scale || 1)
+  const h = Math.abs(p.y - startY) / (window.__REGION_ORIGIN__?.scale || 1)
 
-  rectEl.style.left = x + 'px'
-  rectEl.style.top = y + 'px'
+  rectEl.style.left = a.x + 'px'
+  rectEl.style.top = a.y + 'px'
   rectEl.style.width = w + 'px'
   rectEl.style.height = h + 'px'
   rectEl.style.display = 'block'
 
   sizeEl.textContent = Math.round(w) + ' × ' + Math.round(h)
-  sizeEl.style.left = (x + w / 2 - 30) + 'px'
-  sizeEl.style.top = (y + h + 8) + 'px'
+  // 提示默认在框下方；贴近画布底/右边时翻到框内，避免跑出窗口看不见。
+  // 尺寸读数在 pointerdown 时缓存一次：mousemove 里写完样式立即读 offsetWidth/Height
+  // 是每次移动一次强制同步重排（layout thrash）；提示框只有两个字，尺寸恒定
+  const sw = hintSize.w || 60
+  const sh = hintSize.h || 20
+  let sx = a.x + w / 2 - sw / 2
+  let sy = a.y + h + 8
+  if (sy + sh > viewH) sy = Math.max(0, a.y + h - sh - 8)
+  sx = Math.min(Math.max(0, sx), Math.max(0, viewW - sw))
+  sizeEl.style.left = sx + 'px'
+  sizeEl.style.top = sy + 'px'
   sizeEl.style.display = 'block'
 })
 
@@ -127,14 +351,21 @@ document.addEventListener('mouseup', (e) => {
   if (!dragging) return
   dragging = false
 
-  const x = Math.min(startX, e.screenX)
-  const y = Math.min(startY, e.screenY)
-  const w = Math.abs(e.screenX - startX)
-  const h = Math.abs(e.screenY - startY)
+  const p = toPhysical(e.clientX, e.clientY)
+  const scale = (window.__REGION_ORIGIN__ && window.__REGION_ORIGIN__.scale) || 1
+  // 阈值按 CSS 像素判定（与 Electron 版一致），上报按物理像素
+  const cssW = Math.abs(p.x - startX) / scale
+  const cssH = Math.abs(p.y - startY) / scale
 
   // 过小的框视为误触（与 Electron 版阈值一致）
-  if (w > 10 && h > 10) {
-    invoke('region_selected', { x, y, width: w, height: h, sourceId: '' })
+  if (cssW > 10 && cssH > 10) {
+    invoke('region_selected', {
+      x: Math.min(startX, p.x),
+      y: Math.min(startY, p.y),
+      width: Math.round(cssW * scale),
+      height: Math.round(cssH * scale),
+      sourceId: '',
+    })
   } else {
     invoke('region_cancelled')
   }

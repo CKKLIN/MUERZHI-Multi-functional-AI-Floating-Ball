@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onUnmounted, type ShallowRef } from 'vue'
+import { ref, watch, onMounted, onUnmounted, type ShallowRef } from 'vue'
 import { t } from '../stores/i18n'
 
 const props = defineProps<{

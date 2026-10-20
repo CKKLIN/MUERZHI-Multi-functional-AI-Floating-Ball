@@ -55,22 +55,14 @@ pub async fn get_h264_encoder(ffmpeg_bin: &str) -> String {
 }
 
 async fn probe(ffmpeg_bin: &str) -> String {
-    let ffmpeg_bin = ffmpeg_bin.to_string();
-    let out = tokio::time::timeout(
-        Duration::from_millis(5000),
-        tokio::task::spawn_blocking(move || {
-            #[cfg(windows)]
-            use std::os::windows::process::CommandExt;
-            let mut cmd = std::process::Command::new(&ffmpeg_bin);
-            cmd.args(["-hide_banner", "-encoders"]);
-            #[cfg(windows)]
-            cmd.creation_flags(0x0800_0000);
-            cmd.output()
-        }),
-    )
-    .await;
+    let mut cmd = tokio::process::Command::new(ffmpeg_bin);
+    cmd.args(["-hide_banner", "-encoders"]);
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000);
+    cmd.kill_on_drop(true); // 超时放弃时杀掉 ffmpeg，避免僵尸进程
+    let out = tokio::time::timeout(Duration::from_millis(5000), cmd.output()).await;
     match out {
-        Ok(Ok(Ok(o))) => {
+        Ok(Ok(o)) => {
             let text = format!(
                 "{}{}",
                 String::from_utf8_lossy(&o.stdout),
@@ -89,13 +81,37 @@ async fn probe(ffmpeg_bin: &str) -> String {
 pub fn build_encode_options(encoder: &str, crf: &str, num_threads: usize) -> Vec<String> {
     let mut out: Vec<String> = match encoder {
         "h264_nvenc" => vec![
-            "-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", crf, "-b:v", "0",
+            "-c:v",
+            "h264_nvenc",
+            "-preset",
+            "p4",
+            "-rc",
+            "vbr",
+            "-cq",
+            crf,
+            "-b:v",
+            "0",
         ],
-        "h264_qsv" => vec!["-c:v", "h264_qsv", "-preset", "veryfast", "-global_quality", crf],
+        "h264_qsv" => vec![
+            "-c:v",
+            "h264_qsv",
+            "-preset",
+            "veryfast",
+            "-global_quality",
+            crf,
+        ],
         "h264_amf" => vec![
             "-c:v", "h264_amf", "-quality", "balanced", "-rc", "cqp", "-qp_i", crf, "-qp_p", crf,
         ],
-        _ => vec!["-c:v", "libx264", "-preset", "ultrafast", "-crf", crf, "-threads"],
+        _ => vec![
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            crf,
+            "-threads",
+        ],
     }
     .into_iter()
     .map(|s| s.to_string())
@@ -140,12 +156,32 @@ mod tests {
         let nv = build_encode_options("h264_nvenc", "23", 8);
         assert_eq!(
             nv,
-            vec!["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", "23", "-b:v", "0"]
+            vec![
+                "-c:v",
+                "h264_nvenc",
+                "-preset",
+                "p4",
+                "-rc",
+                "vbr",
+                "-cq",
+                "23",
+                "-b:v",
+                "0"
+            ]
         );
         let x264 = build_encode_options("libx264", "18", 8);
         assert_eq!(
             x264,
-            vec!["-c:v", "libx264", "-preset", "ultrafast", "-crf", "18", "-threads", "8"]
+            vec![
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-crf",
+                "18",
+                "-threads",
+                "8"
+            ]
         );
         let amf = build_encode_options("h264_amf", "23", 4);
         assert!(amf.contains(&"-qp_i".to_string()));

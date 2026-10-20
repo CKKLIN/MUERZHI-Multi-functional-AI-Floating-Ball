@@ -16,7 +16,7 @@ const loading = ref(true)
 
 onMounted(async () => {
   try {
-    sources.value = await window.electronAPI.getSources()
+    sources.value = await window.muerzhiAPI.getSources()
   } catch (err) {
     console.error('获取屏幕源失败:', err)
   } finally {

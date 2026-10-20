@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { useRecordingStore } from '../stores/recording'
 import { t } from '../stores/i18n'
 
@@ -64,6 +64,15 @@ function cancelSchedule() {
   isScheduled.value = false
   countdown.value = ''
 }
+
+// 关闭弹窗即卸载：不清的话 interval 跑到目标时间，到点 emit('start') 打到已卸载组件
+// （定时启动静默失效），期间每秒还在写死 ref
+onUnmounted(() => {
+  if (timer) {
+    clearInterval(timer)
+    timer = null
+  }
+})
 
 // 设置默认日期为今天
 const today = new Date().toISOString().slice(0, 10)

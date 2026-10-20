@@ -5,15 +5,24 @@ import router from './router'
 import './style.css'
 import { initI18n } from './stores/i18n'
 import { vTip } from './utils/tip'
-import { installElectronApiBridge } from './api/bridge'
+import { installApiBridge } from './api/bridge'
 
-// Tauri 环境：先注入 electronAPI 兼容桥再挂载（Electron 下 preload 已提供同名 API）
-// 检测方式：Electron preload 暴露 electronAPI 且有 ipcRenderer；WebView2 无
-if (typeof window !== 'undefined' && !(window as any).electronAPI) {
-  installElectronApiBridge()
-}
+// 先注入 window.muerzhiAPI 桥再挂载（原生页直接用 __TAURI__，渲染层统一走桥）
+installApiBridge()
 
 const app = createApp(App)
+// 全局兜底：未捕获的 Promise 异常与渲染层错误也进日志文件（postMessage/文件读写等
+// 异步链路抛错不会打断 UI，但没日志就无从排查）
+app.config.errorHandler = (err, _instance, info) => {
+  import('./log').then(({ default: log }) => {
+    log.error('[Vue errorHandler]', info, err)
+  })
+}
+window.addEventListener('unhandledrejection', (e) => {
+  import('./log').then(({ default: log }) => {
+    log.error('[unhandledrejection]', e.reason)
+  })
+})
 app.use(createPinia())
 app.use(router)
 // 统一悬浮提示：v-tip 指令替代原生 title（样式可控 + 滚动容器内不裁剪）

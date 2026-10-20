@@ -15,6 +15,10 @@ pub fn get_app_i18n(app: AppHandle) -> I18nBundle {
     // set-floating-ball-settings 时主动 set_locale 并广播，文件修改后调用也应跟随）
     let settings = crate::modules::settings::BallSettings::load(&app);
     let i18n = I18n::global();
-    i18n.set_locale(crate::modules::i18n::Locale::from_str_lossy(&settings.locale));
+    i18n.set_locale(crate::modules::i18n::Locale::from_str_lossy(
+        &settings.locale,
+    ));
+    // 每个窗口启动都会调一次（多窗口 = 多条），info 级别会把日志刷成噪声 → debug
+    log::debug!("get_app_i18n: locale={}", settings.locale);
     i18n.bundle()
 }

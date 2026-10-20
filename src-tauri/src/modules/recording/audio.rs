@@ -129,13 +129,19 @@ impl WavWriter {
         if let Some(p) = path.parent() {
             std::fs::create_dir_all(p).map_err(|e| format!("音频目录创建失败: {e}"))?;
         }
-        let mut file = BufWriter::new(File::create(path).map_err(|e| format!("音频文件创建失败: {e}"))?);
+        let mut file =
+            BufWriter::new(File::create(path).map_err(|e| format!("音频文件创建失败: {e}"))?);
         file.write_all(&[0u8; 44]).map_err(|e| e.to_string())?;
-        Ok(Self { file, data_bytes: 0 })
+        Ok(Self {
+            file,
+            data_bytes: 0,
+        })
     }
 
     fn write(&mut self, data: &[u8]) -> Result<(), String> {
-        self.file.write_all(data).map_err(|e| format!("音频写入失败: {e}"))?;
+        self.file
+            .write_all(data)
+            .map_err(|e| format!("音频写入失败: {e}"))?;
         self.data_bytes = self.data_bytes.saturating_add(data.len() as u32);
         Ok(())
     }
@@ -159,7 +165,8 @@ impl WavWriter {
         header.extend_from_slice(b"data");
         header.extend_from_slice(&self.data_bytes.to_le_bytes());
         f.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
-        f.write_all(&header).map_err(|e| format!("音频头回填失败: {e}"))?;
+        f.write_all(&header)
+            .map_err(|e| format!("音频头回填失败: {e}"))?;
         f.flush().map_err(|e| e.to_string())?;
         Ok(())
     }
@@ -184,45 +191,90 @@ fn rms_level(bytes: &[u8]) -> f32 {
 // ===== 采集会话 =====
 
 struct Worker {
+    source: Source,
     stop: Arc<AtomicBool>,
     handle: Option<JoinHandle<()>>,
+    path: String,
 }
 
 impl Worker {
-    fn stop(&mut self) {
+    /// 停线程并收尾：join 后空文件删除、有数据的返回路径
+    fn stop(&mut self) -> Option<String> {
         self.stop.store(true, Ordering::SeqCst);
         if let Some(h) = self.handle.take() {
             let _ = h.join();
+        }
+        if std::fs::metadata(&self.path)
+            .map(|m| m.len() > 2048)
+            .unwrap_or(false)
+        {
+            Some(self.path.clone())
+        } else {
+            let _ = std::fs::remove_file(&self.path);
+            None
         }
     }
 }
 
 /// 一个音频采集会话（可含麦克风 + 系统声两路，各自独立线程）
+///
+/// 两路**可分别启停**（录制中切麦克风：停 mic 线程、sys 继续录），因此 workers
+/// 挂在 Mutex 里支持 `&self` 上的 add_source/stop_source。
 pub struct AudioSession {
-    workers: Vec<Worker>,
-    mic_path: String,
-    sys_path: String,
+    workers: std::sync::Mutex<Vec<Worker>>,
 }
 
 impl AudioSession {
-    /// 停止两路采集并返回「实际有数据」的文件路径（空文件按未启用处理）
-    pub fn stop(mut self) -> Vec<(Source, String)> {
-        for w in self.workers.iter_mut() {
-            w.stop();
+    pub fn new() -> Self {
+        Self {
+            workers: std::sync::Mutex::new(Vec::new()),
         }
+    }
+
+    /// 为某一路启动一个新采集段（录制中「打开麦克风」的路径）。
+    /// 同路已在录时返回错误（防重复起段）。
+    pub fn add_source(
+        &self,
+        source: Source,
+        path: String,
+        device_id: Option<String>,
+    ) -> Result<(), String> {
+        let mut workers = self.workers.lock().unwrap();
+        if workers.iter().any(|w| w.source == source) {
+            return Err(format!("{source:?} 采集已在进行，不能重复启动"));
+        }
+        workers.push(spawn_worker(source, device_id, path)?);
+        Ok(())
+    }
+
+    /// 停掉某一路的当前段（「关闭麦克风」的路径）：join 线程、空文件删除，
+    /// 返回有数据的文件路径（该路没在录时返回 None）
+    pub fn stop_source(&self, source: Source) -> Option<String> {
+        let mut workers = self.workers.lock().unwrap();
+        let pos = workers.iter().position(|w| w.source == source)?;
+        let mut w = workers.remove(pos);
+        let path = w.stop();
+        set_level(source, 0.0);
+        path
+    }
+
+    /// 停止所有路并返回「实际有数据」的文件路径（空文件按未启用处理）。
+    /// &self：会话以 Arc 共享，停止/分源启停都在共享引用上做（Mutex 提供内部可变）。
+    pub fn stop(&self) -> Vec<(Source, String)> {
+        let workers = self
+            .workers
+            .lock()
+            .unwrap()
+            .drain(..)
+            .collect::<Vec<_>>();
         reset_levels();
-        let mut out = Vec::new();
-        for (src, path) in [
-            (Source::Mic, self.mic_path.clone()),
-            (Source::System, self.sys_path.clone()),
-        ] {
-            if std::fs::metadata(&path).map(|m| m.len() > 2048).unwrap_or(false) {
-                out.push((src, path));
-            } else {
-                let _ = std::fs::remove_file(&path);
-            }
-        }
-        out
+        workers
+            .into_iter()
+            .filter_map(|mut w| {
+                let path = w.stop();
+                path.map(|p| (w.source, p))
+            })
+            .collect()
     }
 }
 
@@ -235,38 +287,47 @@ pub fn start(
     sys_id: Option<String>,
 ) -> Result<AudioSession, String> {
     let dir = std::env::temp_dir();
-    let mic_path = dir.join(format!("muerzhi_mic_{session_id}.wav")).to_string_lossy().to_string();
-    let sys_path = dir.join(format!("muerzhi_sys_{session_id}.wav")).to_string_lossy().to_string();
-    let mut workers = Vec::new();
+    let session = AudioSession::new();
 
     if with_mic {
-        workers.push(spawn_worker(Source::Mic, mic_id, mic_path.clone())?);
+        let path = dir
+            .join(format!("muerzhi_mic_{session_id}.wav"))
+            .to_string_lossy()
+            .to_string();
+        session.add_source(Source::Mic, path, mic_id)?;
     }
     if with_sys {
         // 系统声来自默认渲染设备（用户选的输出设备 id 直接作 device_id 用）
-        match spawn_worker(Source::System, sys_id, sys_path.clone()) {
-            Ok(w) => workers.push(w),
-            Err(e) => {
-                // 系统声拿不到不该拖垮整场录制（例如无声卡/被独占），只记日志
-                log::warn!("系统声采集启动失败: {e}");
-            }
+        let path = dir
+            .join(format!("muerzhi_sys_{session_id}.wav"))
+            .to_string_lossy()
+            .to_string();
+        if let Err(e) = session.add_source(Source::System, path, sys_id) {
+            // 系统声拿不到不该拖垮整场录制（例如无声卡/被独占），只记日志
+            log::warn!("系统声采集启动失败: {e}");
         }
     }
-    Ok(AudioSession { workers, mic_path, sys_path })
+    Ok(session)
 }
 
 fn spawn_worker(source: Source, device_id: Option<String>, path: String) -> Result<Worker, String> {
     let stop = Arc::new(AtomicBool::new(false));
     let stop_thread = stop.clone();
+    let path_for_thread = path.clone();
     let handle = std::thread::Builder::new()
         .name(format!("wasapi-{:?}", source))
         .spawn(move || {
-            if let Err(e) = capture_loop(source, device_id.as_deref(), &path, stop_thread) {
+            if let Err(e) = capture_loop(source, device_id.as_deref(), &path_for_thread, stop_thread) {
                 log::error!("音频采集线程结束（{source:?}）: {e}");
             }
         })
         .map_err(|e| format!("音频线程创建失败: {e}"))?;
-    Ok(Worker { stop, handle: Some(handle) })
+    Ok(Worker {
+        source,
+        path,
+        stop,
+        handle: Some(handle),
+    })
 }
 
 #[cfg(feature = "screen-capture")]
@@ -283,7 +344,9 @@ fn capture_loop(
 
     let enumerator = DeviceEnumerator::new().map_err(|e| format!("音频设备枚举失败: {e}"))?;
     let device = match (source, device_id) {
-        (_, Some(id)) if !id.is_empty() => enumerator.get_device(id).map_err(|e| format!("设备 {id} 打开失败: {e}"))?,
+        (_, Some(id)) if !id.is_empty() => enumerator
+            .get_device(id)
+            .map_err(|e| format!("设备 {id} 打开失败: {e}"))?,
         (Source::Mic, _) => enumerator
             .get_default_device(&Direction::Capture)
             .map_err(|e| format!("默认麦克风打开失败: {e}"))?,
@@ -291,7 +354,9 @@ fn capture_loop(
             .get_default_device(&Direction::Render)
             .map_err(|e| format!("默认扬声器打开失败: {e}"))?,
     };
-    let mut client = device.get_iaudioclient().map_err(|e| format!("AudioClient 获取失败: {e}"))?;
+    let mut client = device
+        .get_iaudioclient()
+        .map_err(|e| format!("AudioClient 获取失败: {e}"))?;
 
     // 统一 48kHz/16bit/立体声 PCM：autoconvert 让音频引擎替我们重采样，
     // 两路格式一致后 ffmpeg amix 不需要再协商格式。
@@ -303,8 +368,13 @@ fn capture_loop(
         CHANNELS as usize,
         None,
     );
-    let (default_period, _min_period) = client.get_device_period().map_err(|e| format!("取设备周期失败: {e}"))?;
-    let mode = StreamMode::EventsShared { autoconvert: true, buffer_duration_hns: default_period };
+    let (default_period, _min_period) = client
+        .get_device_period()
+        .map_err(|e| format!("取设备周期失败: {e}"))?;
+    let mode = StreamMode::EventsShared {
+        autoconvert: true,
+        buffer_duration_hns: default_period,
+    };
 
     // 系统声：设备是 Render 方向，但 initialize 传 Capture + Shared → wasapi 自动加
     // AUDCLNT_STREAMFLAGS_LOOPBACK（见 wasapi::AudioClient::initialize_client）。
@@ -313,11 +383,20 @@ fn capture_loop(
         .initialize_client(&format, &direction, &mode)
         .map_err(|e| format!("音频流初始化失败: {e}"))?;
 
-    let h_event = client.set_get_eventhandle().map_err(|e| format!("事件句柄创建失败: {e}"))?;
-    let capture = client.get_audiocaptureclient().map_err(|e| format!("采集客户端获取失败: {e}"))?;
-    client.start_stream().map_err(|e| format!("音频流启动失败: {e}"))?;
-
+    let h_event = client
+        .set_get_eventhandle()
+        .map_err(|e| format!("事件句柄创建失败: {e}"))?;
+    let capture = client
+        .get_audiocaptureclient()
+        .map_err(|e| format!("采集客户端获取失败: {e}"))?;
+    // WAV 先建（44 字节占位头）：必须放在 start_stream 之前 —— 放后面的话 create 失败
+    // 会经 `?` 早退、跳过下方统一收尾里的 stop_stream，流保持激活直到 client 被 COM 析构
     let mut wav = WavWriter::create(Path::new(path))?;
+
+    client
+        .start_stream()
+        .map_err(|e| format!("音频流启动失败: {e}"))?;
+
     let mut queue: VecDeque<u8> = VecDeque::with_capacity(SAMPLE_RATE as usize * 4);
     let mut chunk: Vec<u8> = Vec::with_capacity(16 * 1024);
 
@@ -328,13 +407,10 @@ fn capture_loop(
                 .map_err(|e| format!("音频读取失败: {e}"))?;
 
             chunk.clear();
-            // 只取整帧（block_align 对齐后的整块才能交给 WAV/电平计算）
+            // 只取整帧（block_align 对齐后的整块才能交给 WAV/电平计算）；
+            // drain 一次搬完 —— 48kHz×4 字节逐字节 pop_front 是每秒 ~19 万次循环
             let take = queue.len() / 4 * 4;
-            for _ in 0..take {
-                if let Some(b) = queue.pop_front() {
-                    chunk.push(b);
-                }
-            }
+            chunk.extend(queue.drain(..take));
             if !chunk.is_empty() {
                 set_level(source, rms_level(&chunk));
                 wav.write(&chunk)?;
@@ -352,7 +428,12 @@ fn capture_loop(
 }
 
 #[cfg(not(feature = "screen-capture"))]
-fn capture_loop(_s: Source, _d: Option<&str>, _p: &str, _stop: Arc<AtomicBool>) -> Result<(), String> {
+fn capture_loop(
+    _s: Source,
+    _d: Option<&str>,
+    _p: &str,
+    _stop: Arc<AtomicBool>,
+) -> Result<(), String> {
     Err("音频采集管线未编译（用 --features screen-capture 构建）".into())
 }
 
@@ -407,10 +488,19 @@ mod tests {
         assert_eq!(&data[0..4], b"RIFF");
         assert_eq!(&data[8..12], b"WAVE");
         assert_eq!(&data[36..40], b"data");
-        assert_eq!(u32::from_le_bytes([data[40], data[41], data[42], data[43]]), 800);
-        assert_eq!(u32::from_le_bytes([data[4], data[5], data[6], data[7]]), 36 + 800);
+        assert_eq!(
+            u32::from_le_bytes([data[40], data[41], data[42], data[43]]),
+            800
+        );
+        assert_eq!(
+            u32::from_le_bytes([data[4], data[5], data[6], data[7]]),
+            36 + 800
+        );
         // 采样率/声道/位深
-        assert_eq!(u32::from_le_bytes([data[24], data[25], data[26], data[27]]), SAMPLE_RATE);
+        assert_eq!(
+            u32::from_le_bytes([data[24], data[25], data[26], data[27]]),
+            SAMPLE_RATE
+        );
         assert_eq!(u16::from_le_bytes([data[22], data[23]]), CHANNELS);
         assert_eq!(u16::from_le_bytes([data[34], data[35]]), BITS);
         assert_eq!(data.len(), 44 + 800);
@@ -446,7 +536,9 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_secs(seconds));
         stop.store(true, Ordering::SeqCst);
         let res = handle.join().map_err(|_| "采集线程 panic".to_string())?;
-        let size = std::fs::metadata(&path).map(|m| m.len() as usize).unwrap_or(0);
+        let size = std::fs::metadata(&path)
+            .map(|m| m.len() as usize)
+            .unwrap_or(0);
         let _ = std::fs::remove_file(&path);
         res.map(|_| size)
     }

@@ -31,12 +31,17 @@
 mod gdi {
     use windows_sys::Win32::Graphics::Gdi::{
         BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateDCW, DeleteDC, DeleteObject,
-        GetDIBits, GetMonitorInfoW, EnumDisplayMonitors, SelectObject, BITMAPINFO,
+        EnumDisplayMonitors, GetDIBits, GetMonitorInfoW, SelectObject, BITMAPINFO,
         BITMAPINFOHEADER, BI_RGB, CAPTUREBLT, DIB_RGB_COLORS, HBITMAP, HDC, HGDIOBJ, HMONITOR,
         MONITORINFOEXW, SRCCOPY,
     };
 
     type MonitorEntry = (String, i32, i32, i32, i32);
+
+    /// 显示器 #index0 的物理 bounds (x, y, w, h) —— 选区窗多屏底图用
+    pub fn monitor_bounds(index0: usize) -> Option<(i32, i32, i32, i32)> {
+        monitor_at(index0).map(|(_, x, y, w, h)| (x, y, w, h))
+    }
 
     /// 按 0-based 下标取显示器设备名与物理范围
     fn monitor_at(index0: usize) -> Option<MonitorEntry> {
@@ -52,9 +57,7 @@ mod gdi {
             let list = unsafe { &mut *(data as *mut Vec<MonitorEntry>) };
             let mut info: MONITORINFOEXW = unsafe { std::mem::zeroed() };
             info.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
-            let ok = unsafe {
-                GetMonitorInfoW(hmon, &mut info as *mut MONITORINFOEXW as *mut _)
-            };
+            let ok = unsafe { GetMonitorInfoW(hmon, &mut info as *mut MONITORINFOEXW as *mut _) };
             if ok != 0 {
                 let name: String = info
                     .szDevice
@@ -92,14 +95,29 @@ mod gdi {
         let wide: Vec<u16> = device.encode_utf16().chain(std::iter::once(0)).collect();
         let b = unsafe {
             // 虚拟桌面 DC（NULL 驱动名 = 整块虚拟桌面，坐标是虚拟桌面坐标）
-            let screen_dc = CreateDCW(std::ptr::null(), std::ptr::null(), std::ptr::null(), std::ptr::null());
+            let screen_dc = CreateDCW(
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+            );
             if screen_dc.is_null() {
                 -1.0
             } else {
                 let mem_dc = CreateCompatibleDC(screen_dc);
                 let bitmap: HBITMAP = CreateCompatibleBitmap(screen_dc, mw, mh);
                 let old: HGDIOBJ = SelectObject(mem_dc, bitmap as HGDIOBJ);
-                let ok = BitBlt(mem_dc, 0, 0, mw, mh, screen_dc, mx, my, SRCCOPY | CAPTUREBLT);
+                let ok = BitBlt(
+                    mem_dc,
+                    0,
+                    0,
+                    mw,
+                    mh,
+                    screen_dc,
+                    mx,
+                    my,
+                    SRCCOPY | CAPTUREBLT,
+                );
                 let mut info: BITMAPINFO = std::mem::zeroed();
                 info.bmiHeader = BITMAPINFOHEADER {
                     biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
@@ -113,7 +131,15 @@ mod gdi {
                 };
                 let mut buf2 = vec![0u8; (mw as usize) * (mh as usize) * 4];
                 let lines = if ok != 0 {
-                    GetDIBits(mem_dc, bitmap, 0, mh as u32, buf2.as_mut_ptr() as *mut _, &mut info, DIB_RGB_COLORS)
+                    GetDIBits(
+                        mem_dc,
+                        bitmap,
+                        0,
+                        mh as u32,
+                        buf2.as_mut_ptr() as *mut _,
+                        &mut info,
+                        DIB_RGB_COLORS,
+                    )
                 } else {
                     0
                 };
@@ -149,7 +175,12 @@ mod gdi {
         let wide: Vec<u16> = device.encode_utf16().chain(std::iter::once(0)).collect();
 
         unsafe {
-            let screen_dc = CreateDCW(wide.as_ptr(), wide.as_ptr(), std::ptr::null(), std::ptr::null());
+            let screen_dc = CreateDCW(
+                wide.as_ptr(),
+                wide.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+            );
             if screen_dc.is_null() {
                 return Err("CreateDCW 失败".into());
             }
@@ -162,7 +193,17 @@ mod gdi {
             // （主屏 mx,my=0,0 恰好掩盖了这个错误，副屏才暴露）。
             let (sx, sy) = (0, 0);
             // CAPTUREBLT：把分层窗口（含部分自绘 UI）一并抓进来，避免截图里出现空洞
-            let ok = BitBlt(mem_dc, 0, 0, mw, mh, screen_dc, sx, sy, SRCCOPY | CAPTUREBLT);
+            let ok = BitBlt(
+                mem_dc,
+                0,
+                0,
+                mw,
+                mh,
+                screen_dc,
+                sx,
+                sy,
+                SRCCOPY | CAPTUREBLT,
+            );
 
             let mut info: BITMAPINFO = std::mem::zeroed();
             info.bmiHeader = BITMAPINFOHEADER {
@@ -283,8 +324,8 @@ mod imp {
     /// 抓一帧（WGC 路径，保留用于诊断）：返回 (BGRA 紧凑缓冲, 宽, 高)
     pub fn grab_bgra(index0: usize) -> Result<(Vec<u8>, u32, u32), String> {
         // windows-capture 的 Monitor::from_index 是 1-based；本工程对外一律 0-based
-        let monitor = Monitor::from_index(index0 + 1)
-            .map_err(|e| format!("显示器 #{index0} 不存在: {e}"))?;
+        let monitor =
+            Monitor::from_index(index0 + 1).map_err(|e| format!("显示器 #{index0} 不存在: {e}"))?;
         let slot: Arc<Mutex<Option<(Vec<u8>, u32, u32)>>> = Arc::new(Mutex::new(None));
         let settings = Settings::new(
             monitor,
@@ -339,8 +380,8 @@ mod imp {
     /// 用来回答「副屏单帧抓取为什么全黑、要等多久才出画面」——连续录制能出画面说明
     /// 只是**首帧时序**问题，靠这个探针量出真实等待窗口再定策略，不靠猜。
     pub fn probe_frames(index0: usize, duration_ms: u64) -> Result<Vec<(u64, f64)>, String> {
-        let monitor = Monitor::from_index(index0 + 1)
-            .map_err(|e| format!("显示器 #{index0} 不存在: {e}"))?;
+        let monitor =
+            Monitor::from_index(index0 + 1).map_err(|e| format!("显示器 #{index0} 不存在: {e}"))?;
         let slot: Arc<Mutex<Option<(Vec<u8>, u32, u32)>>> = Arc::new(Mutex::new(None));
         let settings = Settings::new(
             monitor,
@@ -381,6 +422,12 @@ mod imp {
         }
     }
 
+    /// 显示器 #index0 的物理 bounds (x, y, w, h) —— 选区窗多屏底图用。
+    /// 转发到 gdi 模块的 Win32 枚举（windows_capture::Monitor 只暴露尺寸不暴露位置）。
+    pub fn monitor_bounds(index0: usize) -> Option<(i32, i32, i32, i32)> {
+        super::gdi::monitor_bounds(index0)
+    }
+
     /// 按最长边限制做盒式降采样（缩略图用；点采样在 5×5 以上的降幅下会有明显锯齿）
     fn downsample_box(src: &[u8], sw: u32, sh: u32, tw: u32, th: u32) -> Vec<u8> {
         let mut out = vec![0u8; (tw * th * 4) as usize];
@@ -389,10 +436,14 @@ mod imp {
         }
         for ty in 0..th {
             let y0 = (ty as u64 * sh as u64 / th as u64) as u32;
-            let y1 = (((ty + 1) as u64 * sh as u64 / th as u64) as u32).max(y0 + 1).min(sh);
+            let y1 = (((ty + 1) as u64 * sh as u64 / th as u64) as u32)
+                .max(y0 + 1)
+                .min(sh);
             for tx in 0..tw {
                 let x0 = (tx as u64 * sw as u64 / tw as u64) as u32;
-                let x1 = (((tx + 1) as u64 * sw as u64 / tw as u64) as u32).max(x0 + 1).min(sw);
+                let x1 = (((tx + 1) as u64 * sw as u64 / tw as u64) as u32)
+                    .max(x0 + 1)
+                    .min(sw);
                 let (mut b, mut g, mut r, mut n) = (0u32, 0u32, 0u32, 0u32);
                 for y in y0..y1 {
                     let row = (y * sw * 4) as usize;
@@ -454,6 +505,41 @@ mod imp {
             base64::engine::general_purpose::STANDARD.encode(&png)
         ))
     }
+
+    /// 抓一帧 PNG data URL，**全黑时自动重试**（选区底图专用）。
+    ///
+    /// 切到副屏时该屏可能刚被选区流程唤醒（此前长时间无画面更新/休眠），
+    /// GDI 首抓到的就是全黑帧（BitBlt 成功但内容是黑的）——原实现直接把黑图铺进
+    /// 选区窗，用户看到「屏幕 2 的选区窗口全黑」。这里检测平均亮度，全黑则等
+    /// 350ms 重抓（给显示器唤醒留时间），最多 5 次；真·关闭的屏最后一次仍返回
+    /// 黑图（与旧行为一致），但唤醒中的屏能救回来。
+    pub fn grab_data_url_awake(index0: usize) -> Result<String, String> {
+        const ATTEMPTS: usize = 5;
+        const RETRY_DELAY_MS: u64 = 350;
+        const BLACK_THRESHOLD: f64 = 1.5; // 平均亮度 < 1.5/255 视为全黑
+        let mut last_err: Option<String> = None;
+        for attempt in 0..ATTEMPTS {
+            match super::gdi::grab_bgra(index0) {
+                Ok((w, h, buf)) => {
+                    if brightness_of(&buf) > BLACK_THRESHOLD || attempt == ATTEMPTS - 1 {
+                        // 有内容（或最后一次尝试：接受现状，不无限等）→ 编码返回
+                        let png = encode_png(&buf, w, h)?;
+                        return Ok(format!(
+                            "data:image/png;base64,{}",
+                            base64::engine::general_purpose::STANDARD.encode(&png)
+                        ));
+                    }
+                    log::info!(
+                        "显示器 #{index0} 底图全黑（第 {} 次），{RETRY_DELAY_MS}ms 后重试",
+                        attempt + 1
+                    );
+                }
+                Err(e) => last_err = Some(e),
+            }
+            std::thread::sleep(std::time::Duration::from_millis(RETRY_DELAY_MS));
+        }
+        Err(last_err.unwrap_or_else(|| "抓屏失败".into()))
+    }
 }
 
 #[cfg(not(feature = "screen-capture"))]
@@ -461,19 +547,24 @@ mod imp {
     pub fn monitor_device_names() -> Vec<String> {
         Vec::new()
     }
+    pub fn monitor_bounds(_index0: usize) -> Option<(i32, i32, i32, i32)> {
+        None
+    }
     pub fn grab_png(_index0: usize, _max_w: u32, _max_h: u32) -> Result<Vec<u8>, String> {
         Err("屏幕采集管线未编译（用 --features screen-capture 构建）".into())
-    }
-    pub fn grab_data_url(_index0: usize, _max_w: u32, _max_h: u32) -> Result<String, String> {
+    }    pub fn grab_data_url(_index0: usize, _max_w: u32, _max_h: u32) -> Result<String, String> {
         Err("屏幕采集管线未编译".into())
     }
     pub fn frame_brightness(_index0: usize) -> Result<f64, String> {
         Err("屏幕采集管线未编译".into())
     }
+    pub fn grab_data_url_awake(_index0: usize) -> Result<String, String> {
+        Err("屏幕采集管线未编译".into())
+    }
 }
 
 #[allow(unused_imports)] // grab_png 仅截图路径用（screenshot_to_desktop）
-pub use imp::{grab_data_url, grab_png, monitor_device_names};
+pub use imp::{grab_data_url, grab_data_url_awake, grab_png, monitor_device_names};
 
 // ===== 截图存桌面（对齐 Electron take-screenshot）=====
 
@@ -505,8 +596,46 @@ pub fn screenshot_to_desktop(_app: &tauri::AppHandle) -> Result<String, String> 
 /// maxWidth/maxHeight 传 0 表示原始分辨率（选区底图要清晰，只有缩略图才限制尺寸）。
 #[tauri::command]
 #[allow(non_snake_case)]
-pub fn grab_screen_thumbnail(maxWidth: u32, maxHeight: u32) -> Result<String, String> {
-    grab_data_url(0, maxWidth, maxHeight)
+pub async fn grab_screen_thumbnail(maxWidth: u32, maxHeight: u32) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || grab_data_url(0, maxWidth, maxHeight))
+        .await
+        .map_err(|e| format!("缩略图抓取任务失败: {e}"))?
+}
+
+/// 选区窗底图：**每块显示器一张** + 各自物理 bounds（供页面按位置铺图）
+///
+/// 选区窗覆盖整个虚拟桌面后，只铺主屏会把主屏画面拉伸到全屏（副屏区域显示的是
+/// 主屏的拉伸内容），用户在副屏选区时看到的画面与实际不符。按屏分块返回，页面
+/// 用 bounds 把每张图画到它在虚拟桌面里的位置。
+#[tauri::command]
+pub async fn grab_virtual_desktop_backdrop() -> Result<Vec<serde_json::Value>, String> {
+    // 逐屏全分辨率 BitBlt + PNG 编码 + base64（4K 屏单张 PNG 数 MB），丢阻塞线程池
+    tokio::task::spawn_blocking(|| {
+        let mut out = Vec::new();
+        let count = monitor_device_names().len();
+        for i in 0..count {
+            // 单块抓失败（待机屏等）不阻断整窗：跳过该屏，页面留透明底
+            let url = match grab_data_url_awake(i) {
+                Ok(u) => u,
+                Err(_) => continue,
+            };
+            let bounds = imp::monitor_bounds(i).unwrap_or((0, 0, 0, 0));
+            out.push(serde_json::json!({
+                "dataUrl": url,
+                "x": bounds.0,
+                "y": bounds.1,
+                "width": bounds.2,
+                "height": bounds.3,
+            }));
+        }
+        if out.is_empty() {
+            Err("所有显示器均抓图失败".to_string())
+        } else {
+            Ok(out)
+        }
+    })
+    .await
+    .map_err(|e| format!("底图抓取任务失败: {e}"))?
 }
 
 /// 本地时间 `YYYYMMDD_HHmmss`（对齐 Electron 截图文件名）
@@ -591,7 +720,10 @@ mod tests {
     #[test]
     #[ignore = "诊断用；手动用 --ignored 跑"]
     fn probe_gdi_paths() {
-        let idx: usize = std::env::var("MUERZHI_PROBE_INDEX").ok().and_then(|v| v.parse().ok()).unwrap_or(1);
+        let idx: usize = std::env::var("MUERZHI_PROBE_INDEX")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(1);
         match super::gdi::probe_both_paths(idx) {
             Ok((a, b, mx, my)) => println!(
                 "显示器 #{idx}（虚拟坐标 {mx},{my}）：本屏 DC+源(0,0) 亮度={a:.2} | 虚拟桌面 DC+源({mx},{my}) 亮度={b:.2}"
@@ -605,8 +737,14 @@ mod tests {
     #[test]
     #[ignore = "诊断用；手动用 --ignored 跑"]
     fn probe_frame_brightness_over_time() {
-        let idx: usize = std::env::var("MUERZHI_PROBE_INDEX").ok().and_then(|v| v.parse().ok()).unwrap_or(1);
-        let ms: u64 = std::env::var("MUERZHI_PROBE_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(8000);
+        let idx: usize = std::env::var("MUERZHI_PROBE_INDEX")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(1);
+        let ms: u64 = std::env::var("MUERZHI_PROBE_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(8000);
         let names = super::monitor_device_names();
         println!("WGC 枚举顺序: {names:?}");
         let log = super::imp::probe_frames(idx, ms).expect("采集应能启动");
@@ -629,9 +767,17 @@ mod tests {
     #[ignore = "需要真实桌面；手动用 --ignored 跑"]
     fn grab_smoke_frame_is_visible() {
         let full = super::grab_png(0, 0, 0).expect("应能抓到全分辨率帧");
-        assert!(full.len() > 20_000, "全分辨率 PNG 过小（{} 字节）", full.len());
+        assert!(
+            full.len() > 20_000,
+            "全分辨率 PNG 过小（{} 字节）",
+            full.len()
+        );
         let small = super::grab_png(0, 340, 200).expect("应能抓到缩略图");
-        assert!(small.len() > 1_000, "缩略图 PNG 过小（{} 字节）", small.len());
+        assert!(
+            small.len() > 1_000,
+            "缩略图 PNG 过小（{} 字节）",
+            small.len()
+        );
 
         let url = super::grab_data_url(0, 340, 200).expect("data URL");
         assert!(url.starts_with("data:image/png;base64,"));

@@ -1,0 +1,2 @@
+cargo:rustc-link-search=native=D:\money\MUERZHI-Multi-functional-AI-Floating-Ball\src-tauri\target-verify5\debug\build\webview2-com-sys-b561aa47ed68b12c\out\x64
+cargo:rustc-link-lib=advapi32

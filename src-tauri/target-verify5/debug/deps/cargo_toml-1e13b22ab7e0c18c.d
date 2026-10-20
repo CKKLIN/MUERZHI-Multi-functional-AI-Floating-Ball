@@ -1,0 +1,10 @@
+D:\money\MUERZHI-Multi-functional-AI-Floating-Ball\src-tauri\target-verify5\debug\deps\cargo_toml-1e13b22ab7e0c18c.d: C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\cargo_toml-0.22.3\src\cargo_toml.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\cargo_toml-0.22.3\src\afs.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\cargo_toml-0.22.3\src\error.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\cargo_toml-0.22.3\src\inheritable.rs
+
+D:\money\MUERZHI-Multi-functional-AI-Floating-Ball\src-tauri\target-verify5\debug\deps\libcargo_toml-1e13b22ab7e0c18c.rlib: C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\cargo_toml-0.22.3\src\cargo_toml.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\cargo_toml-0.22.3\src\afs.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\cargo_toml-0.22.3\src\error.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\cargo_toml-0.22.3\src\inheritable.rs
+
+D:\money\MUERZHI-Multi-functional-AI-Floating-Ball\src-tauri\target-verify5\debug\deps\libcargo_toml-1e13b22ab7e0c18c.rmeta: C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\cargo_toml-0.22.3\src\cargo_toml.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\cargo_toml-0.22.3\src\afs.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\cargo_toml-0.22.3\src\error.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\cargo_toml-0.22.3\src\inheritable.rs
+
+C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\cargo_toml-0.22.3\src\cargo_toml.rs:
+C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\cargo_toml-0.22.3\src\afs.rs:
+C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\cargo_toml-0.22.3\src\error.rs:
+C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\cargo_toml-0.22.3\src\inheritable.rs:

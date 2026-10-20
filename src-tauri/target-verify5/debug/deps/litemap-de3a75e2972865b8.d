@@ -1,0 +1,10 @@
+D:\money\MUERZHI-Multi-functional-AI-Floating-Ball\src-tauri\target-verify5\debug\deps\litemap-de3a75e2972865b8.d: C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\litemap-0.8.3\src\lib.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\litemap-0.8.3\src\map.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\litemap-0.8.3\src\store\mod.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\litemap-0.8.3\src\store\slice_impl.rs
+
+D:\money\MUERZHI-Multi-functional-AI-Floating-Ball\src-tauri\target-verify5\debug\deps\liblitemap-de3a75e2972865b8.rlib: C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\litemap-0.8.3\src\lib.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\litemap-0.8.3\src\map.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\litemap-0.8.3\src\store\mod.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\litemap-0.8.3\src\store\slice_impl.rs
+
+D:\money\MUERZHI-Multi-functional-AI-Floating-Ball\src-tauri\target-verify5\debug\deps\liblitemap-de3a75e2972865b8.rmeta: C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\litemap-0.8.3\src\lib.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\litemap-0.8.3\src\map.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\litemap-0.8.3\src\store\mod.rs C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\litemap-0.8.3\src\store\slice_impl.rs
+
+C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\litemap-0.8.3\src\lib.rs:
+C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\litemap-0.8.3\src\map.rs:
+C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\litemap-0.8.3\src\store\mod.rs:
+C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\litemap-0.8.3\src\store\slice_impl.rs:

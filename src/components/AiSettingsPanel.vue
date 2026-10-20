@@ -19,7 +19,7 @@ let statusInterval: ReturnType<typeof setInterval> | null = null
 
 async function loadAiStatus() {
   try {
-    const status = await window.electronAPI.agentGetStatus()
+    const status = await window.muerzhiAPI.agentGetStatus()
     if (status) {
       bridgeStatus.value = status
       claudeIntegrated.value = status.hookInstalled === true
@@ -32,10 +32,10 @@ async function loadAiStatus() {
 
 async function toggleClaudeIntegration() {
   if (claudeIntegrated.value) {
-    await window.electronAPI.agentUninstallHooks()
+    await window.muerzhiAPI.agentUninstallHooks()
     claudeIntegrated.value = false
   } else {
-    const status = await window.electronAPI.agentInstallHooks()
+    const status = await window.muerzhiAPI.agentInstallHooks()
     claudeIntegrated.value = status?.hookInstalled === true
   }
   await loadAiStatus()
@@ -44,7 +44,7 @@ async function toggleClaudeIntegration() {
 async function toggleAutoAllow() {
   autoAllow.value = !autoAllow.value
   try {
-    await window.electronAPI.agentSetAutoAllow(autoAllow.value)
+    await window.muerzhiAPI.agentSetAutoAllow(autoAllow.value)
   } catch (e) {
     console.error('[AiSettingsPanel] setAutoAllow error:', e)
     autoAllow.value = !autoAllow.value
@@ -58,7 +58,7 @@ async function toggleAutoAllowSession(sessionId: string) {
     ? [...autoAllowSessions.value, sessionId]
     : autoAllowSessions.value.filter((id) => id !== sessionId)
   try {
-    autoAllowSessions.value = await window.electronAPI.agentSetAutoAllowSession(sessionId, enabled)
+    autoAllowSessions.value = await window.muerzhiAPI.agentSetAutoAllowSession(sessionId, enabled)
   } catch (e) {
     console.error('[AiSettingsPanel] setAutoAllowSession error:', e)
     autoAllowSessions.value = enabled
@@ -82,7 +82,7 @@ const cardExpireMinutes = ref(5)
 
 async function loadCardExpiry() {
   try {
-    const e = await window.electronAPI.agentGetCardExpiry()
+    const e = await window.muerzhiAPI.agentGetCardExpiry()
     cardExpireEnabled.value = e.enabled
     // 主进程以秒存储（下限 10s），UI 以分钟编辑，秒级精度对用户无意义
     cardExpireMinutes.value = Math.max(1, Math.round(e.seconds / 60))
@@ -95,7 +95,7 @@ async function toggleCardExpire() {
   const prev = cardExpireEnabled.value
   cardExpireEnabled.value = !prev
   try {
-    await window.electronAPI.agentSetCardExpiry(cardExpireEnabled.value, cardExpireMinutes.value * 60)
+    await window.muerzhiAPI.agentSetCardExpiry(cardExpireEnabled.value, cardExpireMinutes.value * 60)
   } catch (e) {
     console.error('[AiSettingsPanel] toggleCardExpire error:', e)
     cardExpireEnabled.value = prev
@@ -107,7 +107,7 @@ async function applyExpireMinutes() {
   const clamped = Math.min(30, Math.max(1, Math.round(Number(cardExpireMinutes.value) || 5)))
   cardExpireMinutes.value = clamped
   try {
-    await window.electronAPI.agentSetCardExpiry(cardExpireEnabled.value, clamped * 60)
+    await window.muerzhiAPI.agentSetCardExpiry(cardExpireEnabled.value, clamped * 60)
   } catch (e) {
     console.error('[AiSettingsPanel] applyExpireMinutes error:', e)
   }
@@ -117,7 +117,7 @@ async function toggleIslandFlat() {
   if (!islandFlatLoaded.value) return // 初始值尚未读回，先不响应，避免与初始 get 竞态
   islandFlat.value = !islandFlat.value
   try {
-    await window.electronAPI.setAiIslandSettings({ flat: islandFlat.value })
+    await window.muerzhiAPI.setAiIslandSettings({ flat: islandFlat.value })
   } catch (e) {
     console.error('[AiSettingsPanel] setAiIslandSettings error:', e)
     islandFlat.value = !islandFlat.value
@@ -157,26 +157,30 @@ onMounted(async () => {
   await loadAiStatus()
   // 读取自动允许设置
   try {
-    autoAllow.value = await window.electronAPI.agentGetAutoAllow()
+    autoAllow.value = await window.muerzhiAPI.agentGetAutoAllow()
   } catch {}
   // 读取选择性自动审批的会话集合
   try {
-    autoAllowSessions.value = await window.electronAPI.agentGetAutoAllowSessions()
+    autoAllowSessions.value = await window.muerzhiAPI.agentGetAutoAllowSessions()
   } catch {}
   // 读取审批/提问卡的过期设置
   loadCardExpiry()
   // 读取 AI 岛外观设置（横条态）
   try {
-    const s = await window.electronAPI.getAiIslandSettings()
+    const s = await window.muerzhiAPI.getAiIslandSettings()
     islandFlat.value = s.flat === true
   } catch {}
   // 初始值已读回，之后允许 toggle
   islandFlatLoaded.value = true
-  // 保留轮询作为兜底，但主要依赖实时更新
-  statusInterval = setInterval(loadAiStatus, 5000)
+  // 保留轮询作为兜底，但主要依赖实时更新；窗口隐藏（AI 窗是 hide 不是 destroy）
+  // 时暂停轮询——不可见时的 5s IPC 往返纯属浪费
+  statusInterval = window.setInterval(() => {
+    if (document.hidden) return
+    loadAiStatus()
+  }, 5000)
 
   // 监听实时状态更新
-  const cleanupState = window.electronAPI.onAgentStateUpdate(onAgentStateUpdate)
+  const cleanupState = window.muerzhiAPI.onAgentStateUpdate(onAgentStateUpdate)
 
   onUnmounted(() => {
     cleanupState()

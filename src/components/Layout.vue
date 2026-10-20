@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { t } from '../stores/i18n'
-function minimize() { window.electronAPI.minimizeWindow() }
-function maximize() { window.electronAPI.maximizeWindow() }
-function close() { window.electronAPI.closeWindow() }
+function minimize() { window.muerzhiAPI.minimizeWindow() }
+function maximize() { window.muerzhiAPI.maximizeWindow() }
+function close() { window.muerzhiAPI.closeWindow() }
 // 标题栏拖拽：Electron 用 -webkit-app-region: drag；WebView2 无效，
 // Tauri 下用 data-tauri-drag-region 属性（wry 拦截 mousedown 实现系统拖拽）
 </script>

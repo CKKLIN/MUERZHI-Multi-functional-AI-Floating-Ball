@@ -42,6 +42,11 @@ function hide() {
   window.removeEventListener('resize', onViewportChange)
 }
 
+/** 供拖动等场景主动收起气泡：指针捕获期间 mouseleave 不派发，气泡会挂在旧位置 */
+export function hideTip() {
+  hide()
+}
+
 // 悬浮期间视口变化（列表滚动/窗口缩放）会让气泡位置失效——直接隐藏，下次悬停重算
 function onViewportChange() {
   if (shownFor || showTimer) hide()

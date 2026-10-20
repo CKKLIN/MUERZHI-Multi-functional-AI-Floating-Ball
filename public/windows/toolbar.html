@@ -1,55 +1,204 @@
 <!DOCTYPE html>
-<!-- 录制工具条 — 移植自 region-selector.ts 的工具条 data:URL
+<!-- 录制工具条 — 区域录制的控制条（贴选区上/下沿或压在选区内部）
      状态机经 applyToolbarState(state, elapsed) 由 Rust eval 推送：
      idle / recording / paused 三态切换按钮可见性；
-     按钮点击统一 emit('toolbar-action', <action>) 由 Rust 转发主窗口。 -->
+     按钮点击统一 emit('toolbar-action', <action>) 由 Rust 转发主窗口。
+     视觉与悬浮岛（island.html）同一套：深色玻璃胶囊 + 内联 SVG 图标（不依赖 emoji 字体）。 -->
 <html>
 <head>
+<meta charset="utf-8">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;user-select:none}
 html,body{width:100%;height:100%;overflow:hidden;background:transparent}
-body{display:flex;flex-direction:column}
+body{
+  display:flex;flex-direction:column;-webkit-font-smoothing:antialiased;
+  /* 贴顶时顶到屏幕边缘，窗口圆角在顶部会被裁掉，这里给一点点上边距做呼吸 */
+  padding-top:0;
+}
+
+/* ===== Apple 风 3D 材质（灰白配色）=====
+   浅色磨砂玻璃：白到浅灰的竖向渐变 + 顶部高光 + 柔和双层投影 + 内描边。
+   浅底上文字用深灰，靠投影和边框与桌面拉开层次。 */
 .toolbar{
-  height:44px;display:flex;align-items:center;gap:6px;padding:0 12px;
-  background:rgba(28,30,40,0.94);color:#fff;
-  font-family:'Segoe UI',system-ui,sans-serif;font-size:12px;
-  border-radius:8px;
+  height:44px;display:flex;align-items:center;gap:2px;padding:0 9px;
+  background:
+    linear-gradient(180deg,rgba(255,255,255,.95) 0%,rgba(255,255,255,0) 46%),
+    linear-gradient(180deg,#F7F8FA 0%,#EDEFF3 55%,#E3E6EB 100%);
+  color:#2C3038;
+  border:.5px solid rgba(0,0,0,.09);
+  font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',system-ui,'Microsoft YaHei',sans-serif;
+  font-size:12.5px;
+  border-radius:13px;
+  box-shadow:
+    0 1px 1px rgba(0,0,0,.10),
+    0 6px 16px rgba(0,0,0,.13),
+    0 16px 38px rgba(0,0,0,.10),
+    inset 0 .5px 0 rgba(255,255,255,1),
+    inset 0 -.5px 0 rgba(0,0,0,.05);
+  backdrop-filter:blur(30px) saturate(180%);
+  -webkit-backdrop-filter:blur(30px) saturate(180%);
+  /* 窄选区时让内容可压缩：默认不换行，空间不足时优先隐藏次要信息（见下方 .opt-*） */
+  overflow:hidden;
 }
-body[data-pos="top"] .toolbar{border-radius:0 0 8px 8px}
-body[data-pos="bottom"] .toolbar{border-radius:8px 8px 0 0}
-body[data-pos="inside"] .toolbar{border-radius:8px}
-body[data-pos="inside"].minimal .toolbar{width:170px;padding:0 6px;gap:4px}
-.tip-strip{height:28px;flex:0 0 auto;pointer-events:none}
+/* top 态：底边与红框顶边齐平 → 贴边那侧（下）切角，外侧（上）保持圆角 */
+body[data-pos="top"] .toolbar{border-radius:13px 13px 3px 3px}
+/* inside 态兜底（选区贴着屏幕上沿、工具条改压内部时）：上边与红框顶边齐平 */
+body[data-pos="inside"] .toolbar{border-radius:3px 3px 13px 13px}
+/* 透明气泡带：工具条四周不贴边，整条可点，多余透明区只会盖住选区 */
+.tip-strip{display:none}
+
+/* ===== 窄宽度自适应 =====
+   Rust 侧窗口宽度 = 选区宽度，窄选区（如 200px）装不下全部控件。
+   用 CSS 容器查询按**工具条自身宽度**分级降级，比 JS 监听 resize 更跟底、
+   也避免首帧闪一下再收缩。container-type 让 @container 以 .toolbar 为基准。 */
+.toolbar{container-type:inline-size;container-name:tb}
+
+/* 设备开关组：麦克风 → 摄像头 紧靠排列 */
+.dev-group{display:flex;align-items:center;gap:1px;flex:0 0 auto}
+/* 主操作组：开始/停止/暂停/继续 视觉上一个整体（互斥显示，恒有一个可见） */
+.main-group{display:flex;align-items:center;gap:1px;flex:0 0 auto}
+
+/* 分组：极细的内嵌竖线，Apple 常用这种低对比分隔而不是粗线 */
+.divider{
+  width:1px;height:18px;flex:0 0 auto;margin:0 5px;
+  background:linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,.14) 50%,rgba(0,0,0,0));
+}
+
+/* ===== 按钮（浅底：默认深灰字，hover 加深色淡背景）===== */
 .btn{
-  min-width:34px;height:34px;border:none;border-radius:8px;background:transparent;
-  color:#dfe3ea;cursor:pointer;display:flex;align-items:center;justify-content:center;
-  font-size:13px;transition:background .15s ease;
+  width:30px;height:30px;flex:0 0 auto;border:0;border-radius:9px;background:transparent;
+  color:#5A6068;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:background .18s cubic-bezier(.4,0,.2,1),color .18s,transform .12s cubic-bezier(.4,0,.2,1),
+             box-shadow .18s;
 }
-.btn:hover{background:rgba(255,255,255,0.14)}
-.btn.rec{background:#e94560}
-.btn.rec:hover{background:#ff5b78}
-.timer{font:13px Consolas,monospace;min-width:48px;text-align:center;color:#fff}
-.size-label{font:12px Consolas,monospace;color:#9aa2b8}
-.meter{display:flex;gap:2px;align-items:flex-end;height:16px}
-.meter-bar{width:3px;height:5px;background:rgba(255,255,255,0.25);border-radius:1px;transition:height .08s,background .08s}
-.meter-bar.on{height:14px;background:#4ecdc4}
-.meter-bar.warn{background:#ffd93d}
-.meter-bar.hot{background:#e94560}
+.btn:hover{background:rgba(0,0,0,.06);color:#1C1F24}
+.btn:active{transform:scale(.88);background:rgba(0,0,0,.04)}
+.btn:focus-visible{outline:1.5px solid rgba(0,122,255,.55);outline-offset:1.5px}
+.btn svg{width:16px;height:16px;display:block;stroke-width:1.7}
+/* 麦克风/摄像头按钮**录制中也保留**（用户要求常显）：录制中点按走
+   recording_set_mic / recording_set_camera 实时增停音频/摄像头段，
+   状态点亮经 push_island_audio_state 回推（applyIslandControls）。
+
+/* 开启态：Apple 绿 + 极淡绿底（浅底上要更克制，否则太跳） */
+.btn.on{
+  color:#1D9E45;
+  background:rgba(48,209,88,.16);
+  box-shadow:inset 0 0 0 .5px rgba(48,209,88,.3);
+}
+.btn.on:hover{background:rgba(48,209,88,.24)}
+
+/* 关闭态按钮：X 在 hover 时染红（浅底上用淡红底），提示「危险操作」但不常驻红色 */
+/* 关闭按钮钉在最右：内容左对齐时右侧留白，margin-left:auto 推到条的最右端 */
+#closeBtn{margin-left:auto}
+#closeBtn:hover{background:rgba(255,59,48,.12);color:#D70015}
+
+/* 主操作：Apple 红，顶部高光 + 外发光，立体但不刺眼 */
+.btn.primary,.btn.stop{
+  color:#fff;
+  background:linear-gradient(180deg,#FF6B6B 0%,#F0454A 52%,#D9343E 100%);
+  box-shadow:
+    inset 0 .5px 0 rgba(255,255,255,.4),
+    0 1px 2px rgba(0,0,0,.18),
+    0 4px 10px rgba(217,52,62,.3);
+}
+.btn.primary:hover,.btn.stop:hover{
+  background:linear-gradient(180deg,#FF7C7C 0%,#F75A5E 52%,#E03E48 100%);
+}
+.btn.primary:active,.btn.stop:active{
+  background:linear-gradient(180deg,#E85A5E 0%,#DC3A43 100%);
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.22);
+}
+/* 暂停/继续：浅底上的中性按钮，灰色填充 */
+#pauseBtn,#resumeBtn{
+  background:rgba(0,0,0,.07);color:#2C3038;
+  box-shadow:inset 0 0 0 .5px rgba(0,0,0,.07);
+}
+#pauseBtn:hover,#resumeBtn:hover{background:rgba(0,0,0,.12)}
+
+/* ===== 状态信息 ===== */
+.timer{
+  font:500 13px/1 -apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,sans-serif;
+  font-variant-numeric:tabular-nums;letter-spacing:.2px;
+  min-width:42px;text-align:center;color:#1C1F24;padding:0 2px;flex:0 0 auto;
+}
+.size-label{
+  font:11px/1 -apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,sans-serif;
+  color:#8A9099;padding:0 5px;white-space:nowrap;flex:0 0 auto;letter-spacing:.1px;
+}
+/* 音频电平：细圆角条，激活时带微光（浅底上未激活要够暗） */
+/* 电平条：默认隐藏，开启麦克风才出现（body.mic-on，applyIslandControls 切换）；
+   位置在主操作按钮右侧。录制中它是唯一的音频反馈，容器降级也不可隐藏（见下）。 */
+.meter{display:none;gap:2px;align-items:flex-end;height:14px;flex:0 0 auto;padding:0 2px}
+body.mic-on .meter{display:flex}
+.meter-bar{
+  width:2.5px;height:5px;border-radius:2px;
+  background:rgba(0,0,0,.16);
+  transition:height .1s cubic-bezier(.4,0,.2,1),background .1s;
+}
+.meter-bar.on{height:14px;background:#30D158;box-shadow:0 0 5px rgba(48,209,88,.4)}
+.meter-bar.warn{background:#E8A800;box-shadow:0 0 5px rgba(232,168,0,.35)}
+.meter-bar.hot{background:#FF3B30;box-shadow:0 0 5px rgba(255,59,48,.35)}
+
+/* ===== 窄宽度降级（容器查询：按工具条自身可用宽度）=====
+   从宽到窄依次收起次要信息，核心操作（开始/停止、关闭）永不隐藏。
+   断点按控件实际宽度估：设备组 ~78px + 计时器 44px + 主操作 32px + 关闭 32px + 间距/内边距 ~50px。 */
+@container tb (max-width: 330px){
+  .size-label{display:none}
+}
+@container tb (max-width: 270px){
+  .divider.opt{display:none}
+  /* 电平条较后让位（纯展示），录制/暂停中绝不降级（它是唯一的音频反馈） */
+  body.mic-on .meter{display:none}
+  body.mic-on.recording .meter,body.mic-on.paused .meter{display:flex}
+}
+/* 设备开关组**任何宽度都不隐藏**：工具条最小宽度（Rust 侧 TB_MIN_W_CSS=240）
+   已保证装得下「设备组+计时器+主操作+关闭」，不再需要 215/150px 的极限降级。 */
 [hidden]{display:none !important}
 </style>
 </head>
 <body data-pos="top">
 <div class="toolbar" id="toolbar">
-  <button class="btn" id="micBtn" title="麦克风">🎙</button>
-  <div class="meter" id="micMeter"></div>
-  <button class="btn" id="camBtn" title="摄像头">📷</button>
+  <!-- 设备开关组：麦克风 → 摄像头 紧靠排列 -->
+  <div class="dev-group">
+    <button class="btn toggle" id="micBtn" title="麦克风">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="2.5" width="6" height="11" rx="3"/>
+        <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>
+      </svg>
+    </button>
+    <button class="btn toggle" id="camBtn" title="摄像头">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2.5" y="6.5" width="13" height="11" rx="3"/>
+        <path d="M15.5 11.2 21 8.2v7.6l-5.5-3"/>
+      </svg>
+    </button>
+  </div>
+  <span class="divider dev-sep"></span>
   <span class="timer" id="timer">00:00</span>
-  <span class="size-label" id="sizeLabel"></span>
-  <button class="btn rec" id="startBtn" title="开始录制">●</button>
-  <button class="btn" id="stopBtn" title="停止录制" hidden>■</button>
-  <button class="btn" id="pauseBtn" title="暂停" hidden>⏸</button>
-  <button class="btn" id="resumeBtn" title="继续" hidden>▶</button>
-  <button class="btn" id="closeBtn" title="关闭">✕</button>
+  <span class="size-label opt" id="sizeLabel"></span>
+  <span class="divider opt"></span>
+  <!-- 主操作组：开始/停止/暂停/继续（互斥显示，恒有一个可见） -->
+  <span class="main-group">
+    <button class="btn primary" id="startBtn" title="开始录制">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" fill="currentColor"/></svg>
+    </button>
+    <button class="btn stop" id="stopBtn" title="停止录制" hidden>
+      <svg viewBox="0 0 24 24"><rect x="6.8" y="6.8" width="10.4" height="10.4" rx="2.8" fill="currentColor"/></svg>
+    </button>
+    <button class="btn" id="pauseBtn" title="暂停" hidden>
+      <svg viewBox="0 0 24 24"><rect x="7.4" y="6.2" width="2.9" height="11.6" rx="1.45" fill="currentColor"/><rect x="13.7" y="6.2" width="2.9" height="11.6" rx="1.45" fill="currentColor"/></svg>
+    </button>
+    <button class="btn" id="resumeBtn" title="继续" hidden>
+      <svg viewBox="0 0 24 24"><path d="M8 5.5 19 12 8 18.5z" fill="currentColor"/></svg>
+    </button>
+  </span>
+  <!-- 电平条：开启麦克风才出现，位置在主操作右侧（用户指定排布） -->
+  <div class="meter" id="micMeter"></div>
+  <button class="btn" id="closeBtn" title="关闭">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+      <path d="M7 7l10 10M17 7 7 17"/>
+    </svg>
+  </button>
 </div>
 <div class="tip-strip"></div>
 <script>
@@ -118,11 +267,19 @@ function applyToolbarState(s, seconds) {
     stopTicking()
   }
   setButtons(s)
-  // inside 态（贴区域内部）切迷你布局；停止/暂停中且 inside 才收窄（对齐 TS minimal 条件）
-  const inside = document.body.dataset.pos === 'inside'
-  document.body.classList.toggle('minimal', inside && (s === 'recording' || s === 'paused'))
+  document.body.classList.toggle('recording', s === 'recording')
+  document.body.classList.toggle('paused', s === 'paused')
 }
 window.applyToolbarState = applyToolbarState
+
+/** 开关态（麦克风/摄像头是否已开）：点亮对应按钮（初值随 URL 带入） */
+window.applyIslandControls = function (c) {
+  if (!c) return
+  document.getElementById('micBtn').classList.toggle('on', !!c.mic)
+  document.getElementById('camBtn').classList.toggle('on', !!c.cam)
+  // 电平条跟随麦克风开关：开麦才显示（body.mic-on）
+  document.body.classList.toggle('mic-on', !!c.mic)
+}
 
 /** 音频电平：level 0..1，-1 = 未启用 */
 window.updateMeter = function (micLevel) {
@@ -147,6 +304,9 @@ const actions = {
 for (const [id, action] of Object.entries(actions)) {
   document.getElementById(id)?.addEventListener('click', () => emit('toolbar-action', action))
 }
+
+const query = new URLSearchParams(location.search)
+window.applyIslandControls({ mic: query.get('mic') === '1', cam: query.get('cam') === '1' })
 
 applyToolbarState('idle', 0)
 </script>

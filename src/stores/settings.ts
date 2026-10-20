@@ -9,13 +9,10 @@ export const useSettingsStore = defineStore('settings', () => {
   const cameraDeviceId = ref('')
   const microphoneDeviceId = ref('')
   const systemAudioSourceId = ref('')
-  const drawColor = ref('#ff0000')
-  const drawWidth = ref(3)
   const shortcuts = ref({
     startStop: 'Ctrl+Shift+R',
     pauseResume: 'Ctrl+Shift+P',
     toggleCamera: 'Ctrl+Shift+C',
-    toggleDrawing: 'Ctrl+Shift+D',
   })
 
   function loadSettings() {
@@ -30,8 +27,6 @@ export const useSettingsStore = defineStore('settings', () => {
         if (parsed.cameraDeviceId) cameraDeviceId.value = parsed.cameraDeviceId
         if (parsed.microphoneDeviceId) microphoneDeviceId.value = parsed.microphoneDeviceId
         if (parsed.systemAudioSourceId) systemAudioSourceId.value = parsed.systemAudioSourceId
-        if (parsed.drawColor) drawColor.value = parsed.drawColor
-        if (parsed.drawWidth) drawWidth.value = parsed.drawWidth
         if (parsed.shortcuts) shortcuts.value = { ...shortcuts.value, ...parsed.shortcuts }
       }
     } catch {
@@ -49,8 +44,6 @@ export const useSettingsStore = defineStore('settings', () => {
         cameraDeviceId: cameraDeviceId.value,
         microphoneDeviceId: microphoneDeviceId.value,
         systemAudioSourceId: systemAudioSourceId.value,
-        drawColor: drawColor.value,
-        drawWidth: drawWidth.value,
         shortcuts: shortcuts.value,
       }))
     } catch {
@@ -60,7 +53,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function initOutputDir() {
     if (!outputDir.value) {
-      outputDir.value = await window.electronAPI.getDefaultSaveDir()
+      outputDir.value = await window.muerzhiAPI.getDefaultSaveDir()
     }
   }
 
@@ -72,8 +65,6 @@ export const useSettingsStore = defineStore('settings', () => {
     cameraDeviceId,
     microphoneDeviceId,
     systemAudioSourceId,
-    drawColor,
-    drawWidth,
     shortcuts,
     loadSettings,
     saveSettings,
