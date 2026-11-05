@@ -208,6 +208,7 @@ pub fn get_status() -> Value {
         "displayState": sm.resolve_display_state(),
         "currentCard": s.head_payload(),
         "sessionCount": sm.sessions_snapshot().len(),
+        "sessions": sm.sessions_snapshot(),
         "claudeRunning": ClaudeRunningCache::global().get(),
     })
 }

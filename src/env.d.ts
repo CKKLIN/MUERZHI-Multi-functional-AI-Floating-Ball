@@ -255,18 +255,20 @@ export interface MuerzhiAPI {
   todoSetSettings: (patch: Partial<TodoSettings>) => Promise<TodoSettings>
 }
 
+export interface AgentSession {
+  sessionId: string
+  agentId: string
+  state: string
+  title?: string
+  toolName?: string
+  contextUsage?: { used: number; limit: number }
+  model?: string
+  updatedAt: number
+}
+
 export interface AgentStatePayload {
   state: string
-  sessions: {
-    sessionId: string
-    agentId: string
-    state: string
-    title?: string
-    toolName?: string
-    contextUsage?: { used: number; limit: number }
-    model?: string
-    updatedAt: number
-  }[]
+  sessions: AgentSession[]
 }
 
 export interface AgentPermissionPayload {
@@ -288,6 +290,7 @@ export interface AgentBridgeStatus {
   displayState: string
   currentCard: AgentCardPayload | null
   sessionCount: number
+  sessions?: AgentSession[]
   claudeRunning: boolean
 }
 

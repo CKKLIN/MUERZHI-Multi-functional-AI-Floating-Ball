@@ -25,6 +25,9 @@ async function loadAiStatus() {
       bridgeStatus.value = status
       claudeIntegrated.value = status.hookInstalled === true
       antigravityIntegrated.value = status.antigravityHookInstalled === true
+      if (Array.isArray(status.sessions)) {
+        sessions.value = status.sessions
+      }
     }
   } catch (e) {
     console.error('[AiSettingsPanel] loadAiStatus error:', e)
@@ -69,13 +72,15 @@ async function toggleAutoAllowSession(sessionId: string) {
   }
 }
 
-// 会话展示标签：优先标题（首条用户消息），无标题（如老会话/应用重启后未再发 prompt）退回 模型·工具·短id
+// 会话展示标签：带模型来源前缀，优先标题，无标题退回 模型·工具·短id
 function sessionLabel(s: any): string {
-  if (typeof s.title === 'string' && s.title) return s.title
-  const model = typeof s.model === 'string' && s.model ? s.model : (s.agentId === 'antigravity' ? 'Antigravity' : 'Claude')
+  const isAnti = s.agentId === 'antigravity' || (typeof s.model === 'string' && s.model.toLowerCase().includes('gemini'))
+  const prefix = isAnti ? '[Antigravity] ' : '[Claude] '
+  if (typeof s.title === 'string' && s.title) return `${prefix}${s.title}`
+  const model = typeof s.model === 'string' && s.model ? s.model : (isAnti ? 'Antigravity' : 'Claude')
   const tool = typeof s.toolName === 'string' && s.toolName ? ` · ${s.toolName}` : ''
   const short = typeof s.sessionId === 'string' ? s.sessionId.slice(0, 8) : ''
-  return `${model}${tool} · ${short}`
+  return `${prefix}${model}${tool} · ${short}`
 }
 
 // === 审批/提问卡过期（真源在主进程 agent-settings.json，经 agent-card-expiry IPC读写） ===
@@ -341,11 +346,14 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .settings-body {
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
   padding: 16px 20px;
 }
 

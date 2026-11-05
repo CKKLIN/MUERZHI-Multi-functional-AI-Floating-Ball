@@ -259,6 +259,8 @@ onMounted(loadSettings)
   display: flex;
   flex-direction: column;
   height: 100%;
+  flex: 1;
+  min-height: 0;
   /* 页面底与录屏工具条同款灰渐变，衬托白色卡片/按钮浮起 */
   background: linear-gradient(180deg, #f0f0f4 0%, #e4e4ea 100%);
   animation: fbFadeIn 0.18s ease;
@@ -267,6 +269,7 @@ onMounted(loadSettings)
 .settings-body {
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
   padding: 16px 20px 24px;
 }
 

@@ -54,7 +54,7 @@ onMounted(async () => {
         </button>
       </div>
     </div>
-    <div class="layout-content">
+    <div class="layout-body layout-content">
       <slot />
     </div>
   </div>
@@ -144,7 +144,8 @@ onMounted(async () => {
   color: white;
 }
 
-.layout-body {
+.layout-body,
+.layout-content {
   flex: 1;
   min-height: 0;
   display: flex;

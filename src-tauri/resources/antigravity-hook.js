@@ -145,6 +145,7 @@ async function main() {
   if (eventName === "SessionStart") {
     await postToMuerzhi("/state", {
       session_id: sessionId,
+      agent_id: "antigravity",
       state: "idle",
       event: "SessionStart",
       model,
@@ -158,6 +159,7 @@ async function main() {
   if (eventName === "PreInvocation") {
     await postToMuerzhi("/state", {
       session_id: sessionId,
+      agent_id: "antigravity",
       state: "thinking",
       event: "PreInvocation",
       model,
@@ -173,6 +175,7 @@ async function main() {
     if (toolName === "ask_question" && toolInput && toolInput.questions) {
       await postToMuerzhi("/question", {
         session_id: sessionId,
+        agent_id: "antigravity",
         tool_name: toolName,
         tool_input: toolInput,
         questions: toolInput.questions,
@@ -183,6 +186,7 @@ async function main() {
     if (!WRITE_TOOLS.has(toolName) && toolName !== "ask_question") {
       await postToMuerzhi("/state", {
         session_id: sessionId,
+        agent_id: "antigravity",
         state: "working",
         event: "PreToolUse",
         tool_name: toolName,
@@ -196,6 +200,7 @@ async function main() {
 
     // 需审批工具（run_command、write_file、edit_file 等）：向 /permission 发送长轮询挂起请求
     const res = await postToMuerzhi("/permission", {
+      agent_id: "antigravity",
       tool_name: toolName,
       tool_input: toolInput,
       session_id: sessionId,
@@ -233,6 +238,7 @@ async function main() {
     const isError = !!event.error;
     await postToMuerzhi("/state", {
       session_id: sessionId,
+      agent_id: "antigravity",
       state: isError ? "error" : "working",
       event: isError ? "PostToolUseFailure" : "PostToolUse",
       tool_name: toolName,
@@ -248,6 +254,7 @@ async function main() {
   if (eventName === "PostInvocation" || eventName === "Stop") {
     await postToMuerzhi("/state", {
       session_id: sessionId,
+      agent_id: "antigravity",
       state: "idle",
       event: "Stop",
       model,

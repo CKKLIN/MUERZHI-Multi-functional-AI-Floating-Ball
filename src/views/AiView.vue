@@ -18,6 +18,8 @@ import AiSettingsPanel from '../components/AiSettingsPanel.vue'
   flex: 1;
   height: 100%;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   background: var(--bg-surface, #eaeaec);
 }
