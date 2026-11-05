@@ -212,6 +212,8 @@ export interface MuerzhiAPI {
   agentGetStatus: () => Promise<AgentBridgeStatus | null>
   agentInstallHooks: () => Promise<AgentBridgeStatus | null>
   agentUninstallHooks: () => Promise<AgentBridgeStatus | null>
+  agentInstallAntigravityHooks: () => Promise<AgentBridgeStatus | null>
+  agentUninstallAntigravityHooks: () => Promise<AgentBridgeStatus | null>
   agentResolvePermission: (behavior: string) => Promise<void>
   agentDismissQuestion: () => Promise<void>
   agentSubmitQuestion: (sessionId: string, answers: Record<string, unknown>) => Promise<void>
@@ -282,6 +284,7 @@ export interface AgentBridgeStatus {
   serverRunning: boolean
   port: number | null
   hookInstalled: boolean | null
+  antigravityHookInstalled?: boolean | null
   displayState: string
   currentCard: AgentCardPayload | null
   sessionCount: number

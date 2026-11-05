@@ -193,6 +193,8 @@ pub fn run() {
             agent_get_status,
             agent_install_hooks,
             agent_uninstall_hooks,
+            agent_install_antigravity_hooks,
+            agent_uninstall_antigravity_hooks,
             agent_resolve_permission,
             agent_dismiss_question,
             agent_submit_question,
@@ -679,6 +681,28 @@ fn agent_uninstall_hooks(app: tauri::AppHandle) -> serde_json::Value {
         Ok(()) => modules::agent::bridge::get_status(),
         Err(e) => {
             log::error!("agent_uninstall_hooks failed: {e}");
+            serde_json::Value::Null
+        }
+    }
+}
+
+#[tauri::command]
+fn agent_install_antigravity_hooks(app: tauri::AppHandle) -> serde_json::Value {
+    match modules::agent::hooks::install_antigravity(&app) {
+        Ok(()) => modules::agent::bridge::get_status(),
+        Err(e) => {
+            log::error!("agent_install_antigravity_hooks failed: {e}");
+            serde_json::Value::Null
+        }
+    }
+}
+
+#[tauri::command]
+fn agent_uninstall_antigravity_hooks() -> serde_json::Value {
+    match modules::agent::hooks::uninstall_antigravity() {
+        Ok(()) => modules::agent::bridge::get_status(),
+        Err(e) => {
+            log::error!("agent_uninstall_antigravity_hooks failed: {e}");
             serde_json::Value::Null
         }
     }

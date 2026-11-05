@@ -277,10 +277,14 @@ window.applyState = applyState
 
 function formatToolInput(input) {
   try {
-    const priorityKeys = ['file_path', 'path', 'command', 'url', 'pattern', 'query']
+    const priorityKeys = [
+      'command', 'CommandLine', 'file_path', 'path', 'Path',
+      'Target', 'Replacement', 'query', 'url', 'pattern',
+      'Prompt', 'Role', 'TypeName'
+    ]
     const lines = []
     for (const k of priorityKeys) {
-      if (input[k] !== undefined) lines.push(k + ': ' + String(input[k]))
+      if (input[k] !== undefined) lines.push(k + ': ' + (typeof input[k] === 'object' ? JSON.stringify(input[k]) : String(input[k])))
     }
     for (const k of Object.keys(input)) {
       if (priorityKeys.includes(k)) continue
@@ -294,7 +298,16 @@ function formatToolInput(input) {
 function applyPermission(data) {
   document.getElementById('questionCard').classList.remove('show')
   document.getElementById('permCard').classList.add('show')
-  document.getElementById('permTool').textContent = data.toolName || S.unknown
+  const toolDisplayMap = {
+    'run_command': '终端命令 (run_command)',
+    'write_file': '写入文件 (write_file)',
+    'edit_file': '编辑文件 (edit_file)',
+    'invoke_subagent': '子智能体 (invoke_subagent)',
+    'Bash': '终端命令 (Bash)',
+    'FileEdit': '编辑文件 (FileEdit)',
+    'FileWrite': '写入文件 (FileWrite)',
+  }
+  document.getElementById('permTool').textContent = toolDisplayMap[data.toolName] || data.toolName || S.unknown
   const inputRow = document.getElementById('permInputRow')
   const inputEl = document.getElementById('permInput')
   const ti = data.toolInput

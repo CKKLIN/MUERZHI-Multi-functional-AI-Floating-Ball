@@ -93,11 +93,16 @@ impl ClaudeRunningCache {
 /// 在这里为 node.exe 做不可靠的字符串匹配 —— 那会把 VSCode 等任意 node 进程
 /// 误判成 Claude 在跑。
 fn probe_claude_process() -> bool {
+    probe_process_name("claude.exe")
+        || probe_process_name("Antigravity.exe")
+        || probe_process_name("agy.exe")
+}
+
+fn probe_process_name(name: &str) -> bool {
     use std::process::Command;
     let mut cmd = Command::new("tasklist");
-    cmd.args(["/NH", "/FI", "IMAGENAME eq claude.exe"]);
-    // GUI 主程序起控制台子进程会闪一个 cmd 窗口（启动一次 + 30s 轮询一次），
-    // 必须 CREATE_NO_WINDOW 隐藏 —— 与 cooling/ps.rs、ffmpeg.rs 同款
+    let filter = format!("IMAGENAME eq {name}");
+    cmd.args(["/NH", "/FI", &filter]);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -106,7 +111,7 @@ fn probe_claude_process() -> bool {
     match cmd.output() {
         Ok(o) => String::from_utf8_lossy(&o.stdout)
             .to_lowercase()
-            .contains("claude.exe"),
+            .contains(&name.to_lowercase()),
         Err(_) => false,
     }
 }
@@ -142,6 +147,9 @@ pub async fn start(app: AppHandle) {
             ),
             Err(e) => log::error!("Claude hooks install failed: {e}"),
         }
+    }
+    if crate::modules::agent::hooks::is_antigravity_installed() {
+        let _ = crate::modules::agent::hooks::install_antigravity(&app);
     }
     crate::modules::agent::hooks::start_watcher(app.clone());
 
@@ -193,6 +201,7 @@ pub fn get_status() -> Value {
         "serverRunning": s.running.load(std::sync::atomic::Ordering::SeqCst),
         "port": s.get_port(),
         "hookInstalled": crate::modules::agent::hooks::is_installed(),
+        "antigravityHookInstalled": crate::modules::agent::hooks::is_antigravity_installed(),
         "displayState": sm.resolve_display_state(),
         "currentCard": s.head_payload(),
         "sessionCount": sm.sessions_snapshot().len(),

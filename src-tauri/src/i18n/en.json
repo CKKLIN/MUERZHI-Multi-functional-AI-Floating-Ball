@@ -79,6 +79,8 @@
   "ai.state.done": "Done",
   "ai.groupIntegration": "Integration",
   "ai.hooksDesc": "Hook script status",
+  "ai.claudeHooksDesc": "Claude Code lifecycle hooks (~/.claude/settings.json)",
+  "ai.antigravityHooksDesc": "Google Antigravity agent hooks (~/.gemini/config/hooks.json)",
   "ai.groupPermission": "Permissions",
   "ai.autoAllowTitle": "Auto-allow all permissions",
   "ai.autoAllowSessionTitle": "Selective auto-approve (by session)",

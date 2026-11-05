@@ -343,6 +343,148 @@ pub fn is_installed() -> bool {
     is_installed_in(&read_settings())
 }
 
+// ===== Antigravity (Google DeepMind) Hooks 管理 =====
+
+pub fn antigravity_config_dir() -> PathBuf {
+    home_dir().join(".gemini").join("config")
+}
+
+pub fn antigravity_hooks_path() -> PathBuf {
+    antigravity_config_dir().join("hooks.json")
+}
+
+pub fn antigravity_hook_script_path(app: &AppHandle) -> PathBuf {
+    if let Ok(res) = app.path().resource_dir() {
+        let p = res.join("antigravity-hook.js");
+        if p.exists() {
+            return p;
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(root) = exe.ancestors().nth(4) {
+            let p = root.join("src-tauri").join("resources").join("antigravity-hook.js");
+            if p.exists() {
+                return p;
+            }
+        }
+    }
+    PathBuf::from("antigravity-hook.js")
+}
+
+pub fn is_antigravity_installed() -> bool {
+    let path = antigravity_hooks_path();
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return false;
+    };
+    let Ok(v): Result<Value, _> = serde_json::from_str(&text) else {
+        return false;
+    };
+    v.get("muerzhi-agent").is_some()
+}
+
+pub fn install_antigravity(app: &AppHandle) -> Result<(), String> {
+    let path = antigravity_hooks_path();
+    let mut config: Value = match std::fs::read_to_string(&path) {
+        Ok(text) => serde_json::from_str(&text).unwrap_or_else(|_| json!({})),
+        Err(_) => json!({}),
+    };
+    let node = detect_node();
+    let script = antigravity_hook_script_path(app);
+    let script_str = win_api_path(&script);
+
+    let hook_entry = json!({
+        "enabled": true,
+        "SessionStart": [
+            {
+                "type": "command",
+                "command": format!("\"{node}\" \"{script_str}\" SessionStart"),
+                "timeout": 10
+            }
+        ],
+        "PreInvocation": [
+            {
+                "type": "command",
+                "command": format!("\"{node}\" \"{script_str}\" PreInvocation"),
+                "timeout": 10
+            }
+        ],
+        "PreToolUse": [
+            {
+                "matcher": "*",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": format!("\"{node}\" \"{script_str}\" PreToolUse"),
+                        "timeout": 1860
+                    }
+                ]
+            }
+        ],
+        "PostToolUse": [
+            {
+                "matcher": "*",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": format!("\"{node}\" \"{script_str}\" PostToolUse"),
+                        "timeout": 10
+                    }
+                ]
+            }
+        ],
+        "PostInvocation": [
+            {
+                "type": "command",
+                "command": format!("\"{node}\" \"{script_str}\" PostInvocation"),
+                "timeout": 10
+            }
+        ],
+        "Stop": [
+            {
+                "type": "command",
+                "command": format!("\"{node}\" \"{script_str}\" Stop"),
+                "timeout": 10
+            }
+        ]
+    });
+
+    if let Some(obj) = config.as_object_mut() {
+        obj.insert("muerzhi-agent".to_string(), hook_entry);
+    } else {
+        let mut map = serde_json::Map::new();
+        map.insert("muerzhi-agent".to_string(), hook_entry);
+        config = Value::Object(map);
+    }
+
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let text = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("serialize hooks.json failed: {e}"))?;
+    std::fs::write(&path, text)
+        .map_err(|e| format!("write hooks.json failed: {e}"))?;
+    log::info!("Antigravity hooks installed to {}", path.display());
+    Ok(())
+}
+
+pub fn uninstall_antigravity() -> Result<(), String> {
+    let path = antigravity_hooks_path();
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Ok(());
+    };
+    let mut config: Value = serde_json::from_str(&text)
+        .map_err(|e| format!("parse hooks.json failed: {e}"))?;
+    if let Some(obj) = config.as_object_mut() {
+        obj.remove("muerzhi-agent");
+    }
+    let text = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("serialize hooks.json failed: {e}"))?;
+    std::fs::write(&path, text)
+        .map_err(|e| format!("write hooks.json failed: {e}"))?;
+    log::info!("Antigravity hooks uninstalled from {}", path.display());
+    Ok(())
+}
+
 /// is_installed 的已加载版本（check_health 复用同一份 settings，不再重复读盘）
 fn is_installed_in(settings: &Value) -> bool {
     let Some(groups) = settings
@@ -492,5 +634,11 @@ mod tests {
         assert!(has_correct_hooks(&build(r"D:\app\clawd-hook.js"), Some(60000)));
         // 端口漂移同样要判为待修复（原有行为，防回归）
         assert!(!has_correct_hooks(&build(r"D:\app\clawd-hook.js"), Some(60001)));
+    }
+    #[test]
+    fn antigravity_hooks_path_in_gemini_config() {
+        let p = antigravity_hooks_path();
+        assert!(p.to_string_lossy().contains(".gemini"));
+        assert!(p.to_string_lossy().ends_with("hooks.json"));
     }
 }

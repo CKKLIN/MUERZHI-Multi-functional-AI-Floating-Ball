@@ -168,6 +168,8 @@
   "ai.state.done": "完成",
   "ai.groupIntegration": "集成",
   "ai.hooksDesc": "钩子脚本状态",
+  "ai.claudeHooksDesc": "Claude Code 终端生命周期钩子（~/.claude/settings.json）",
+  "ai.antigravityHooksDesc": "Google Antigravity 智能体钩子（~/.gemini/config/hooks.json）",
   "ai.groupPermission": "权限",
   "ai.autoAllowTitle": "自动允许所有权限",
   "ai.autoAllowSessionTitle": "选择性自动审批（按会话）",

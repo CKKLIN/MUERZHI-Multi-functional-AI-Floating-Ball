@@ -6,6 +6,7 @@ import type { AgentBridgeStatus } from '../env.d.ts'
 import { t } from '../stores/i18n'
 
 const claudeIntegrated = ref(false)
+const antigravityIntegrated = ref(false)
 const bridgeStatus = ref<AgentBridgeStatus | null>(null)
 const loading = ref(true)
 const autoAllow = ref(false)
@@ -23,6 +24,7 @@ async function loadAiStatus() {
     if (status) {
       bridgeStatus.value = status
       claudeIntegrated.value = status.hookInstalled === true
+      antigravityIntegrated.value = status.antigravityHookInstalled === true
     }
   } catch (e) {
     console.error('[AiSettingsPanel] loadAiStatus error:', e)
@@ -70,7 +72,7 @@ async function toggleAutoAllowSession(sessionId: string) {
 // 会话展示标签：优先标题（首条用户消息），无标题（如老会话/应用重启后未再发 prompt）退回 模型·工具·短id
 function sessionLabel(s: any): string {
   if (typeof s.title === 'string' && s.title) return s.title
-  const model = typeof s.model === 'string' && s.model ? s.model : 'Claude'
+  const model = typeof s.model === 'string' && s.model ? s.model : (s.agentId === 'antigravity' ? 'Antigravity' : 'Claude')
   const tool = typeof s.toolName === 'string' && s.toolName ? ` · ${s.toolName}` : ''
   const short = typeof s.sessionId === 'string' ? s.sessionId.slice(0, 8) : ''
   return `${model}${tool} · ${short}`
@@ -223,10 +225,19 @@ onUnmounted(() => {
         <div class="settings-section">
           <div class="setting-row">
             <div class="row-text">
-              <div class="row-label">Claude Code Hooks</div>
-              <div class="row-desc">{{ t('ai.hooksDesc') }}</div>
+              <div class="row-label">Claude Code</div>
+              <div class="row-desc">{{ t('ai.claudeHooksDesc') }}</div>
             </div>
             <button class="toggle-btn" :class="{ on: claudeIntegrated }" @click="toggleClaudeIntegration">
+              <span class="toggle-knob"></span>
+            </button>
+          </div>
+          <div class="setting-row">
+            <div class="row-text">
+              <div class="row-label">Google Antigravity</div>
+              <div class="row-desc">{{ t('ai.antigravityHooksDesc') }}</div>
+            </div>
+            <button class="toggle-btn" :class="{ on: antigravityIntegrated }" @click="toggleAntigravityIntegration">
               <span class="toggle-knob"></span>
             </button>
           </div>

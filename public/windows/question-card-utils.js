@@ -34,7 +34,7 @@ export function questionKey(item, idx = 0) {
 }
 
 export function multiSelectOf(item) {
-  return !!(item && item.multiSelect)
+  return !!(item && (item.multiSelect || item.is_multi_select))
 }
 
 /** 在末尾追加「其他」自由输入（仅当有选项且尚无同名项） */
