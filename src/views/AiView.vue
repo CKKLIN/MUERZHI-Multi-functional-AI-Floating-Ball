@@ -15,7 +15,9 @@ import AiSettingsPanel from '../components/AiSettingsPanel.vue'
 
 <style scoped>
 .ai-view {
-  height: calc(100vh - var(--titlebar-height));
+  flex: 1;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
   background: var(--bg-surface, #eaeaec);
 }

@@ -287,7 +287,7 @@ fn send_snap_visual(app: &AppHandle, side: Option<SnapSide>) {
     let _ = app.emit("ball-snap", payload);
 }
 
-fn ball_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+pub fn ball_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
     app.get_webview_window("floating-ball")
 }
 
@@ -1009,6 +1009,17 @@ fn ball_data_script(app: &AppHandle) -> String {
 }
 
 /// 散热视觉开关（对齐 setFloatingBallCoolingVisual）：花瓣旋转 + 圆圈冷光静止
+
+/// 动态更新悬浮球菜单数据（语言切换或设置勾选菜单项时即时生效）
+pub fn update_ball_menu(app: &AppHandle) {
+    if let Some(win) = ball_window(app) {
+        let script = ball_data_script(app);
+        let _ = win.eval(&format!(
+            "{script} if (window.updateBallMenu) window.updateBallMenu(); void 0;"
+        ));
+    }
+}
+
 pub fn set_cooling_visual(app: &AppHandle, on: bool) {
     if let Some(win) = ball_window(app) {
         let sec = crate::modules::cooling::Cooling::global().duration_sec();

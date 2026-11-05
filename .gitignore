@@ -39,11 +39,17 @@ src/log
 # 本地 Agent 会话状态（计划草稿等），不入库
 .zcode/
 
+# 运行时状态与用户持久化数据（dev 下写在仓库根）：严禁入库，避免个人数据泄露与产生脏 diff
+todo-notes.json
+todo-settings.json
+floating-ball-settings.json
 floating-ball-pos.json
-
-# 运行时状态文件（dev 下写在仓库根）：不入库，避免本地偏好污染版本库/产生脏 diff
 ai-island-settings.json
+ai-island-pos.json
+cooling-capability.json
 agent-settings.json
+recordings.json
+
 # Rust/Tauri 构建产物与本地 schema（capabilities 变更时自动再生成）
-src-tauri/target/
+src-tauri/target*/
 src-tauri/gen/

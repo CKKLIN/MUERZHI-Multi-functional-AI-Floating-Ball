@@ -52,6 +52,49 @@ pub fn force_redraw(win: &tauri::WebviewWindow) {
 #[cfg(not(windows))]
 pub fn force_redraw(_win: &tauri::WebviewWindow) {}
 
+/// 为无边框窗口设置系统级硬件圆角（Windows 11 DWM 原生硬件圆角支持）
+#[cfg(windows)]
+pub fn apply_window_corners(win: &tauri::WebviewWindow) {
+    let Ok(hwnd) = win.hwnd() else {
+        return;
+    };
+    let hwnd = hwnd.0 as *mut std::ffi::c_void;
+    if hwnd.is_null() {
+        return;
+    }
+
+    // Windows 11 DWMWA_WINDOW_CORNER_PREFERENCE (33):
+    // 0 = DWMWCP_DEFAULT, 1 = DWMWCP_DONOTROUND, 2 = DWMWCP_ROUND (8~12px), 3 = DWMWCP_ROUNDSMALL (4px)
+    type DwmSetWindowAttributeFn = unsafe extern "system" fn(
+        hwnd: *mut std::ffi::c_void,
+        dw_attribute: u32,
+        pv_attribute: *const std::ffi::c_void,
+        cb_attribute: u32,
+    ) -> i32;
+
+    unsafe {
+        use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryA};
+        let dwmapi = LoadLibraryA(b"dwmapi.dll\0".as_ptr());
+        if !dwmapi.is_null() {
+            let func = GetProcAddress(dwmapi, b"DwmSetWindowAttribute\0".as_ptr());
+            if let Some(func) = func {
+                let func: DwmSetWindowAttributeFn = std::mem::transmute(func);
+                let preference: u32 = 2; // DWMWCP_ROUND
+                let _ = func(
+                    hwnd,
+                    33,
+                    &preference as *const _ as *const _,
+                    std::mem::size_of::<u32>() as u32,
+                );
+            }
+        }
+    }
+}
+
+#[cfg(not(windows))]
+pub fn apply_window_corners(_win: &tauri::WebviewWindow) {}
+
+
 /// 显示 + 聚焦（所有「把隐藏窗口拉出来给用户看」的路径统一走这里）
 ///
 /// 两点都要有：① SW_SHOW 对**最小化**窗口无效（得 SW_RESTORE），少了 unminimize
@@ -64,6 +107,7 @@ pub fn show_and_refresh(win: &tauri::WebviewWindow) {
     let _ = win.show();
     // 重绘必须排在 show 之后：show 前重绘会被随后的 SW_SHOW 覆盖掉
     force_redraw(win);
+    apply_window_corners(win);
     let _ = win.set_focus();
 }
 
@@ -112,7 +156,8 @@ pub fn open_or_focus(app: &tauri::AppHandle, label: &str, hash_route: &str) {
         .minimizable(resizable)
         .skip_taskbar(skip_taskbar)
         .visible(false)
-        .background_color(tauri::window::Color(0xea, 0xea, 0xec, 255))
+        .transparent(true)
+        .shadow(false)
         // 等页面加载完再显示：首次建窗要初始化 WebView2 浏览器进程（几百 ms~数秒），
         // 早先 build() 返回就 show()，用户先看到一个背景色空窗、再等 Vue 挂载 ——
         // 表现为「点开很久才反应、内容还迟迟不出」。Finished 后 show 内容已就绪。

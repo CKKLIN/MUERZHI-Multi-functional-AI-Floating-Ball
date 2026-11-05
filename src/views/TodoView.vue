@@ -14,7 +14,9 @@ import TodoApp from '../components/TodoApp.vue'
 
 <style scoped>
 .todo-view {
-  height: calc(100vh - var(--titlebar-height));
+  flex: 1;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
   background: var(--bg-surface, #eaeaec);
 }

@@ -152,11 +152,19 @@ pub async fn start(app: AppHandle) {
     crate::modules::agent::state_machine::StateMachine::global()
         .set_claude_running(Some(running));
 
+    let app_for_poll = app.clone();
     tauri::async_runtime::spawn(async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
             if POLLING_STOP.load(std::sync::atomic::Ordering::SeqCst) {
                 break;
+            }
+            // 服务存活哨兵：hooks 全部指向本服务，服务一掉整片失联（悬浮岛永远空闲）。
+            // 旧版只查 hooks 写法、不查服务本身，静默失效完全隐身（见 server::ensure_running）
+            let s = crate::modules::agent::server::AgentServer::global();
+            if !(s.running.load(std::sync::atomic::Ordering::SeqCst) && s.get_port().is_some()) {
+                log::warn!("[AgentBridge] 巡检发现 Agent server 未监听，触发自愈");
+                crate::modules::agent::server::ensure_running(app_for_poll.clone());
             }
             // tasklist 子进程同步等待（几十~几百 ms），丢阻塞线程池别占 async worker
             let running =

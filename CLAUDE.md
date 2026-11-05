@@ -92,6 +92,12 @@ npm run build:web    # 仅 vite build（tauri build 的 beforeCommand）
 - `hooks.rs`：向 `~/.claude/settings.json` 注入 12 事件 hooks（PermissionRequest 走 http 直连本地服务，其余走 powershell 调 `src-tauri/resources/clawd-hook.js`），5 分钟健康看护
 - `session_title.rs`：读 `~/.claude/sessions/*.json` 会话标题（5s 缓存，真实标题优先）
 
+**AI 助手整片失效的两个静默坑（2026-11 实测修复）**——症状都是「日志一切正常、悬浮岛永远空闲」，排查入口是 `~/.erzhi-recording/hook.log` 是否存在：
+
+1. **hook 命令里的脚本路径禁止带 `\\?\` 扩展长度前缀**。dev 态 `app.path().resource_dir()` 返回的就是 `\\?\D:\...`，原样拼进 `settings.json` 后 node 根本加载不了入口文件（`node "\\?\D:\...\clawd-hook.js"` → `EISDIR: lstat 'D:'`；经 shell 转义则是 `Cannot find module 'D:\?\D:\...'`）。于是 12 个事件全部静默失败、`hook.log` 一次都没生成。写盘前必须过 `hooks::win_api_path()` 剥前缀（UNC 形态要还原成 `\\server\share`）。另外 `has_correct_hooks` 要把「命令含 `\\?\`」判为未装好，否则 install 早退、坏配置永远修不掉。
+2. **`try_listen` 克隆 shutdown receiver 后必须先 `borrow_and_update()`**。`start()` 入口为支持「stop 后重启」发过一次 `shutdown_tx.send(false)`，它把全局版本推进了 1；`Receiver::clone` 拿到的是已消费版本的副本，首次 `changed()` 立刻返回 Ok → `with_graceful_shutdown` 立即 resolve → axum 绑上端口又马上关掉。日志仍照写 `Agent server listening on 127.0.0.1:60000`、`running`/`port` 标志全对，但端口没人监听，所有 hook 上报 ECONNREFUSED。判据：`curl 127.0.0.1:60000/health` 返回非 200 而日志写着已监听。
+   兜底：`server::ensure_running()` 由 `bridge` 的 30s 巡检触发，发现标志正常但服务不在时重绑端口并按**实际端口**重装 hooks（指数退避 2s→60s）。排查类似「服务静默死掉」优先看这一条。
+
 ## 迁移遗留
 
 （画笔标注已整体移除：P4 曾以 Rust 透明置顶窗落地，2026-09 按用户要求删除，详见上方「画笔标注（2026-09 已移除）」段。）

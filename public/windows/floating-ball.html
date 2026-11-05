@@ -217,7 +217,7 @@ function makeGradient(id, c1, c2){
 
 function ensureMenu(){
   if(menuCreated) return
-  if(!ITEMS.length && Array.isArray(window.__BALL_DATA__) && window.__BALL_DATA__.length){
+  if(Array.isArray(window.__BALL_DATA__) && window.__BALL_DATA__.length){
     ITEMS = window.__BALL_DATA__ // 注入晚于脚本执行：从全局补读，否则点开花瓣永远是空的
   }
   menuCreated = true
@@ -425,6 +425,22 @@ window.addEventListener('blur',function(){
 })
 
 // 页面就绪上报：主进程补推一次徽标计数（对齐 floating-ball-badge-ready）
+window.updateBallMenu = function() {
+  if (Array.isArray(window.__BALL_DATA__)) {
+    ITEMS = window.__BALL_DATA__
+    var svg = document.getElementById('ringSvg')
+    while(svg && svg.firstChild){ svg.removeChild(svg.firstChild) }
+    menuCreated = false
+    if (isExpanded) {
+      restartBloom()
+    }
+  }
+}
+
+listen('app-locale-changed', function() {
+  if (window.updateBallMenu) window.updateBallMenu()
+})
+
 emit('floating-ball-badge-ready')
 </script>
 </body>

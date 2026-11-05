@@ -1,14 +1,42 @@
 <script setup lang="ts">
+import { ref, onMounted, onUnmounted } from 'vue'
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { t } from '../stores/i18n'
+
+const isMaximized = ref(false)
+let appWindow: ReturnType<typeof getCurrentWebviewWindow> | null = null
+
 function minimize() { window.muerzhiAPI.minimizeWindow() }
-function maximize() { window.muerzhiAPI.maximizeWindow() }
+async function maximize() {
+  window.muerzhiAPI.maximizeWindow()
+  setTimeout(updateMaximizedState, 120)
+}
 function close() { window.muerzhiAPI.closeWindow() }
-// 标题栏拖拽：Electron 用 -webkit-app-region: drag；WebView2 无效，
-// Tauri 下用 data-tauri-drag-region 属性（wry 拦截 mousedown 实现系统拖拽）
+
+async function updateMaximizedState() {
+  try {
+    if (appWindow) {
+      isMaximized.value = await appWindow.isMaximized()
+    }
+  } catch {}
+}
+
+onMounted(async () => {
+  try {
+    appWindow = getCurrentWebviewWindow()
+    await updateMaximizedState()
+    const unlisten = await appWindow.onResized(async () => {
+      await updateMaximizedState()
+    })
+    onUnmounted(() => {
+      unlisten()
+    })
+  } catch {}
+})
 </script>
 
 <template>
-  <div class="layout">
+  <div class="layout" :class="{ 'is-maximized': isMaximized }">
     <div class="titlebar" style="-webkit-app-region: drag" data-tauri-drag-region>
       <div class="titlebar-brand" style="-webkit-app-region: drag" data-tauri-drag-region>
         <img class="titlebar-logo" src="/logo.png" alt="Logo" />
@@ -36,8 +64,21 @@ function close() { window.muerzhiAPI.closeWindow() }
 .layout {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
+  width: 100%;
   overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  box-sizing: border-box;
+  background: var(--bg-primary);
+  
+  transition: border-radius 0.15s ease;
+}
+
+.layout.is-maximized {
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
 }
 
 .titlebar {
@@ -48,8 +89,11 @@ function close() { window.muerzhiAPI.closeWindow() }
   justify-content: space-between;
   padding: 0 0 0 12px;
   border-bottom: 1px solid var(--border);
+  
   flex-shrink: 0;
 }
+
+
 
 .titlebar-brand {
   display: flex;
@@ -66,7 +110,6 @@ function close() { window.muerzhiAPI.closeWindow() }
 
 .titlebar-title {
   font-size: 13px;
-  /* font-weight: 700; */
   color: var(--text-primary);
   letter-spacing: 2px;
 }
@@ -92,13 +135,20 @@ function close() { window.muerzhiAPI.closeWindow() }
   background: var(--bg-hover);
 }
 
+
+
+
+
 .titlebar-btn.close:hover {
   background: var(--accent);
   color: white;
 }
 
-.layout-content {
+.layout-body {
   flex: 1;
-  overflow: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 </style>

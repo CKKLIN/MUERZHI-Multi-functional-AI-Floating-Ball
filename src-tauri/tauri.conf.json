@@ -22,7 +22,8 @@
         "minHeight": 340,
         "visible": false,
         "decorations": false,
-        "backgroundColor": "#eaeaec"
+        "transparent": true,
+        "shadow": false
       }
     ],
     "security": {

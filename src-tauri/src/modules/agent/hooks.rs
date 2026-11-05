@@ -77,6 +77,24 @@ pub fn hook_script_path(app: &AppHandle) -> PathBuf {
     PathBuf::from("clawd-hook.js")
 }
 
+/// 去掉 Windows 扩展长度前缀（`\\?\D:\...` / `\\?\UNC\server\share`）。
+///
+/// 为什么必须去：`resource_dir()` 在 dev 态返回的路径带 `\\?\` 前缀，直接写进
+/// settings.json 的 hook 命令后**脚本根本执行不了** —— node 自己也不认 `\\?\`
+/// 开头的入口文件：`node "\\?\D:\...\clawd-hook.js"` 报 EISDIR / lstat 'D:'，
+/// 命令行经 shell 转义后则报 Cannot find module。实测表现为「hooks 安装成功、
+/// hook.log 从没生成过、日志里 0 条 /state 上报、悬浮岛永远是空闲」。
+fn win_api_path(p: &std::path::Path) -> String {
+    let s = p.to_string_lossy().to_string();
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{rest}");
+    }
+    if let Some(rest) = s.strip_prefix(r"\\?\") {
+        return rest.to_string();
+    }
+    s
+}
+
 /// 探测 node 可执行文件（where node）
 fn detect_node() -> String {
     use std::process::Command;
@@ -216,6 +234,11 @@ fn has_correct_hooks(settings: &Value, port: Option<u16>) -> bool {
                         && cmd.starts_with('&')
                         && cmd.contains("clawd-hook.js")
                         && shell == "powershell"
+                        // 旧版把 resource_dir 的 `\\?\` 扩展长度前缀原样写进了命令
+                        // （node 无法加载该路径 → hook 全静默失败）。带前缀的命令必须
+                        // 判为「未正确安装」，否则 has_correct_hooks 通过、install 直接
+                        // 早退，坏配置永远修不掉（老用户升级后依旧不工作）
+                        && !cmd.contains(r"\\?\")
                 }
             })
         });
@@ -243,7 +266,9 @@ pub fn install(app: &AppHandle) -> Result<(), String> {
 
     let node = detect_node();
     let script = hook_script_path(app);
-    let script_str = script.to_string_lossy().to_string();
+    // 必须去 `\\?\` 前缀：带前缀的路径写进 hook 命令后 node 无法加载脚本，
+    // 全部 12 个事件静默失败（见 win_api_path 注释）
+    let script_str = win_api_path(&script);
 
     // 逐事件键**追加**自家 group，不覆盖整个 hooks 表、也不覆盖同事件的用户 hook：
     // 早先 obj.insert("hooks", hooks_map) 会把用户在 SubagentStop/PreCompact 等未受管
@@ -414,5 +439,58 @@ fn perform_health_check(app: &AppHandle) {
         }
     } else {
         hm.repair_failures.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 扩展长度前缀必须剥掉：node 不认 `\\?\` 开头的入口文件，原样写进 hook
+    /// 命令会让 12 个事件全部静默失败（AI 助手完全不工作）。
+    #[test]
+    fn win_api_path_strips_extended_prefix() {
+        let p = std::path::Path::new(r"\\?\D:\app\src-tauri\target\debug\clawd-hook.js");
+        assert_eq!(win_api_path(p), r"D:\app\src-tauri\target\debug\clawd-hook.js");
+        // UNC 形态还原成 \\server\share\...
+        let u = std::path::Path::new(r"\\?\UNC\server\share\clawd-hook.js");
+        assert_eq!(win_api_path(u), r"\\server\share\clawd-hook.js");
+        // 普通路径原样返回
+        let n = std::path::Path::new(r"C:\app\resources\clawd-hook.js");
+        assert_eq!(win_api_path(n), r"C:\app\resources\clawd-hook.js");
+    }
+
+    /// 带 `\\?\` 的旧配置必须判为「未正确安装」——否则 has_correct_hooks 通过、
+    /// install 早退，坏路径永远修不掉。
+    #[test]
+    fn has_correct_hooks_rejects_extended_prefix_command() {
+        let build = |script: &str| {
+            let mut hooks = serde_json::Map::new();
+            for event in HOOK_EVENTS {
+                let hook = if event == "PermissionRequest" {
+                    json!({
+                        "type": "http",
+                        "url": "http://127.0.0.1:60000/permission",
+                        "timeout": HOOK_HTTP_TIMEOUT_S,
+                    })
+                } else {
+                    json!({
+                        "type": "command",
+                        "command": format!("& \"node.exe\" \"{script}\" {event}"),
+                        "shell": "powershell",
+                    })
+                };
+                hooks.insert(event.to_string(), json!([{ "matcher": "", "hooks": [hook] }]));
+            }
+            json!({ "hooks": hooks })
+        };
+
+        assert!(
+            !has_correct_hooks(&build(r"\\?\D:\app\clawd-hook.js"), Some(60000)),
+            "旧版写入的扩展长度前缀必须被识别为待修复"
+        );
+        assert!(has_correct_hooks(&build(r"D:\app\clawd-hook.js"), Some(60000)));
+        // 端口漂移同样要判为待修复（原有行为，防回归）
+        assert!(!has_correct_hooks(&build(r"D:\app\clawd-hook.js"), Some(60001)));
     }
 }

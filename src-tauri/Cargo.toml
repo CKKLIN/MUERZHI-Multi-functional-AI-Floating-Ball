@@ -43,7 +43,7 @@ base64 = "0.22"
 
 # 截图文件名用本地时间（std 只给 UTC）：取时区偏移，避免文件名差几个小时
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_System_Time", "Win32_Foundation", "Win32_Graphics_Gdi"] }
+windows-sys = { version = "0.61", features = ["Win32_System_Time", "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader"] }
 # 放行 WebView2 的摄像头/麦克风权限（getUserMedia 默认弹确认框，无边框窗里用户点不到）
 webview2-com = "0.38"
 

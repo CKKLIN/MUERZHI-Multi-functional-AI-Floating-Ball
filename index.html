@@ -20,10 +20,16 @@
       </div>
     </div>
     <style>
-      html, body { height: 100%; margin: 0; }
-      body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #eaeaec; }
+      html, body { height: 100%; width: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; }
+      body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+      #app { height: 100%; width: 100%; overflow: hidden; background: transparent; }
       #boot-splash {
         height: 100%;
+        width: 100%;
+        border-radius: 12px;
+        border: 1px solid #d0d0d8;
+        box-sizing: border-box;
+        background: #eaeaec;
         display: flex;
         flex-direction: column;
         align-items: center;

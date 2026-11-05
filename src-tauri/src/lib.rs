@@ -499,6 +499,7 @@ fn setup_ball_events(app: &tauri::AppHandle) {
             "record" => {
                 // 走 show_main_window：统一 show + 重绘，加载期由 index.html 占位兜底
                 modules::windows::show_main_window(&app);
+                let _ = app.emit("on-floating-ball-action", "record");
             }
             // ai/todo/settings 走 open_or_focus：close_window 对这些窗口是**销毁**（close），
             // 不是隐藏 —— 只 get_webview_window+show 的话，关过一次后窗口已不存在，
@@ -509,6 +510,7 @@ fn setup_ball_events(app: &tauri::AppHandle) {
             }
             "todo" => {
                 modules::windows::open_or_focus(&app, "todo", "/todo");
+                modules::windows::todo_windows::set_badge_flash(&app, false);
             }
             "settings" => {
                 modules::windows::open_or_focus(&app, "settings", "/settings");

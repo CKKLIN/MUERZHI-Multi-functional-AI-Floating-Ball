@@ -3,11 +3,10 @@ import { onMounted } from 'vue'
 import { useSettingsStore } from './stores/settings'
 
 const settingsStore = useSettingsStore()
-// 录制历史（recordings 内嵌 base64 缩略图，上限 100 条 × 几十 KB）只由 HomeView 消费，
-// 不在此全局加载 —— 否则 ai/settings/todo/about 每开一个窗就把整份历史拷进各自 JS 堆。
-onMounted(async () => {
+// 录制历史与录制输出目录只由 HomeView 消费，不在此全局加载
+// 避免 ai/settings/todo/about 每开一个窗就多做无谓的磁盘与 IPC 请求
+onMounted(() => {
   settingsStore.loadSettings()
-  await settingsStore.initOutputDir()
 })
 </script>
 

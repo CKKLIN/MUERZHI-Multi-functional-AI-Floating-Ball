@@ -506,6 +506,7 @@ let cleanupBeforeQuit: (() => void) | null = null
 onMounted(() => {
   // 录制历史只在这里加载（原先在 App.vue 全局加载，导致每个辅助窗口都整份拷贝）
   store.loadRecordings()
+  settingsStore.initOutputDir()
   window.addEventListener('keydown', onKeyDown)
   window.addEventListener('click', onClickOutside)
   cleanupBeforeQuit = window.muerzhiAPI.onBeforeQuit(() => {
@@ -673,7 +674,9 @@ watch(() => isConverting.value, (val) => {
 .home {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - var(--titlebar-height));
+  flex: 1;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 

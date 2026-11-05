@@ -490,6 +490,47 @@ pub async fn start(app: tauri::AppHandle) {
     log::error!("Agent server: no free port in {DEFAULT_PORT}-{MAX_PORT}");
 }
 
+/// 服务存活兜底：发现「标志正常但端口没有真正监听」时重启服务并重装 hooks。
+///
+/// hooks 的每一次上报都是到本服务的一次 POST，服务一死悬浮岛就整片失联，而旧版
+/// 只有 hooks 形态看护（5min 一次、只看 settings.json 的写法），从不检查服务本身 ——
+/// 真正的静默失效（见 try_listen 的 version 坑）完全隐身。这里补一条自愈：
+/// 失败时指数退避（2s → 60s 封顶），恢复成功后把 hooks 对齐到**实际端口**。
+pub fn ensure_running(app: tauri::AppHandle) {
+    static RECOVERING: AtomicBool = AtomicBool::new(false);
+    if RECOVERING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    tauri::async_runtime::spawn(async move {
+        let mut delay = 2u64;
+        loop {
+            let s = AgentServer::global();
+            if !(s.running.load(Ordering::SeqCst) && s.get_port().is_some()) {
+                // 标志可能「running=true 但 port=0」地卡住（半失效）：start() 入口见到
+                // running 就早退，不先复位的话这里会永远重试而不真正重绑
+                if s.running.load(Ordering::SeqCst) {
+                    s.stop();
+                }
+                log::warn!("Agent server 未在监听，正在重启…");
+                start(app.clone()).await;
+            }
+            let s = AgentServer::global();
+            if s.running.load(Ordering::SeqCst) && s.get_port().is_some() {
+                // 端口可能漂移过：按实际端口重装 hooks，否则 URL 指向死端口
+                if let Err(e) = crate::modules::agent::hooks::install(&app) {
+                    log::warn!("Agent server 恢复后重装 hooks 失败: {e}");
+                }
+                log::info!("Agent server 恢复监听 127.0.0.1:{:?}", s.get_port());
+                break;
+            }
+            log::warn!("Agent server 重启失败，{delay}s 后重试");
+            tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+            delay = (delay * 2).min(60);
+        }
+        RECOVERING.store(false, Ordering::SeqCst);
+    });
+}
+
 async fn try_listen(
     app: tauri::AppHandle,
     port: u16,
@@ -502,6 +543,17 @@ async fn try_listen(
         .with_state(app);
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
     let mut shutdown_rx = AgentServer::global().shutdown_rx.clone();
+    // ⚠️ 必须先吞掉历史版本再去 await changed()。
+    //
+    // start() 入口为了「stop 之后再 start」复位过停机信号（`shutdown_tx.send(false)`），
+    // 那一次 send 已经把全局 receiver 的 version 推进了 1；而 Receiver::clone 出来的是
+    // **已消费版本**的副本，首次 `changed()` 只等「版本 > 自己见过的版本」—— 于是它
+    // 立刻返回 Ok，with_graceful_shutdown 随即 resolve，axum::serve 绑上端口后马上关掉。
+    // 表现极具迷惑性：日志照写 “Agent server listening on 127.0.0.1:60000”、
+    // running/port 两个标志都正常、hooks 也装好了，但端口实际没人监听 ——
+    // 所有 hook 上报 ECONNREFUSED，悬浮岛永远停在「空闲」（实测「AI 助手完全不工作」）。
+    // borrow_and_update() 把克隆体的版本对齐到现在，之后只对**真正的新**停机信号响应。
+    shutdown_rx.borrow_and_update();
     tauri::async_runtime::spawn(async move {
         let _ = axum::serve(listener, router)
             .with_graceful_shutdown(async move {

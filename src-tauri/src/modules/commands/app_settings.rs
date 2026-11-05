@@ -23,9 +23,12 @@ pub fn get_floating_ball_settings(app: AppHandle) -> Value {
 #[tauri::command]
 pub fn set_floating_ball_settings(app: AppHandle, patch: Value) -> Value {
     let current = BallSettings::load(&app);
+    let visible_changed = patch.get("visible").is_some();
+    let always_on_top_changed = patch.get("alwaysOnTop").is_some();
+    let menu_items_changed = patch.get("menuItems").is_some();
     let locale_changed = patch.get("locale").is_some();
     let open_at_login_changed = patch.get("openAtLogin").is_some();
-    log::info!("set_floating_ball_settings: {patch}（openAtLogin={open_at_login_changed}, locale={locale_changed}）");
+    log::info!("set_floating_ball_settings: {patch}（openAtLogin={open_at_login_changed}, locale={locale_changed}, visible={visible_changed}）");
 
     let next = current.merged_with(&patch);
     if let Err(e) = next.save(&app) {
@@ -41,6 +44,21 @@ pub fn set_floating_ball_settings(app: AppHandle, patch: Value) -> Value {
         let locale = Locale::from_str_lossy(&next.locale);
         I18n::global().set_locale(locale);
         let _ = app.emit("app-locale-changed", json!({ "locale": next.locale }));
+    }
+    if visible_changed {
+        if next.visible {
+            windows::floating_ball::show_ball(&app);
+        } else {
+            windows::floating_ball::hide_ball(&app);
+        }
+    }
+    if always_on_top_changed {
+        if let Some(win) = windows::floating_ball::ball_window(&app) {
+            let _ = win.set_always_on_top(next.always_on_top);
+        }
+    }
+    if menu_items_changed || locale_changed {
+        windows::floating_ball::update_ball_menu(&app);
     }
 
     serde_json::to_value(next).unwrap_or(Value::Null)

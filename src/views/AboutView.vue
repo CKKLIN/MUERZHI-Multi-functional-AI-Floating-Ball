@@ -49,12 +49,17 @@ function openRepo() {
 
 <style scoped>
 .about-view {
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   user-select: none;
   overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  box-sizing: border-box;
   background: var(--bg-surface, #eaeaec);
+  
 }
 
 .titlebar {
@@ -64,6 +69,7 @@ function openRepo() {
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--border);
+  
   flex-shrink: 0;
 }
 

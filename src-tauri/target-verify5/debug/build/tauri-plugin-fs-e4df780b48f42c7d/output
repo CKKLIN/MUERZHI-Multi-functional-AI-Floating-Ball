@@ -1,8 +1,0 @@
-cargo:rerun-if-changed=permissions
-cargo:PERMISSION_FILES_PATH=D:\money\MUERZHI-Multi-functional-AI-Floating-Ball\src-tauri\target-verify5\debug\build\tauri-plugin-fs-e4df780b48f42c7d\out\tauri-plugin-fs-permission-files
-cargo:rerun-if-env-changed=REMOVE_UNUSED_COMMANDS
-cargo:GLOBAL_SCOPE_SCHEMA_PATH=D:\money\MUERZHI-Multi-functional-AI-Floating-Ball\src-tauri\target-verify5\debug\build\tauri-plugin-fs-e4df780b48f42c7d\out\global-scope.json
-cargo:GLOBAL_API_SCRIPT_PATH=\\?\C:\Users\muerzhi\.cargo\registry\src\mirrors.ustc.edu.cn-38d0e5eb5da2abae\tauri-plugin-fs-2.5.2\api-iife.js
-cargo:rustc-check-cfg=cfg(mobile)
-cargo:rustc-check-cfg=cfg(desktop)
-cargo:rustc-cfg=desktop
