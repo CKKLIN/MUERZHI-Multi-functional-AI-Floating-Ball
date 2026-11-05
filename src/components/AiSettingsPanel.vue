@@ -72,9 +72,37 @@ async function toggleAutoAllowSession(sessionId: string) {
   }
 }
 
-// 会话展示标签：带模型来源前缀，优先标题，无标题退回 模型·工具·短id
+function isAntigravity(s: any): boolean {
+  return (
+    s.agentId === 'antigravity' ||
+    (typeof s.model === 'string' && s.model.toLowerCase().includes('gemini'))
+  )
+}
+
+function sessionTitle(s: any): string {
+  if (typeof s.title === 'string' && s.title.trim()) return s.title
+  const isAnti = isAntigravity(s)
+  const name = isAnti ? 'Antigravity' : 'Claude'
+  const short = typeof s.sessionId === 'string' ? s.sessionId.slice(0, 8) : ''
+  return `${name} · ${short}`
+}
+
+function sessionSub(s: any): string {
+  const parts: string[] = []
+  if (typeof s.model === 'string' && s.model) {
+    parts.push(s.model)
+  }
+  if (typeof s.toolName === 'string' && s.toolName) {
+    parts.push(s.toolName)
+  }
+  if (typeof s.sessionId === 'string' && s.sessionId) {
+    parts.push(s.sessionId.slice(0, 8))
+  }
+  return parts.join(' · ')
+}
+
 function sessionLabel(s: any): string {
-  const isAnti = s.agentId === 'antigravity' || (typeof s.model === 'string' && s.model.toLowerCase().includes('gemini'))
+  const isAnti = isAntigravity(s)
   const prefix = isAnti ? '[Antigravity] ' : '[Claude] '
   if (typeof s.title === 'string' && s.title) return `${prefix}${s.title}`
   const model = typeof s.model === 'string' && s.model ? s.model : (isAnti ? 'Antigravity' : 'Claude')
@@ -229,6 +257,11 @@ onUnmounted(() => {
         <div class="group-header">{{ t('ai.groupIntegration') }}</div>
         <div class="settings-section">
           <div class="setting-row">
+            <div class="model-badge badge-claude">
+              <svg class="model-logo-svg" viewBox="0 0 24 24" width="16" height="16" fill="none">
+                <path d="M4.714 15.956l4.718-2.648.079-.23-.079-.128h-.23l-.79-.049-2.695-.073-2.338-.097-2.264-.122-.571-.121-.534-.704.054-.353.48-.321.686.06 1.518.104 2.277.158 1.651.097 2.447.255h.388l.055-.158-.134-.097-.103-.097L6.973 9.836 4.423 8.148l-1.336-.971-.722-.492-.365-.461-.158-1.008.656-.723.88.06.225.061.892.686 1.907 1.476 2.489 1.833.364.304.146-.103.018-.073-.164-.273-1.354-2.447-1.445-2.49-.643-1.031-.17-.62a2.02 2.02 0 0 1-.104-.728L6.287.133 6.7 0l.996.134.419.364.619 1.415 1.002 2.228 1.554 3.03.455.898.243.832.091.255h.158v-.146l.128-1.706.236-2.095.231-2.695.079-.76.376-.91.747-.492.583.28.48.685-.067.444-.285 1.851-.559 2.902-.364 1.943h.212l.243-.243.984-1.305 1.651-2.065.729-.82.85-.904.546-.431h1.032l.759 1.13-.34 1.165-1.062 1.348-.881 1.141-1.263 1.7-.789 1.36.073.11.188-.019 2.854-.607 1.542-.28 1.84-.315.831.388.092.395-.328.807-1.967.486-2.307.461-3.437.814-.042.03.048.061 1.549.146.661.036h1.622l3.017.225.79.522.473.638-.079.485-1.214.62-1.639-.389-3.825-.91-1.312-.328h-.182v.109l1.093 1.069 2.003 1.809 2.508 2.331.127.577-.321.455-.34-.048-2.204-1.658-.85-.747-1.925-1.621h-.128v.17l.444.65 2.343 3.52.122 1.082-.17.352-.608.212-.667-.121-1.373-1.925L14.38 17.96l-1.141-1.943-.14.079-.674 7.255-.316.37-.728.28-.607-.462-.322-.747.322-1.475.388-1.925.316-1.53.285-1.9.17-.632-.012-.042-.14.018-1.433 1.967-2.18 2.945-1.724 1.846-.413.164-.716-.37.066-.662.401-.589 2.386-3.036 1.439-1.882.929-1.087-.006-.158h-.055L4.714 15.956z" fill="#D97757"/>
+              </svg>
+            </div>
             <div class="row-text">
               <div class="row-label">Claude Code</div>
               <div class="row-desc">{{ t('ai.claudeHooksDesc') }}</div>
@@ -238,6 +271,18 @@ onUnmounted(() => {
             </button>
           </div>
           <div class="setting-row">
+            <div class="model-badge badge-antigravity">
+              <svg class="model-logo-svg" viewBox="0 0 24 24" width="16" height="16" fill="none">
+                <path d="M12 2C12 7.523 16.477 12 22 12C16.477 12 12 16.477 12 22C12 16.477 7.523 12 2 12C7.523 12 12 7.523 12 2Z" fill="url(#gemini-sparkle-grad)"/>
+                <defs>
+                  <linearGradient id="gemini-sparkle-grad" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stop-color="#4285F4"/>
+                    <stop offset="50%" stop-color="#9B72CB"/>
+                    <stop offset="100%" stop-color="#D96570"/>
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
             <div class="row-text">
               <div class="row-label">Google Antigravity</div>
               <div class="row-desc">{{ t('ai.antigravityHooksDesc') }}</div>
@@ -268,8 +313,17 @@ onUnmounted(() => {
             <div class="session-desc">{{ t('ai.autoAllowSessionDesc') }}</div>
             <div v-if="sessions.length === 0" class="session-empty">{{ t('ai.noActiveSession') }}</div>
             <div v-for="s in sessions" :key="s.sessionId" class="setting-row session-row">
+              <div class="model-badge" :class="isAntigravity(s) ? 'badge-antigravity' : 'badge-claude'" :title="isAntigravity(s) ? 'Google Antigravity' : 'Claude Code'">
+                <svg v-if="!isAntigravity(s)" class="model-logo-svg" viewBox="0 0 24 24" width="15" height="15" fill="none">
+                  <path d="M4.714 15.956l4.718-2.648.079-.23-.079-.128h-.23l-.79-.049-2.695-.073-2.338-.097-2.264-.122-.571-.121-.534-.704.054-.353.48-.321.686.06 1.518.104 2.277.158 1.651.097 2.447.255h.388l.055-.158-.134-.097-.103-.097L6.973 9.836 4.423 8.148l-1.336-.971-.722-.492-.365-.461-.158-1.008.656-.723.88.06.225.061.892.686 1.907 1.476 2.489 1.833.364.304.146-.103.018-.073-.164-.273-1.354-2.447-1.445-2.49-.643-1.031-.17-.62a2.02 2.02 0 0 1-.104-.728L6.287.133 6.7 0l.996.134.419.364.619 1.415 1.002 2.228 1.554 3.03.455.898.243.832.091.255h.158v-.146l.128-1.706.236-2.095.231-2.695.079-.76.376-.91.747-.492.583.28.48.685-.067.444-.285 1.851-.559 2.902-.364 1.943h.212l.243-.243.984-1.305 1.651-2.065.729-.82.85-.904.546-.431h1.032l.759 1.13-.34 1.165-1.062 1.348-.881 1.141-1.263 1.7-.789 1.36.073.11.188-.019 2.854-.607 1.542-.28 1.84-.315.831.388.092.395-.328.807-1.967.486-2.307.461-3.437.814-.042.03.048.061 1.549.146.661.036h1.622l3.017.225.79.522.473.638-.079.485-1.214.62-1.639-.389-3.825-.91-1.312-.328h-.182v.109l1.093 1.069 2.003 1.809 2.508 2.331.127.577-.321.455-.34-.048-2.204-1.658-.85-.747-1.925-1.621h-.128v.17l.444.65 2.343 3.52.122 1.082-.17.352-.608.212-.667-.121-1.373-1.925L14.38 17.96l-1.141-1.943-.14.079-.674 7.255-.316.37-.728.28-.607-.462-.322-.747.322-1.475.388-1.925.316-1.53.285-1.9.17-.632-.012-.042-.14.018-1.433 1.967-2.18 2.945-1.724 1.846-.413.164-.716-.37.066-.662.401-.589 2.386-3.036 1.439-1.882.929-1.087-.006-.158h-.055L4.714 15.956z" fill="#D97757"/>
+                </svg>
+                <svg v-else class="model-logo-svg" viewBox="0 0 24 24" width="15" height="15" fill="none">
+                  <path d="M12 2C12 7.523 16.477 12 22 12C16.477 12 12 16.477 12 22C12 16.477 7.523 12 2 12C7.523 12 12 7.523 12 2Z" fill="url(#gemini-sparkle-grad)"/>
+                </svg>
+              </div>
               <div class="row-text">
-                <div class="row-label session-label">{{ sessionLabel(s) }}</div>
+                <div class="row-label session-label">{{ sessionTitle(s) }}</div>
+                <div class="session-sub" v-if="sessionSub(s)">{{ sessionSub(s) }}</div>
               </div>
               <button
                 class="toggle-btn"
@@ -461,10 +515,51 @@ onUnmounted(() => {
   color: var(--text-muted);
   text-align: center;
 }
+/* 模型专属 Logo 徽标 */
+.model-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.model-badge:hover {
+  transform: scale(1.05);
+}
+.model-badge.badge-claude {
+  background: linear-gradient(135deg, rgba(217, 119, 87, 0.18) 0%, rgba(204, 107, 73, 0.08) 100%);
+  border: 1px solid rgba(217, 119, 87, 0.28);
+}
+.model-badge.badge-antigravity {
+  background: linear-gradient(135deg, rgba(66, 133, 244, 0.18) 0%, rgba(155, 114, 203, 0.1) 100%);
+  border: 1px solid rgba(66, 133, 244, 0.28);
+}
+.model-logo-svg {
+  display: block;
+}
+
+.session-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .session-row .session-label {
-  font-size: 12px;
-  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
   /* 标题可能较长：单行省略，不撑爆行 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
