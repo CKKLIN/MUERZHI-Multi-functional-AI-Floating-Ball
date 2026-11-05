@@ -148,8 +148,11 @@ pub async fn start(app: AppHandle) {
             Err(e) => log::error!("Claude hooks install failed: {e}"),
         }
     }
-    if crate::modules::agent::hooks::is_antigravity_installed() {
-        let _ = crate::modules::agent::hooks::install_antigravity(&app);
+    if crate::modules::agent::hooks::is_antigravity_env_present() {
+        match crate::modules::agent::hooks::install_antigravity(&app) {
+            Ok(()) => log::info!("Antigravity hooks auto-installed to ~/.gemini/config/hooks.json"),
+            Err(e) => log::error!("Antigravity hooks auto-install failed: {e}"),
+        }
     }
     crate::modules::agent::hooks::start_watcher(app.clone());
 

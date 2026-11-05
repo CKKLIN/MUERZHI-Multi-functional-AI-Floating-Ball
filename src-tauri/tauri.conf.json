@@ -36,7 +36,8 @@
     "icon": ["../public/logo.ico", "../public/logo.png"],
     "resources": {
       "../vendor/ffmpeg/ffmpeg.exe": "ffmpeg.exe",
-      "../src-tauri/resources/clawd-hook.js": "clawd-hook.js"
+      "../src-tauri/resources/clawd-hook.js": "clawd-hook.js",
+      "../src-tauri/resources/antigravity-hook.js": "antigravity-hook.js"
     },
     "windows": {
       "nsis": {

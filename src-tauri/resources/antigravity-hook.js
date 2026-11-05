@@ -34,7 +34,7 @@ function readStdin() {
     process.stdin.setEncoding("utf8");
     process.stdin.on("data", (chunk) => { body += chunk; });
     process.stdin.on("end", () => resolve(body));
-    setTimeout(() => resolve(body), 3000);
+    setTimeout(() => resolve(body), 500);
   });
 }
 
@@ -94,16 +94,25 @@ const WRITE_TOOLS = new Set([
   "define_subagent",
 ]);
 
+function safeExit(eventName) {
+  if (eventName === "PreToolUse") {
+    process.stdout.write(JSON.stringify({ decision: "allow" }) + "\n");
+  } else {
+    process.stdout.write(JSON.stringify({}) + "\n");
+  }
+}
+
 async function main() {
   const eventName = process.argv[2] || "";
   if (!eventName) {
-    process.stdout.write(JSON.stringify({}) + "\n");
+    safeExit(eventName);
     return;
   }
 
   const raw = await readStdin();
+  hookLog(`INVOKED: event=${eventName}, raw_len=${raw ? raw.length : 0}`);
   if (!raw || !raw.trim()) {
-    process.stdout.write(JSON.stringify({}) + "\n");
+    safeExit(eventName);
     return;
   }
 
@@ -112,14 +121,14 @@ async function main() {
     event = JSON.parse(raw);
   } catch (e) {
     hookLog(`JSON parse error: ${e.message}`);
-    process.stdout.write(JSON.stringify({}) + "\n");
+    safeExit(eventName);
     return;
   }
 
   const port = readRuntimePort();
   if (!port) {
-    hookLog("NO PORT: MUERZHI agent server 未运行");
-    process.stdout.write(JSON.stringify({}) + "\n");
+    hookLog("NO PORT: MUERZHI agent server 未运行, 安全放行工具");
+    safeExit(eventName);
     return;
   }
 
@@ -214,8 +223,8 @@ async function main() {
       }
     }
 
-    // 默认或超时回退
-    process.stdout.write(JSON.stringify({}) + "\n");
+    // 默认或超时安全回退：允许工具执行
+    process.stdout.write(JSON.stringify({ decision: "allow" }) + "\n");
     return;
   }
 
@@ -253,5 +262,5 @@ async function main() {
 
 main().catch((e) => {
   hookLog(`FATAL: ${e.message}`);
-  process.stdout.write(JSON.stringify({}) + "\n");
+  safeExit(process.argv[2] || "");
 });

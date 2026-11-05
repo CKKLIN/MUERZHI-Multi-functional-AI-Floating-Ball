@@ -268,7 +268,7 @@ pub fn install(app: &AppHandle) -> Result<(), String> {
     let script = hook_script_path(app);
     // 必须去 `\\?\` 前缀：带前缀的路径写进 hook 命令后 node 无法加载脚本，
     // 全部 12 个事件静默失败（见 win_api_path 注释）
-    let script_str = win_api_path(&script);
+    let script_str = win_api_path(&script).replace('\\', "/");
 
     // 逐事件键**追加**自家 group，不覆盖整个 hooks 表、也不覆盖同事件的用户 hook：
     // 早先 obj.insert("hooks", hooks_map) 会把用户在 SubagentStop/PreCompact 等未受管
@@ -371,6 +371,10 @@ pub fn antigravity_hook_script_path(app: &AppHandle) -> PathBuf {
     PathBuf::from("antigravity-hook.js")
 }
 
+pub fn is_antigravity_env_present() -> bool {
+    antigravity_config_dir().exists() || home_dir().join(".gemini").exists()
+}
+
 pub fn is_antigravity_installed() -> bool {
     let path = antigravity_hooks_path();
     let Ok(text) = std::fs::read_to_string(&path) else {
@@ -379,7 +383,10 @@ pub fn is_antigravity_installed() -> bool {
     let Ok(v): Result<Value, _> = serde_json::from_str(&text) else {
         return false;
     };
-    v.get("muerzhi-agent").is_some()
+    v.get("muerzhi-agent")
+        .and_then(|h| h.get("enabled"))
+        .and_then(|e| e.as_bool())
+        .unwrap_or_else(|| v.get("muerzhi-agent").is_some())
 }
 
 pub fn install_antigravity(app: &AppHandle) -> Result<(), String> {
@@ -388,23 +395,27 @@ pub fn install_antigravity(app: &AppHandle) -> Result<(), String> {
         Ok(text) => serde_json::from_str(&text).unwrap_or_else(|_| json!({})),
         Err(_) => json!({}),
     };
-    let node = detect_node();
     let script = antigravity_hook_script_path(app);
-    let script_str = win_api_path(&script);
+    let script_str = win_api_path(&script).replace('\\', "/");
+    let cmd_path = if script_str.contains(' ') {
+        format!("\"{script_str}\"")
+    } else {
+        script_str
+    };
 
     let hook_entry = json!({
         "enabled": true,
         "SessionStart": [
             {
                 "type": "command",
-                "command": format!("\"{node}\" \"{script_str}\" SessionStart"),
+                "command": format!("node {cmd_path} SessionStart"),
                 "timeout": 10
             }
         ],
         "PreInvocation": [
             {
                 "type": "command",
-                "command": format!("\"{node}\" \"{script_str}\" PreInvocation"),
+                "command": format!("node {cmd_path} PreInvocation"),
                 "timeout": 10
             }
         ],
@@ -414,7 +425,7 @@ pub fn install_antigravity(app: &AppHandle) -> Result<(), String> {
                 "hooks": [
                     {
                         "type": "command",
-                        "command": format!("\"{node}\" \"{script_str}\" PreToolUse"),
+                        "command": format!("node {cmd_path} PreToolUse"),
                         "timeout": 1860
                     }
                 ]
@@ -426,7 +437,7 @@ pub fn install_antigravity(app: &AppHandle) -> Result<(), String> {
                 "hooks": [
                     {
                         "type": "command",
-                        "command": format!("\"{node}\" \"{script_str}\" PostToolUse"),
+                        "command": format!("node {cmd_path} PostToolUse"),
                         "timeout": 10
                     }
                 ]
@@ -435,14 +446,14 @@ pub fn install_antigravity(app: &AppHandle) -> Result<(), String> {
         "PostInvocation": [
             {
                 "type": "command",
-                "command": format!("\"{node}\" \"{script_str}\" PostInvocation"),
+                "command": format!("node {cmd_path} PostInvocation"),
                 "timeout": 10
             }
         ],
         "Stop": [
             {
                 "type": "command",
-                "command": format!("\"{node}\" \"{script_str}\" Stop"),
+                "command": format!("node {cmd_path} Stop"),
                 "timeout": 10
             }
         ]
@@ -640,5 +651,10 @@ mod tests {
         let p = antigravity_hooks_path();
         assert!(p.to_string_lossy().contains(".gemini"));
         assert!(p.to_string_lossy().ends_with("hooks.json"));
+    }
+
+    #[test]
+    fn antigravity_env_detected() {
+        assert!(is_antigravity_env_present());
     }
 }
