@@ -18,7 +18,7 @@ pub const TOOLBAR_HEIGHT: f64 = 44.0;
 /// （实测待机裁 23px/侧、录制态 42px/侧，连关闭按钮都在窗外），肉眼就是「岛被切了」。
 /// 现在：宽 326 = 最宽状态（待机，麦克风/摄像头按钮都在）302 + 左右各 12 放光晕；
 /// 高 72 = 胶囊 44 + 上 12 / 下 16（向上是录制态那圈红光、向下是投影，实测下端要 16 才能把投影尾端放完）。
-const ISLAND_W_LOGICAL: f64 = 326.0;
+const ISLAND_W_LOGICAL: f64 = 396.0;
 const ISLAND_H_LOGICAL: f64 = 72.0;
 const BORDER_PAD: f64 = 5.0;
 const CAMERA_W: f64 = 200.0;
@@ -734,17 +734,15 @@ fn show_toolbar_for_region(
         // 麦克风/摄像头开关初值随 URL 带入（同 island.html，build 后立刻 eval 会赶在页面脚本之前）
         WebviewUrl::App(
             format!(
-                "windows/toolbar.html?mic={}&cam={}",
+                "windows/toolbar.html?mic={}&cam={}&w={}&h={}",
                 if audio_state.map(|a| a.mic_enabled).unwrap_or(false) {
                     1
                 } else {
                     0
                 },
-                if audio_state.map(|a| a.camera_enabled).unwrap_or(false) {
-                    1
-                } else {
-                    0
-                },
+                if audio_state.map(|a| a.camera_enabled).unwrap_or(false) { 1 } else { 0 },
+                region.width,
+                region.height,
             )
             .into(),
         ),

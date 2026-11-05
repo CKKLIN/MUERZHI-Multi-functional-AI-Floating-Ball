@@ -1,120 +1,300 @@
 <!DOCTYPE html>
-<!-- 录制悬浮岛 — 全屏/多屏录制时的悬浮控制条（340×44 胶囊 + 28px 提示带）
+<!-- 录制悬浮岛 — 全屏/多屏录制时的悬浮控制条
      状态经 applyIslandState(state, elapsed) 由 Rust eval 推送：
        idle / recording / paused 三态切换按钮可见性；
        show / hide 只控显隐（录制中岛自动收起，鼠标移到岛的位置再由 hover 轮询唤出）。
      开关态经 applyIslandControls({mic,cam}) 推送：mic/cam 按钮点亮表示麦克风/摄像头已开。
      按钮点击 emit('island-action', <action>) → Rust 转成 toolbar-action 广播给主窗口。
-     图标一律内联 SVG：不依赖 emoji 字体（Segoe UI Emoji 缺字/编码错位时按钮会变成方块或乱码）。 -->
+     图标一律内联 SVG：不依赖 emoji 字体。 -->
 <html>
 <head>
 <meta charset="utf-8">
 <style>
-*{margin:0;padding:0;box-sizing:border-box;user-select:none}
-html,body{width:100%;height:100%;overflow:hidden;background:transparent}
-body{display:flex;flex-direction:column;align-items:center;justify-content:center;-webkit-font-smoothing:antialiased}
-
-.island{
-  height:44px;display:flex;align-items:center;gap:6px;padding:0 12px;
-  background:linear-gradient(180deg,rgba(36,40,52,.96) 0%,rgba(18,20,28,.97) 100%);
-  color:#eef1f7;border-radius:22px;border:1px solid rgba(255,255,255,.09);
-  font-family:'Segoe UI',system-ui,'Microsoft YaHei',sans-serif;font-size:12px;
-  box-shadow:0 5px 18px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.07);
-  backdrop-filter:blur(14px) saturate(1.25);
-  overflow:hidden;flex:0 0 auto;margin:12px 0 16px;
-  transition:opacity .22s ease,transform .22s cubic-bezier(.2,.8,.2,1),box-shadow .2s ease;
+* { margin:0; padding:0; box-sizing:border-box; user-select:none; }
+html, body { width:100%; height:100%; overflow:hidden; background:transparent; }
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  -webkit-font-smoothing: antialiased;
 }
-/* 录制中给整条胶囊一圈极淡的红光：一眼能看出"在录" */
-body.recording .island{
-  box-shadow:0 5px 18px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,77,106,.55),0 0 20px rgba(255,77,106,.3);
-}
-body.hidden-island .island{opacity:0;transform:translateY(-10px) scale(.98)}
-/* 隐藏态停掉呼吸灯动画：窗口仍留在屏幕原位等待悬停唤出，
-   动画继续跑只会白耗合成器电力（用户看不见） */
-body.hidden-island .rec-dot{animation:none;box-shadow:none}
 
-/* 录制指示点：待机是灰点，录制中变红并呼吸 */
-.rec-dot{
-  width:8px;height:8px;border-radius:50%;flex:0 0 auto;
-  background:rgba(255,255,255,.22);transition:background .25s ease,box-shadow .25s ease;
+.island {
+  width: 356px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  background: linear-gradient(180deg, rgba(28, 31, 40, 0.94) 0%, rgba(14, 16, 22, 0.98) 100%);
+  color: #f1f5f9;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, 'Microsoft YaHei', sans-serif;
+  font-size: 12px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  margin: 12px 0 16px;
+  flex: 0 0 auto;
+  transition: opacity .22s ease, transform .22s cubic-bezier(.2,.8,.2,1), box-shadow .24s ease, border-color .24s ease;
 }
-body.recording .rec-dot{background:#ff4d6a;box-shadow:0 0 12px rgba(255,77,106,.9);animation:dotPulse 1.4s ease-in-out infinite}
-body.paused .rec-dot{background:#ffd93d;box-shadow:0 0 8px rgba(255,217,61,.5)}
-@keyframes dotPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.88;transform:scale(.92)}}
 
-.timer{
-  font:600 13px/1 ui-monospace,'Cascadia Mono',Consolas,monospace;
-  font-variant-numeric:tabular-nums;letter-spacing:.4px;
-  min-width:46px;text-align:center;color:#f4f6fb;
+/* 录制中氛围微红光 */
+body.recording .island {
+  border-color: rgba(255, 77, 106, 0.5);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255, 77, 106, 0.35), 0 0 24px rgba(255, 77, 106, 0.22);
 }
-body.paused .timer{color:#ffd93d}
 
-/* 1.5px：1px 在 150% 缩放下只落 1 个设备像素、实测对比掉到 1.8:1 */
-.sep{width:1.5px;height:18px;flex:0 0 auto;border-radius:1px;background:linear-gradient(180deg,transparent,rgba(255,255,255,.34),transparent)}
-
-.btn{
-  width:32px;height:32px;flex:0 0 auto;border:0;border-radius:10px;background:transparent;
-  color:#c8d0e0;cursor:pointer;display:flex;align-items:center;justify-content:center;
-  transition:background .15s ease,color .15s ease,transform .08s ease,box-shadow .15s ease;
+/* 暂停中氛围琥珀光 */
+body.paused .island {
+  border-color: rgba(251, 191, 36, 0.5);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(251, 191, 36, 0.35), 0 0 24px rgba(251, 191, 36, 0.2);
 }
-.btn:hover{background:rgba(255,255,255,.1);color:#fff}
-.btn:active{transform:scale(.92)}
-.btn:focus-visible{outline:2px solid rgba(233,69,96,.6);outline-offset:1px}
-.btn svg{width:16px;height:16px;display:block}
-/* 录制/暂停中隐藏麦克风/摄像头按钮：主窗口对这两个动作只在 canStart（未开录）时响应，
-   留着它们只会「点了没反应」；顺带让胶囊在录制态更短（不给窗口留裁切风险） */
-/* 麦克风/摄像头按钮录制中保留（同 toolbar.html，见其注释） */
+
+body.hidden-island .island {
+  opacity: 0;
+  transform: translateY(-8px) scale(.98);
+}
+body.hidden-island .rec-dot {
+  animation: none !important;
+  box-shadow: none !important;
+}
+
+/* 状态组：指示点与计时 */
+.status-group {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 4px;
+  flex: 0 0 auto;
+}
+
+.rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.24);
+  transition: background .25s ease, box-shadow .25s ease;
+}
+body.recording .rec-dot {
+  background: #ff4d6a;
+  box-shadow: 0 0 10px rgba(255, 77, 106, 0.9);
+  animation: dotPulse 1.4s ease-in-out infinite;
+}
+body.paused .rec-dot {
+  background: #fbbf24;
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.75);
+}
+@keyframes dotPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .75; transform: scale(.88); }
+}
+
+.timer {
+  font: 600 13px/1 ui-monospace, 'SF Pro Text', 'Cascadia Mono', Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .3px;
+  color: #f1f5f9;
+  min-width: 44px;
+}
+body.paused .timer { color: #fbbf24; }
+
+/* 分隔线 */
+.sep {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.12);
+  flex: 0 0 auto;
+}
+
+/* 设备组 */
+.dev-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+
+/* 按钮基础 */
+.btn {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .16s cubic-bezier(.4, 0, .2, 1);
+  flex: 0 0 auto;
+}
+.btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+.btn:active {
+  transform: scale(0.92);
+}
+.btn:focus-visible {
+  outline: 2px solid rgba(233, 69, 96, 0.6);
+  outline-offset: 1px;
+}
+.btn svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
 /* 开关已打开（麦克风/摄像头） */
-.btn.on{color:#3ddc97;background:rgba(61,220,151,.13)}
-.btn.on:hover{background:rgba(61,220,151,.2)}
-/* 主操作（开始录制） */
-.btn.primary{background:#e94560;color:#fff;box-shadow:0 2px 12px rgba(233,69,96,.45)}
-.btn.primary:hover{background:#ff5b78}
-/* 停止：与开始同为实心主操作（录制中它就是最主要的按钮），同色令牌避免两个红不一致 */
-.btn.stop{background:#e94560;color:#fff;box-shadow:0 2px 12px rgba(233,69,96,.45)}
-.btn.stop:hover{background:#ff5b78}
+.btn.on {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.32);
+}
+.btn.on:hover {
+  background: rgba(16, 185, 129, 0.25);
+}
 
-.meter{display:flex;gap:2px;align-items:flex-end;height:14px;width:38px;flex:0 0 auto}
-.meter-bar{width:3px;height:6px;background:rgba(255,255,255,.38);border-radius:2px;transition:height .08s ease,background .08s ease}
-.meter-bar.on{height:14px;background:#3ddc97}
-.meter-bar.warn{background:#ffd93d}
-.meter-bar.hot{background:#e94560}
-[hidden]{display:none !important}
+/* 电平表 */
+.meter {
+  display: flex;
+  gap: 2px;
+  align-items: flex-end;
+  height: 14px;
+  width: 28px;
+  flex: 0 0 auto;
+  padding: 0 1px;
+}
+.meter-bar {
+  width: 2.2px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 1.5px;
+  transition: height .08s ease, background .08s ease;
+}
+.meter-bar.on {
+  height: 13px;
+  background: #10b981;
+  box-shadow: 0 0 4px rgba(16, 185, 129, 0.5);
+}
+.meter-bar.warn {
+  background: #fbbf24;
+  box-shadow: 0 0 4px rgba(251, 191, 36, 0.5);
+}
+.meter-bar.hot {
+  background: #ff4d6a;
+  box-shadow: 0 0 4px rgba(255, 77, 106, 0.5);
+}
+
+/* 操作组：宽度锁死 66px，待机与录制时零位移、零跳动 */
+.action-group {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 66px;
+  flex: 0 0 auto;
+}
+
+/* 开始录制：精美红圈主按钮 */
+.btn.primary {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ff5370 0%, #e94560 100%);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(233, 69, 96, 0.45);
+}
+.btn.primary:hover {
+  background: linear-gradient(135deg, #ff6b84 0%, #f0526c 100%);
+  box-shadow: 0 3px 12px rgba(233, 69, 96, 0.6);
+  transform: scale(1.04);
+}
+.btn.primary:active {
+  transform: scale(0.92);
+}
+
+/* 暂停/继续 */
+.btn.pause-btn, .btn.resume-btn {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f1f5f9;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.btn.pause-btn:hover, .btn.resume-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.btn.resume-btn {
+  color: #fbbf24;
+}
+
+/* 停止：鲜艳方形块 */
+.btn.stop {
+  background: linear-gradient(135deg, #ff5370 0%, #e94560 100%);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(233, 69, 96, 0.45);
+}
+.btn.stop:hover {
+  background: linear-gradient(135deg, #ff6b84 0%, #f0526c 100%);
+  box-shadow: 0 3px 12px rgba(233, 69, 96, 0.6);
+  transform: scale(1.04);
+}
+.btn.stop:active {
+  transform: scale(0.92);
+}
+
+/* 关闭按钮 */
+.btn.close-btn:hover {
+  background: rgba(255, 77, 106, 0.16);
+  color: #ff4d6a;
+}
+
+[hidden] { display: none !important; }
 </style>
 </head>
 <body>
 <div class="island" id="island">
-  <span class="rec-dot" id="recDot"></span>
-  <span class="timer" id="timer">00:00</span>
+  <div class="status-group">
+    <span class="rec-dot" id="recDot"></span>
+    <span class="timer" id="timer">00:00</span>
+  </div>
   <span class="sep"></span>
-  <button class="btn toggle" id="micBtn" title="麦克风">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="9" y="2.5" width="6" height="11" rx="3"/>
-      <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>
-    </svg>
-  </button>
-  <div class="meter" id="micMeter"></div>
-  <button class="btn toggle" id="camBtn" title="摄像头">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="2.5" y="6.5" width="13" height="11" rx="3"/>
-      <path d="M15.5 11.2 21 8.2v7.6l-5.5-3"/>
-    </svg>
-  </button>
+  <div class="dev-group">
+    <button class="btn toggle" id="micBtn" title="麦克风">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="2.5" width="6" height="11" rx="3"/>
+        <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>
+      </svg>
+    </button>
+    <div class="meter" id="micMeter"></div>
+    <button class="btn toggle" id="camBtn" title="摄像头">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2.5" y="6.5" width="13" height="11" rx="3"/>
+        <path d="M15.5 11.2 21 8.2v7.6l-5.5-3"/>
+      </svg>
+    </button>
+  </div>
   <span class="sep"></span>
-  <button class="btn primary" id="startBtn" title="开始录制">
-    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5" fill="currentColor"/></svg>
-  </button>
-  <button class="btn stop" id="stopBtn" title="停止录制" hidden>
-    <svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="3" fill="currentColor"/></svg>
-  </button>
-  <button class="btn" id="pauseBtn" title="暂停" hidden>
-    <svg viewBox="0 0 24 24"><rect x="7.2" y="6" width="3" height="12" rx="1.4" fill="currentColor"/><rect x="13.8" y="6" width="3" height="12" rx="1.4" fill="currentColor"/></svg>
-  </button>
-  <button class="btn" id="resumeBtn" title="继续" hidden>
-    <svg viewBox="0 0 24 24"><path d="M8 5.5 19 12 8 18.5z" fill="currentColor"/></svg>
-  </button>
+  <div class="action-group" id="actionGroup">
+    <button class="btn primary" id="startBtn" title="开始录制">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="currentColor"/></svg>
+    </button>
+    <button class="btn pause-btn" id="pauseBtn" title="暂停" hidden>
+      <svg viewBox="0 0 24 24"><rect x="7" y="6" width="3" height="12" rx="1.5" fill="currentColor"/><rect x="14" y="6" width="3" height="12" rx="1.5" fill="currentColor"/></svg>
+    </button>
+    <button class="btn resume-btn" id="resumeBtn" title="继续" hidden>
+      <svg viewBox="0 0 24 24"><path d="M8 5.5 19 12 8 18.5z" fill="currentColor"/></svg>
+    </button>
+    <button class="btn stop" id="stopBtn" title="停止录制" hidden>
+      <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor"/></svg>
+    </button>
+  </div>
   <span class="sep"></span>
-  <button class="btn" id="closeBtn" title="关闭">
+  <button class="btn close-btn" id="closeBtn" title="关闭">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
       <path d="M6.5 6.5l11 11M17.5 6.5 6.5 17.5"/>
     </svg>
@@ -143,17 +323,25 @@ function formatTime(sec) {
   return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0')
 }
 function renderTimer() { document.getElementById('timer').textContent = formatTime(elapsed) }
+
 function setButtons(s) {
-  document.getElementById('startBtn').hidden = s !== 'idle'
-  document.getElementById('stopBtn').hidden = s === 'idle'
-  document.getElementById('pauseBtn').hidden = s !== 'recording'
-  document.getElementById('resumeBtn').hidden = s !== 'paused'
+  const startEl = document.getElementById('startBtn')
+  const pauseEl = document.getElementById('pauseBtn')
+  const resumeEl = document.getElementById('resumeBtn')
+  const stopEl = document.getElementById('stopBtn')
+  if (startEl) startEl.hidden = s !== 'idle'
+  if (pauseEl) pauseEl.hidden = s !== 'recording'
+  if (resumeEl) resumeEl.hidden = s !== 'paused'
+  if (stopEl) stopEl.hidden = s === 'idle'
 }
+
 function startTicking() {
   if (timerInterval) return
   timerInterval = setInterval(() => { elapsed++; renderTimer() }, 1000)
 }
-function stopTicking() { if (timerInterval) { clearInterval(timerInterval); timerInterval = null } }
+function stopTicking() {
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null }
+}
 
 /** Rust 推送入口：state = idle|recording|paused|show|hide（show/hide 仅控显隐） */
 function applyIslandState(s, seconds) {
@@ -170,12 +358,11 @@ function applyIslandState(s, seconds) {
 }
 window.applyIslandState = applyIslandState
 
-/** 开关态（麦克风/摄像头是否已开）：点亮对应按钮。开窗时由 URL 查询参数带入初值，
- *  之后主窗口切换开关时再推送。 */
+/** 开关态（麦克风/摄像头是否已开）：点亮对应按钮。开窗时由 URL 查询参数带入初值 */
 window.applyIslandControls = function (c) {
   if (!c) return
-  document.getElementById('micBtn').classList.toggle('on', !!c.mic)
-  document.getElementById('camBtn').classList.toggle('on', !!c.cam)
+  document.getElementById('micBtn')?.classList.toggle('on', !!c.mic)
+  document.getElementById('camBtn')?.classList.toggle('on', !!c.cam)
 }
 
 window.updateMeter = function (level) {

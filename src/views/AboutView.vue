@@ -105,11 +105,14 @@ function openRepo() {
 
 .about-body {
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 8px;
+  padding: 16px 0;
 }
 
 .app-icon img { border-radius: 16px; }

@@ -450,7 +450,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.todo-app { display: flex; flex-direction: column; height: 100%; position: relative; background: var(--bg-primary); min-width: 0; }
+.todo-app { display: flex; flex-direction: column; height: 100%; flex: 1; min-height: 0; position: relative; background: var(--bg-primary); min-width: 0; }
 
 /* 顶部：极简 —— 标题 + 数量 + 紧凑“⋯”与“＋” */
 .topbar { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px 8px; }
@@ -492,7 +492,7 @@ onUnmounted(() => {
 .cnt { margin-left: 4px; font-size: 11px; color: var(--accent); font-weight: 700; }
 
 /* 列表 */
-.list { flex: 1; overflow: auto; padding: 7px 16px 18px; }
+.list { flex: 1; min-height: 0; overflow: auto; padding: 7px 16px 18px; }
 .hint { text-align: center; color: var(--text-muted); font-size: 13px; }
 .empty { padding: 64px 12px; text-align: center; }
 .empty-add { margin-top: 14px; padding: 6px 18px; border: 1px solid rgba(255,255,255,0.7); border-top-color: rgba(255,255,255,0.9); border-left-color: rgba(255,255,255,0.85); border-right-color: rgba(200,200,210,0.4); border-bottom-color: rgba(190,190,200,0.5); border-radius: 9px; background: var(--surface-grad); color: var(--text-secondary); font-size: 13px; cursor: pointer; box-shadow: var(--bevel-shadow); transition: all 0.2s var(--bevel-ease); }

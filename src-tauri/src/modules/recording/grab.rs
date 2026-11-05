@@ -259,7 +259,7 @@ mod imp {
     use windows_capture::capture::{CaptureControl, Context, GraphicsCaptureApiHandler};
     use windows_capture::encoder::{ImageEncoder, ImageEncoderPixelFormat, ImageFormat};
     use windows_capture::frame::Frame;
-    use windows_capture::graphics_capture_api::InternalCaptureControl;
+    use windows_capture::graphics_capture_api::{GraphicsCaptureApi, InternalCaptureControl};
     use windows_capture::monitor::Monitor;
     use windows_capture::settings::{
         ColorFormat, CursorCaptureSettings, DirtyRegionSettings, DrawBorderSettings,
@@ -327,10 +327,20 @@ mod imp {
         let monitor =
             Monitor::from_index(index0 + 1).map_err(|e| format!("显示器 #{index0} 不存在: {e}"))?;
         let slot: Arc<Mutex<Option<(Vec<u8>, u32, u32)>>> = Arc::new(Mutex::new(None));
+        let cursor_settings = if GraphicsCaptureApi::is_cursor_settings_supported().unwrap_or(false) {
+            CursorCaptureSettings::WithoutCursor
+        } else {
+            CursorCaptureSettings::Default
+        };
+        let border_settings = if GraphicsCaptureApi::is_border_settings_supported().unwrap_or(false) {
+            DrawBorderSettings::WithoutBorder
+        } else {
+            DrawBorderSettings::Default
+        };
         let settings = Settings::new(
             monitor,
-            CursorCaptureSettings::WithoutCursor,
-            DrawBorderSettings::WithoutBorder,
+            cursor_settings,
+            border_settings,
             SecondaryWindowSettings::Default,
             MinimumUpdateIntervalSettings::Default,
             DirtyRegionSettings::Default,
@@ -383,10 +393,20 @@ mod imp {
         let monitor =
             Monitor::from_index(index0 + 1).map_err(|e| format!("显示器 #{index0} 不存在: {e}"))?;
         let slot: Arc<Mutex<Option<(Vec<u8>, u32, u32)>>> = Arc::new(Mutex::new(None));
+        let cursor_settings = if GraphicsCaptureApi::is_cursor_settings_supported().unwrap_or(false) {
+            CursorCaptureSettings::WithoutCursor
+        } else {
+            CursorCaptureSettings::Default
+        };
+        let border_settings = if GraphicsCaptureApi::is_border_settings_supported().unwrap_or(false) {
+            DrawBorderSettings::WithoutBorder
+        } else {
+            DrawBorderSettings::Default
+        };
         let settings = Settings::new(
             monitor,
-            CursorCaptureSettings::WithoutCursor,
-            DrawBorderSettings::WithoutBorder,
+            cursor_settings,
+            border_settings,
             SecondaryWindowSettings::Default,
             MinimumUpdateIntervalSettings::Default,
             DirtyRegionSettings::Default,

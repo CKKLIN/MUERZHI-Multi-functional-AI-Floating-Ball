@@ -154,7 +154,7 @@ pub mod imp {
         VideoSettingsSubType,
     };
     use windows_capture::frame::Frame;
-    use windows_capture::graphics_capture_api::InternalCaptureControl;
+    use windows_capture::graphics_capture_api::{GraphicsCaptureApi, InternalCaptureControl};
     use windows_capture::monitor::Monitor;
     use windows_capture::settings::{
         ColorFormat, CursorCaptureSettings, DirtyRegionSettings, DrawBorderSettings,
@@ -352,20 +352,35 @@ pub mod imp {
             buf: Mutex::new(None),
             recycle: Mutex::new(Vec::new()),
         });
-        let settings = Settings::new(
-            monitor,
+        let cursor_settings = if GraphicsCaptureApi::is_cursor_settings_supported().unwrap_or(false) {
             if cfg.with_cursor {
                 CursorCaptureSettings::WithCursor
             } else {
                 CursorCaptureSettings::WithoutCursor
-            },
-            // 关闭 WGC 自带的黄色捕获边框（否则录出来的视频四周有系统描边）
-            DrawBorderSettings::WithoutBorder,
-            SecondaryWindowSettings::Default,
-            // fps 上限交给系统侧节流（不是硬保证，屏幕不动时本来就没有新帧）
+            }
+        } else {
+            CursorCaptureSettings::Default
+        };
+        // 关闭 WGC 自带的黄色捕获边框（Windows 11+ 支持；Windows 10 不支持此属性且本身无边框，需降级 Default 避免报错）
+        let border_settings = if GraphicsCaptureApi::is_border_settings_supported().unwrap_or(false) {
+            DrawBorderSettings::WithoutBorder
+        } else {
+            DrawBorderSettings::Default
+        };
+        // fps 上限交给系统侧节流（Windows 11+ 支持 MinUpdateInterval；不支持时降级 Default，由内部 pacer 线程负责定速补帧）
+        let interval_settings = if GraphicsCaptureApi::is_minimum_update_interval_supported().unwrap_or(false) {
             MinimumUpdateIntervalSettings::Custom(std::time::Duration::from_millis(
                 1000 / cfg.fps.max(1) as u64,
-            )),
+            ))
+        } else {
+            MinimumUpdateIntervalSettings::Default
+        };
+        let settings = Settings::new(
+            monitor,
+            cursor_settings,
+            border_settings,
+            SecondaryWindowSettings::Default,
+            interval_settings,
             DirtyRegionSettings::Default,
             ColorFormat::Bgra8,
             (cfg.clone(), shared.clone()),

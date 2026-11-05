@@ -748,8 +748,10 @@ watch(() => isConverting.value, (val) => {
 /* 设置标签页 */
 .settings-tab {
   flex: 1;
-  overflow-y: auto;
-  padding: 16px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .idle-view {

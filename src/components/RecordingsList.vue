@@ -83,6 +83,7 @@ function handleOpenFolder(filePath: string) {
 
 .recordings-rows {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 0 8px 8px;
 }

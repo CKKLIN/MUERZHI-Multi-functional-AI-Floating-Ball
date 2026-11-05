@@ -165,12 +165,15 @@ function openLogDir() {
   display: flex;
   flex-direction: column;
   height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .settings-body {
   overflow-y: auto;
   flex: 1;
-  padding: 20px 50px 24px;
+  min-height: 0;
+  padding: 16px 20px 24px;
 }
 
 /* 卡片内的小节标题（输出/视频/音频/...）：壳层 .settings-section 已是全局斜切卡片 */
