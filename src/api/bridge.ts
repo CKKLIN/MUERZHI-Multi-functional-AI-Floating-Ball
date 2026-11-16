@@ -380,6 +380,8 @@ const muerzhiAPI = {
   agentUninstallHooks: () => cmd<null>('agent_uninstall_hooks'),
   agentInstallAntigravityHooks: () => cmd<null>('agent_install_antigravity_hooks'),
   agentUninstallAntigravityHooks: () => cmd<null>('agent_uninstall_antigravity_hooks'),
+  agentInstallZcodeHooks: () => cmd<null>('agent_install_zcode_hooks'),
+  agentUninstallZcodeHooks: () => cmd<null>('agent_uninstall_zcode_hooks'),
   agentResolvePermission: (behavior: string) => cmd<void>('agent_resolve_permission', { behavior }),
   agentDismissQuestion: () => cmd<void>('agent_dismiss_question'),
   agentSubmitQuestion: (sessionId: string, answers: Record<string, unknown>) => cmd<void>('agent_submit_question', { sessionId, answers }),
@@ -418,6 +420,7 @@ const muerzhiAPI = {
     on('todo-focus-item', callback),
   onTodoDataChanged: (callback: (items: unknown[]) => void) =>
     on('todo-data-changed', callback),
+  todoGetPendingFocus: () => cmd<string | null>('todo_get_pending_focus'),
   showTodoWindow: () => cmd<void>('todo_show_window'),
   closeTodoWindow: () => cmd<void>('todo_close_window'),
   todoWindowVisible: () => cmd<boolean>('todo_window_visible'),

@@ -1,15 +1,14 @@
-// AI 悬浮岛 — 移植 electron/main/ai-island.ts
-// 200×44 贴顶居中胶囊：AI 状态点 + 权限审批卡 + AskUserQuestion 提问卡（逐题推进）。
-// 穿透：**窗口尺寸严格等于内容尺寸**，不存在透明死区（见下方「为什么没有透明缓冲带」）；
-// 拖拽只允许水平移动（y 固定），用户拖过后 resize 不再拉回居中。
+// AI 悬浮岛 — 移植自 electron/main/ai-island.ts
+// 贴顶居中动态岛：固定透明画布 + CSS 居中丝滑形变 + 严格内容区命中穿透。
 //
-// 为什么没有透明缓冲带（Electron 版有 +20 右侧缓冲与 +28 底部气泡带）：
-// Electron 版那两条缓冲是给 tooltip 气泡留的渲染空间，而 Tauri 版 `ai-island.html`
-// 完全没有 tooltip（页面里 0 处 data-tip/tooltip）。留着它们等于凭空在屏幕上放一块
-// 「看不见但吃点击」的窗口 —— 可见岛下方 28px、右侧 20px 全靠 120ms 光标轮询调
-// set_ignore_cursor_events 才穿透，轮询一旦没跑（窗口重建竞态、孤儿窗）整块区域
-// 就永久吞掉下方应用的点击（实测反馈「AI 悬浮岛底下的区域没办法点击」）。
-// 现在窗口 == 可见内容，指针在任何位置都不需要「猜」，穿透轮询退化为兜底。
+// 为什么改用固定透明画布（同 floating_ball.rs RING_SIZE 方案）：
+// WebView2 在原生透明窗口同时改变坐标和尺寸（如 88→380 左移+加宽展开）时，
+// wry WM_SIZE 先重绑子窗口到新左上角 (0, 0)，而跨进程 Chromium 内核需要约 1 帧才
+// 完成新视口重排，导致旧胶囊贴着新窗口左上角闪出 1 帧残影。
+// 固定画布（CANVAS_W × CANVAS_H）让展开/收起/横条切回全程零 HWND resize，所有形变
+// 仅靠内部 .island 的纯 CSS 居中过渡完成；同时通过 32ms 自适应光标轮询 + mousemove /
+// mouseleave 即时上报将交互严格限制在真实可见 .island 矩形（AiIslandState.content），
+// 透明空白区始终穿透。
 //
 // ⚠️ 窗口创建命令必须是 async（同步命令内 build() 与主线程死锁，webview 静默空白），
 //    详见 region.rs::start_region_select 注释。
@@ -20,13 +19,17 @@
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use tauri::{
-    AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder,
-};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
-const ISLAND_W: f64 = 200.0;
-const ISLAND_H: f64 = 44.0;
-const POLL_MS: u64 = 120;
+const CANVAS_W: f64 = 560.0;
+const CANVAS_H: f64 = 480.0;
+const ISLAND_W: f64 = 88.0;
+const ISLAND_H: f64 = 38.0;
+const FLAT_H: f64 = 16.0;
+const CAPSULE_TOP_GAP: f64 = 4.0;
+const ACTIVE_POLL_MS: u64 = 16;
+const FAR_POLL_MS: u64 = 120;
+const FAR_MARGIN_PHYS: f64 = 200.0;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Rect {
@@ -37,8 +40,12 @@ pub struct Rect {
 }
 
 pub struct AiIslandState {
-    /// 内容矩形（屏幕坐标，物理像素）：光标在内 → 可交互，否则穿透
+    /// 可见岛矩形（屏幕坐标，物理像素）：光标在内 → 可交互，否则穿透
     pub content: Mutex<Option<Rect>>,
+    /// 用户确认的水平中心锚点（物理像素，拖过后固定，仅在极端贴边展开时临时夹紧窗口）
+    pub anchor_cx: Mutex<Option<f64>>,
+    /// 最近一次页面上报的逻辑内容宽高（CSS px，拖拽中维持精确 content 命中矩形）
+    pub last_content_size: Mutex<(f64, f64)>,
     /// 拖拽基准（绝对增量 + setBounds，仿悬浮球）
     pub drag: Mutex<Option<(f64, f64, f64, f64)>>, // winX, winY, scrX, scrY
     /// 用户拖过后锁定位置（resize 不再拉回居中）
@@ -53,6 +60,8 @@ impl AiIslandState {
         static S: OnceLock<AiIslandState> = std::sync::OnceLock::new();
         S.get_or_init(|| AiIslandState {
             content: Mutex::new(None),
+            anchor_cx: Mutex::new(None),
+            last_content_size: Mutex::new((ISLAND_W, ISLAND_H)),
             drag: Mutex::new(None),
             user_moved: AtomicBool::new(false),
             mouse_ignored: AtomicBool::new(false),
@@ -85,60 +94,8 @@ static ISLAND_DESTROY_PENDING: AtomicBool = AtomicBool::new(false);
 /// hide_ai_island）本身跑在主线程上 —— 用锁会与 build 互等成死锁。
 static ISLAND_BUILDING: AtomicBool = AtomicBool::new(false);
 
-/// 主屏缩放比（岛尚未定位时的初始 builder 换算用）
-fn display_scale(app: &AppHandle) -> f64 {
-    app.primary_monitor()
-        .ok()
-        .flatten()
-        .map(|m| m.scale_factor())
-        .unwrap_or(1.0)
-}
-
-/// 岛所在显示器的缩放比：窗口几何与页面上报尺寸的换算必须用**同一块屏**的 scale。
-/// 取主屏会让拖到异缩放副屏的岛算错尺寸（100% 主屏 + 150% 副屏时窗口被撑到 1.5 倍，
-/// CSS 视口装不下内容被裁；反向则缩水）。getDisplayMatching 同样口径。
-fn window_scale(app: &AppHandle, win: &tauri::WebviewWindow) -> f64 {
-    let (x, y, w, h) = (
-        win.outer_position().map(|p| p.x).unwrap_or(0),
-        win.outer_position().map(|p| p.y).unwrap_or(0),
-        win.outer_size().map(|s| s.width as i32).unwrap_or(0),
-        win.outer_size().map(|s| s.height as i32).unwrap_or(0),
-    );
-    let cx = x + w / 2;
-    let cy = y + h / 2;
-    if let Ok(monitors) = app.available_monitors() {
-        for m in monitors {
-            let (mx, my, mw, mh) = (
-                m.position().x,
-                m.position().y,
-                m.size().width as i32,
-                m.size().height as i32,
-            );
-            if cx >= mx && cx < mx + mw && cy >= my && cy < my + mh {
-                return m.scale_factor();
-            }
-        }
-    }
-    display_scale(app)
-}
-
-/// 窗口所在显示器的物理 bounds（对齐 getDisplayMatching）
-fn display_bounds_of(app: &AppHandle, x: i32, y: i32, w: i32, h: i32) -> (i32, i32, i32, i32) {
-    let cx = x + w / 2;
-    let cy = y + h / 2;
-    if let Ok(monitors) = app.available_monitors() {
-        for m in monitors {
-            let (mx, my, mw, mh) = (
-                m.position().x,
-                m.position().y,
-                m.size().width as i32,
-                m.size().height as i32,
-            );
-            if cx >= mx && cx < mx + mw && cy >= my && cy < my + mh {
-                return (mx, my, mw, mh);
-            }
-        }
-    }
+/// 主屏几何 + 缩放比（物理像素）
+fn primary_bounds_and_scale(app: &AppHandle) -> (i32, i32, i32, i32, f64) {
     app.primary_monitor()
         .ok()
         .flatten()
@@ -148,9 +105,56 @@ fn display_bounds_of(app: &AppHandle, x: i32, y: i32, w: i32, h: i32) -> (i32, i
                 m.position().y,
                 m.size().width as i32,
                 m.size().height as i32,
+                m.scale_factor(),
             )
         })
-        .unwrap_or((0, 0, 1920, 1080))
+        .unwrap_or((0, 0, 1920, 1080, 1.0))
+}
+
+/// 查找包含点 (cx, cy) 的显示器物理 bounds 与缩放比；若垂直错开仅 X 命中则兜底匹配水平所属屏
+fn monitor_bounds_and_scale_at(app: &AppHandle, cx: i32, cy: i32) -> (i32, i32, i32, i32, f64) {
+    if let Ok(Some(m)) = app.monitor_from_point(cx as f64, cy as f64) {
+        let (mx, my, mw, mh) = (
+            m.position().x,
+            m.position().y,
+            m.size().width as i32,
+            m.size().height as i32,
+        );
+        if cx >= mx && cx < mx + mw && cy >= my && cy < my + mh {
+            return (mx, my, mw, mh, m.scale_factor());
+        }
+    }
+    if let Ok(monitors) = app.available_monitors() {
+        let mut x_fallback = None;
+        for m in monitors {
+            let (mx, my, mw, mh) = (
+                m.position().x,
+                m.position().y,
+                m.size().width as i32,
+                m.size().height as i32,
+            );
+            let scale = m.scale_factor();
+            if cx >= mx && cx < mx + mw && cy >= my && cy < my + mh {
+                return (mx, my, mw, mh, scale);
+            }
+            if x_fallback.is_none() && cx >= mx && cx < mx + mw {
+                x_fallback = Some((mx, my, mw, mh, scale));
+            }
+        }
+        if let Some(hit) = x_fallback {
+            return hit;
+        }
+    }
+    primary_bounds_and_scale(app)
+}
+
+/// 岛所在显示器的缩放比：窗口几何与页面上报尺寸的换算必须用**同一块屏**的 scale。
+fn window_scale(app: &AppHandle, win: &tauri::WebviewWindow) -> f64 {
+    let x = win.outer_position().map(|p| p.x).unwrap_or(0);
+    let y = win.outer_position().map(|p| p.y).unwrap_or(0);
+    let w = win.outer_size().map(|s| s.width as i32).unwrap_or(0);
+    let h = win.outer_size().map(|s| s.height as i32).unwrap_or(0);
+    monitor_bounds_and_scale_at(app, x + w / 2, y + h / 2).4
 }
 
 /// 窗口几何统一走**物理像素**（win.outer_position/outer_size 与 set_position(Physical) 同域，
@@ -177,8 +181,52 @@ fn set_bounds_phys(
     let pw = (w.round() as i32).max(1);
     let ph = (h.round() as i32).max(1);
     let _ = app; // 与调用方签名一致；物理量纲下不再需要主屏 scale
-    let _ = win.set_position(PhysicalPosition::new(px, py));
-    let _ = win.set_size(PhysicalSize::new(pw as u32, ph as u32));
+
+    let pos_same = win
+        .outer_position()
+        .map(|p| p.x == px && p.y == py)
+        .unwrap_or(false);
+    let size_same = win
+        .outer_size()
+        .map(|s| s.width == pw as u32 && s.height == ph as u32)
+        .unwrap_or(false);
+    if pos_same && size_same {
+        return (px, py, pw, ph);
+    }
+
+    // Windows 必须单次 SetWindowPos 原子更新位置与宽高：
+    // 先 set_position 再 set_size 会把旧宽度的窗口先移到新中心 X 再缩窄，造成内容横跳闪动。
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+        };
+        if let Ok(hwnd) = win.hwnd() {
+            let hwnd = hwnd.0 as *mut std::ffi::c_void;
+            if !hwnd.is_null() {
+                let mut flags = SWP_ASYNCWINDOWPOS | SWP_NOZORDER | SWP_NOACTIVATE;
+                if pos_same {
+                    flags |= SWP_NOMOVE;
+                }
+                if size_same {
+                    flags |= SWP_NOSIZE;
+                }
+                let ok = unsafe {
+                    SetWindowPos(hwnd, std::ptr::null_mut(), px, py, pw, ph, flags) != 0
+                };
+                if ok {
+                    return (px, py, pw, ph);
+                }
+            }
+        }
+    }
+
+    if !pos_same {
+        let _ = win.set_position(tauri::PhysicalPosition::new(px, py));
+    }
+    if !size_same {
+        let _ = win.set_size(tauri::PhysicalSize::new(pw as u32, ph as u32));
+    }
     (px, py, pw, ph)
 }
 
@@ -191,7 +239,29 @@ fn get_position(win: &tauri::WebviewWindow) -> (f64, f64) {
 fn get_size(win: &tauri::WebviewWindow) -> (f64, f64) {
     win.outer_size()
         .map(|s| (s.width as f64, s.height as f64))
-        .unwrap_or((ISLAND_W, ISLAND_H))
+        .unwrap_or((CANVAS_W, CANVAS_H))
+}
+
+/// 计算画布内居中可见岛的物理矩形（y 偏移在平铺横条态为 0，否则 +4px CSS）
+fn centered_content_rect(
+    app: &AppHandle,
+    win_x: f64,
+    win_y: f64,
+    win_w: f64,
+    cw_log: f64,
+    ch_log: f64,
+    scale: f64,
+) -> Rect {
+    let flat = crate::modules::commands::app_settings::ai_island_flat(app);
+    let y_off = if flat { 0.0 } else { CAPSULE_TOP_GAP * scale };
+    let cw_phys = cw_log * scale;
+    let ch_phys = ch_log * scale;
+    Rect {
+        x: win_x + (win_w - cw_phys) / 2.0,
+        y: win_y + y_off,
+        width: cw_phys,
+        height: ch_phys,
+    }
 }
 
 /// 更新内容矩形并立即按光标位置对一次穿透态（对齐 updateAiIslandContentScreen）
@@ -200,30 +270,80 @@ fn update_content_and_poll(app: &AppHandle, rect: Rect) {
     poll_pass_through(app);
 }
 
-/// 几何判定：光标在内容矩形内 → 可交互；否则穿透（对齐 pollAiIslandPassThrough）
+/// 几何判定：光标在内容矩形内或拖拽中 → 可交互；否则穿透
 ///
 /// 量纲：cursor_position() 与 content 都是**物理像素**，直接比较。
 fn poll_pass_through(app: &AppHandle) {
-    let Some(win) = island_window(app) else {
-        return;
-    };
+    if let Some(win) = island_window(app) {
+        let _ = poll_tick(app, &win);
+    }
+}
+
+/// 实时查询主键（考虑系统左右手交换设置）是否仍处于物理按下状态，
+/// 防止 WebView2 丢弃 pointerup/pointercancel 时 `state.drag` 永久卡死并锁死全画布穿透。
+fn primary_mouse_button_down() -> bool {
+    #[cfg(windows)]
+    unsafe {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+            GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON,
+        };
+        use windows_sys::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_SWAPBUTTON};
+        let vk = if GetSystemMetrics(SM_SWAPBUTTON) != 0 {
+            VK_RBUTTON
+        } else {
+            VK_LBUTTON
+        };
+        (GetAsyncKeyState(vk as i32) as u16 & 0x8000) != 0
+    }
+    #[cfg(not(windows))]
+    {
+        true
+    }
+}
+
+/// 单拍完成穿透状态更新与下一拍间隔计算（同一拍内复用光标与缩放信息，避免重复枚举显示器）
+fn poll_tick(app: &AppHandle, win: &tauri::WebviewWindow) -> u64 {
     let state = AiIslandState::global();
-    let content = match *state.content.lock().unwrap() {
-        Some(c) => c,
-        None => return,
+    if state.drag.lock().unwrap().is_some() {
+        if primary_mouse_button_down() {
+            if state.mouse_ignored.load(Ordering::SeqCst) {
+                state.mouse_ignored.store(false, Ordering::SeqCst);
+                let _ = win.set_ignore_cursor_events(false);
+            }
+            return ACTIVE_POLL_MS;
+        }
+        *state.drag.lock().unwrap() = None;
+    }
+    let Some(content) = *state.content.lock().unwrap() else {
+        return FAR_POLL_MS;
     };
     let Ok(cursor) = win.cursor_position() else {
-        return;
+        return FAR_POLL_MS;
     };
-    let inside = cursor.x as f64 >= content.x
-        && cursor.x as f64 <= content.x + content.width
-        && cursor.y as f64 >= content.y
-        && cursor.y as f64 <= content.y + content.height;
+    let scale = win
+        .scale_factor()
+        .unwrap_or_else(|_| window_scale(app, win));
+    let cx = cursor.x as f64;
+    let cy = cursor.y as f64;
+    let pad = 2.0 * scale;
+    let inside = cx >= content.x - pad
+        && cx <= content.x + content.width + pad
+        && cy >= content.y - pad
+        && cy <= content.y + content.height + pad;
     let ignore = !inside;
     if ignore != state.mouse_ignored.load(Ordering::SeqCst) {
         state.mouse_ignored.store(ignore, Ordering::SeqCst);
         let _ = win.set_ignore_cursor_events(ignore);
     }
+    // 展开列表或卡片期间始终高频响应点击/移出
+    if content.height > (ISLAND_H + 6.0) * scale {
+        return ACTIVE_POLL_MS;
+    }
+    let (wx, wy) = get_position(win);
+    let (ww, wh) = get_size(win);
+    let margin = FAR_MARGIN_PHYS * scale;
+    let near = cx >= wx - margin && cx <= wx + ww + margin && cy >= wy - margin && cy <= wy + wh + margin;
+    if near { ACTIVE_POLL_MS } else { FAR_POLL_MS }
 }
 
 fn start_polling(app: &AppHandle) {
@@ -260,11 +380,11 @@ fn spawn_poll_task(app: AppHandle) {
             if !AiIslandState::global().poll_running.load(Ordering::SeqCst) {
                 break;
             }
-            if island_window(&app).is_none() {
+            let Some(win) = island_window(&app) else {
                 break;
-            }
-            poll_pass_through(&app);
-            tokio::time::sleep(std::time::Duration::from_millis(POLL_MS)).await;
+            };
+            let wait_ms = poll_tick(&app, &win);
+            tokio::time::sleep(std::time::Duration::from_millis(wait_ms)).await;
         }
         AiIslandState::global()
             .poll_running
@@ -280,16 +400,30 @@ fn stop_polling() {
 
 // ===== 窗口生命周期 =====
 
-/// 岛位置持久化文件（左上角，**物理像素**；卡片的懒创建重建靠它恢复用户拖放的位置）
+/// 岛位置持久化文件（水平中心 cx 与顶边 y，**物理像素**；与 CANVAS_W 解耦）
 const POS_FILE: &str = "ai-island-pos.json";
 
-/// 保存岛当前位置（窗口左上，物理像素）。窗口不存在时静默跳过。
+/// 保存岛当前位置（仅用户拖过后保存，避免默认居中的岛误锁定到当前屏幕像素坐标）
 fn save_island_position(app: &AppHandle) {
+    let state = AiIslandState::global();
+    if !state.user_moved.load(Ordering::SeqCst) {
+        return;
+    }
     let Some(win) = island_window(app) else {
         return;
     };
-    let (x, y) = get_position(&win);
-    if let Ok(s) = serde_json::to_string(&serde_json::json!({ "x": x.round(), "y": y.round() })) {
+    let (wx, wy) = get_position(&win);
+    let (ww, _) = get_size(&win);
+    let cx = state
+        .anchor_cx
+        .lock()
+        .unwrap()
+        .unwrap_or_else(|| wx + ww / 2.0);
+    if let Ok(s) = serde_json::to_string(&serde_json::json!({
+        "cx": cx.round(),
+        "y": wy.round(),
+        "v": 2
+    })) {
         let path = crate::modules::settings::settings_file(app, POS_FILE);
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -298,22 +432,34 @@ fn save_island_position(app: &AppHandle) {
     }
 }
 
-/// 读取持久化的岛位置（物理像素）。保存的坐标必须落在某块显示器内才有效
-/// （副屏拔掉后旧坐标会指到虚空中），否则返回 None 走主屏居中兜底。
+/// 读取持久化的岛水平中心与顶边（物理像素；兼容旧版仅存左上 x 的格式）
+///
+/// 返回的 `(cx, by)` 中的 `by` 已对齐到所在显示器顶边（消除旧版 `y = by + 4`
+/// 叠加上 CSS `padding-top: 4px` 造成双倍顶距）。若坐标落在所有显示器之外则返回 None。
 fn load_island_position(app: &AppHandle) -> Option<(f64, f64)> {
     let path = crate::modules::settings::settings_file(app, POS_FILE);
     let text = std::fs::read_to_string(path).ok()?;
     let v: serde_json::Value = serde_json::from_str(&text).ok()?;
-    let x = v.get("x")?.as_f64()?;
     let y = v.get("y")?.as_f64()?;
+    let (raw_cx, is_legacy) = if let Some(cx) = v.get("cx").and_then(|n| n.as_f64()) {
+        (cx, false)
+    } else if let Some(x) = v.get("x").and_then(|n| n.as_f64()) {
+        (x, true)
+    } else {
+        return None;
+    };
     let monitors = app.available_monitors().ok()?;
     for m in monitors {
         let (mx, my) = (m.position().x as f64, m.position().y as f64);
         let (mw, mh) = (m.size().width as f64, m.size().height as f64);
-        // 窗口左上落在显示器 bounds 内（放宽一个窗口高度的余量：贴底/贴右缘时
-        // 左上可能恰在边界外侧一点点），且不是完全在屏外
-        if x >= mx - 40.0 && x <= mx + mw && y >= my - 40.0 && y <= my + mh {
-            return Some((x, y));
+        let scale = m.scale_factor();
+        let cx = if is_legacy {
+            raw_cx + ISLAND_W * scale / 2.0
+        } else {
+            raw_cx
+        };
+        if cx >= mx - 40.0 && cx <= mx + mw + 40.0 && y >= my - 40.0 && y <= my + mh {
+            return Some((cx, my));
         }
     }
     None
@@ -375,40 +521,46 @@ fn show_island_inner(app: &AppHandle) {
         });
         return;
     }
-    let scale = display_scale(app);
-    // 位置：优先用户拖放过的持久化位置（物理像素 → 回逻辑给 builder），
-    // 无保存（首次使用）才主屏顶居中兜底
     let saved = load_island_position(app);
-    // 顺带记录「有没有保存位置」：下方建窗成功后 user_moved 复用它，
-    // 原实现又 load_island_position 读了一遍盘
     let had_saved = saved.is_some();
-    let (x_phys, y_phys) = match saved {
-        Some((px, py)) => (px, py),
+    let (bx, by, bw, scale, anchor_cx) = match saved {
+        Some((cx, sy)) => {
+            let (mx, my, mw, _, ms) =
+                monitor_bounds_and_scale_at(app, cx.round() as i32, sy.round() as i32);
+            (mx, my, mw, ms, Some(cx))
+        }
         None => {
-            let (dx, dy, dw) = match app.primary_monitor() {
-                Ok(Some(m)) => (m.position().x, m.position().y, m.size().width as i32),
-                _ => (0, 0, 1920),
-            };
-            (
-                dx as f64 + (dw as f64 - ISLAND_W * scale) / 2.0,
-                dy as f64 + 4.0,
-            )
+            let (mx, my, mw, _, ms) = primary_bounds_and_scale(app);
+            (mx, my, mw, ms, None)
         }
     };
-    // 持久化过位置 = 用户已经定制过摆放：置 user_moved 让 resize 不再把它拉回居中。
-    // （Ok 分支的 store 用同一判据兜底，防此处置位后中途被其他路径改写）
-    if saved.is_some() {
-        AiIslandState::global()
-            .user_moved
-            .store(true, Ordering::SeqCst);
-    }
+    let canvas_w_phys = (CANVAS_W * scale).round();
+    let canvas_h_phys = (CANVAS_H * scale).round();
+    let cx = match anchor_cx {
+        Some(c) => {
+            let min_cx = bx as f64 + ISLAND_W * scale / 2.0;
+            let max_cx = (bx as f64 + bw as f64 - ISLAND_W * scale / 2.0).max(min_cx);
+            c.clamp(min_cx, max_cx)
+        }
+        None => bx as f64 + bw as f64 / 2.0,
+    };
+    let x_phys = (cx - canvas_w_phys / 2.0).round();
+    let y_phys = by as f64;
+    let state = AiIslandState::global();
+    state.user_moved.store(had_saved, Ordering::SeqCst);
+    *state.anchor_cx.lock().unwrap() = if had_saved { Some(cx) } else { None };
+    *state.drag.lock().unwrap() = None;
+    let flat = crate::modules::commands::app_settings::ai_island_flat(app);
+    let init_h_log = if flat { FLAT_H } else { ISLAND_H };
+    *state.last_content_size.lock().unwrap() = (ISLAND_W, init_h_log);
+
     let x_logical = x_phys / scale;
     let y_logical = y_phys / scale;
     let url = WebviewUrl::App("windows/ai-island.html".into());
     match WebviewWindowBuilder::new(app, "ai-island", url)
         .title("AI")
         .position(x_logical.round(), y_logical.round())
-        .inner_size(ISLAND_W, ISLAND_H)
+        .inner_size(CANVAS_W, CANVAS_H)
         .decorations(false)
         .transparent(true)
         // 必须非可缩放：Windows 上「透明 + resizable」会外扩不可见命中区且穿透不可靠
@@ -422,35 +574,46 @@ fn show_island_inner(app: &AppHandle) {
         .build()
     {
         Ok(win) => {
-            // destroy 完成确认：hide_island 置位、这里在窗口真正销毁时清位，
-            // show_island 以此判断旧 HWND 是否已从桌面消失
-            win.on_window_event(|event| {
-                if let tauri::WindowEvent::Destroyed = event {
+            set_bounds_phys(app, &win, x_phys, y_phys, canvas_w_phys, canvas_h_phys);
+            // destroy 完成确认 + 失焦收起会话列表 + DPI 变更重对齐画布
+            let win_for_event = win.clone();
+            let app_for_event = app.clone();
+            win.on_window_event(move |event| match event {
+                tauri::WindowEvent::Destroyed => {
                     ISLAND_DESTROY_PENDING.store(false, Ordering::SeqCst);
                 }
+                tauri::WindowEvent::Focused(false) => {
+                    let _ = win_for_event
+                        .eval("if (window.collapseSessions) window.collapseSessions(); void 0;");
+                }
+                tauri::WindowEvent::ScaleFactorChanged { .. } => {
+                    let (cw, ch) = *AiIslandState::global().last_content_size.lock().unwrap();
+                    resize_ai_island(app_for_event.clone(), cw, Some(ch));
+                }
+                _ => {}
             });
-            // 初始内容矩形：物理像素占位（首帧 resize 会用真实内容尺寸覆盖）
-            *AiIslandState::global().content.lock().unwrap() = Some(Rect {
-                x: x_phys.round(),
-                y: y_phys.round(),
-                width: ISLAND_W * scale,
-                height: ISLAND_H * scale,
-            });
-            AiIslandState::global().user_moved.store(had_saved, Ordering::SeqCst);
-            let _ = win.set_ignore_cursor_events(false);
-            // 同步复位穿透状态：旧窗残留的 true 会让首轮 poll_pass_through 误判
-            // 「状态没变」而不纠正，透明区短暂吞点击
-            AiIslandState::global()
-                .mouse_ignored
-                .store(false, Ordering::SeqCst);
+            let init_rect = centered_content_rect(
+                app,
+                x_phys,
+                y_phys,
+                canvas_w_phys,
+                ISLAND_W,
+                init_h_log,
+                scale,
+            );
+            state.user_moved.store(had_saved, Ordering::SeqCst);
+            // 初始穿透态置 true（同 floating_ball 规范），防止建窗瞬间透明空白区吞点击；
+            // update_content_and_poll 会立刻按当前真实光标位置纠正
+            let _ = win.set_ignore_cursor_events(true);
+            state.mouse_ignored.store(true, Ordering::SeqCst);
+            update_content_and_poll(app, init_rect);
             start_polling(app);
             let _ = win.show();
-            // 横条态设置注入（HTML 读 window.__AI_FLAT__）
-            let flat = crate::modules::commands::app_settings::ai_island_flat(app);
+            // 横条态设置注入（HTML 读 window.__AI_FLAT__，启动时传 immediate=true 避免多余过渡）
             let _ = win.eval(&format!(
-                "window.__AI_FLAT__ = {flat}; if (window.setFlat) setFlat({flat}); void 0;"
+                "window.__AI_FLAT__ = {flat}; if (window.setFlat) setFlat({flat}, true); void 0;"
             ));
-            log::info!("AI island shown");
+            log::info!("AI island shown (fixed canvas {CANVAS_W}x{CANVAS_H})");
         }
         Err(e) => log::error!("AI island failed: {e}"),
     }
@@ -473,6 +636,8 @@ pub fn hide_island(app: &AppHandle) {
             ISLAND_DESTROY_PENDING.store(false, Ordering::SeqCst);
         }
         *AiIslandState::global().content.lock().unwrap() = None;
+        *AiIslandState::global().anchor_cx.lock().unwrap() = None;
+        *AiIslandState::global().drag.lock().unwrap() = None;
         log::info!("AI island hidden");
     }
 }
@@ -489,13 +654,9 @@ pub fn hide_ai_island(app: AppHandle) {
     hide_island(&app);
 }
 
-/// 渲染层上报内容尺寸 → 三分支定位（对齐 resize-ai-island）
-///
-/// 量纲：contentWidth/Height 是页面 CSS **逻辑像素**；窗口几何一律**物理像素**。
-/// 入口 ×scale 换算，后续 set_bounds_phys/get_position/get_size 全程物理。
-///
-/// 窗口宽高 = 内容宽高（**不加任何透明缓冲**）：加了缓冲就在可见岛外围留出透明带，
-/// 透明带完全靠穿透轮询兜着，轮询一断就吃点击（见文件头注释）。
+/// 页面上报内容尺寸 → 仅更新可见岛命中矩形，外层透明画布尺寸恒定不变（零 WebView2 重排闪烁）。
+/// 仅当用户曾把岛拖到屏幕最左/最右贴边处且展开卡片超出屏界时，才用 `SWP_NOSIZE` 水平内移画布，
+/// 避免卡片被显示器裁切，收起后仍回锚点 `anchor_cx`。
 #[tauri::command]
 pub fn resize_ai_island(app: AppHandle, contentWidth: f64, contentHeight: Option<f64>) {
     let Some(win) = island_window(&app) else {
@@ -504,73 +665,43 @@ pub fn resize_ai_island(app: AppHandle, contentWidth: f64, contentHeight: Option
     if !contentWidth.is_finite() {
         return;
     }
-    let h = match contentHeight {
-        Some(v) if v.is_finite() => v,
+    let ch = match contentHeight {
+        Some(v) if v.is_finite() => v.clamp(12.0, CANVAS_H - CAPSULE_TOP_GAP),
         _ => ISLAND_H,
     };
-    if !h.is_finite() {
-        return;
-    }
-    // CSS 逻辑 → 物理（窗口与 content 矩形从此都是物理像素）。
-    // scale 取**岛所在屏**的缩放比：主屏 100% + 副屏 150% 时，用主屏换算会让窗口
-    // 在副屏上尺寸错 1.5 倍（CSS 视口装不下内容被硬裁）。
-    let scale = window_scale(&app, &win);
-    let content_w_phys = contentWidth * scale;
-    let h_phys = h * scale;
+    let cw = contentWidth.clamp(40.0, CANVAS_W);
+    let state = AiIslandState::global();
+    *state.last_content_size.lock().unwrap() = (cw, ch);
+
     let (wx, wy) = get_position(&win);
     let (ww, wh) = get_size(&win);
-    let flat = crate::modules::commands::app_settings::ai_island_flat(&app);
-    let state = AiIslandState::global();
+    let (bx, by, bw, _, scale) = monitor_bounds_and_scale_at(
+        &app,
+        (wx + ww / 2.0).round() as i32,
+        (wy + wh / 2.0).round() as i32,
+    );
+    let canvas_w_phys = (CANVAS_W * scale).round();
+    let canvas_h_phys = (CANVAS_H * scale).round();
+    let cw_phys = cw * scale;
 
-    if flat && !state.user_moved.load(Ordering::SeqCst) {
-        // 横条态（用户没拖过）：贴当前屏顶缘居中
-        //
-        // ⚠️ 必须以 user_moved 为先决条件：Agent 会话每次状态变化都 notify →
-        // applyState → resizeIsland，若 flat 无条件重定位，用户拖到非居中位置的岛
-        // 「过一会自动回到居中」（实测）。拖过则走下方保留位置分支，与普通态一致。
-        let (bx, by, bw, _) = display_bounds_of(&app, wx as i32, wy as i32, ww as i32, wh as i32);
-        let new_x = (bx as f64 + (bw as f64 - content_w_phys) / 2.0).round();
-        if !new_x.is_finite() {
-            return;
-        }
-        set_bounds_phys(&app, &win, new_x, by as f64, content_w_phys, h_phys);
-        update_content_and_poll(
-            &app,
-            Rect {
-                x: new_x,
-                y: by as f64,
-                width: content_w_phys,
-                height: h_phys,
-            },
-        );
-    } else if state.user_moved.load(Ordering::SeqCst) {
-        // 用户拖过（普通态/横条态同路径）：保留位置，只调宽高
-        set_bounds_phys(&app, &win, wx, wy, content_w_phys, h_phys);
-        update_content_and_poll(
-            &app,
-            Rect {
-                x: wx,
-                y: wy,
-                width: content_w_phys,
-                height: h_phys,
-            },
-        );
+    let cx = if state.user_moved.load(Ordering::SeqCst) {
+        let anchor = state
+            .anchor_cx
+            .lock()
+            .unwrap()
+            .unwrap_or_else(|| wx + ww / 2.0);
+        let min_cx = bx as f64 + cw_phys / 2.0;
+        let max_cx = (bx as f64 + bw as f64 - cw_phys / 2.0).max(min_cx);
+        anchor.clamp(min_cx, max_cx)
     } else {
-        // 未拖过（普通态）：主屏顶居中 + 4px 间隙
-        let (bx, by, bw, _) = display_bounds_of(&app, wx as i32, wy as i32, ww as i32, wh as i32);
-        let new_x = (bx as f64 + (bw as f64 - content_w_phys) / 2.0).round();
-        let new_y = by as f64 + 4.0;
-        set_bounds_phys(&app, &win, new_x, new_y, content_w_phys, h_phys);
-        update_content_and_poll(
-            &app,
-            Rect {
-                x: new_x,
-                y: new_y,
-                width: content_w_phys,
-                height: h_phys,
-            },
-        );
-    }
+        bx as f64 + bw as f64 / 2.0
+    };
+    let new_x = (cx - canvas_w_phys / 2.0).round();
+    let new_y = by as f64;
+    set_bounds_phys(&app, &win, new_x, new_y, canvas_w_phys, canvas_h_phys);
+
+    let rect = centered_content_rect(&app, new_x, new_y, canvas_w_phys, cw, ch, scale);
+    update_content_and_poll(&app, rect);
 }
 
 /// AI 岛拖动：只水平移动，y 固定（对齐 ai-island-drag-*）
@@ -618,6 +749,10 @@ fn start_drag_follow(app: &AppHandle) {
             else {
                 break;
             };
+            if !primary_mouse_button_down() {
+                *AiIslandState::global().drag.lock().unwrap() = None;
+                break;
+            }
             let Some(win) = island_window(&app) else {
                 break;
             };
@@ -631,16 +766,11 @@ fn start_drag_follow(app: &AppHandle) {
             }
             let (ww, wh) = get_size(&win);
             set_bounds_phys(&app, &win, nx, win_y, ww, wh);
-            // 窗口尺寸恒等于内容尺寸（无透明缓冲），内容矩形直接取整窗
-            update_content_and_poll(
-                &app,
-                Rect {
-                    x: nx,
-                    y: win_y,
-                    width: ww,
-                    height: wh,
-                },
-            );
+            let state = AiIslandState::global();
+            let scale = window_scale(&app, &win);
+            let (cw_log, ch_log) = *state.last_content_size.lock().unwrap();
+            let rect = centered_content_rect(&app, nx, win_y, ww, cw_log, ch_log, scale);
+            update_content_and_poll(&app, rect);
             tokio::time::sleep(std::time::Duration::from_millis(16)).await;
         }
         FOLLOW_RUNNING.store(false, Ordering::SeqCst);
@@ -649,15 +779,41 @@ fn start_drag_follow(app: &AppHandle) {
 
 #[tauri::command]
 pub fn ai_island_drag_end(app: AppHandle) {
-    // 保存拖后位置：卡片懒创建（notify_card_change）重建岛时按保存位置恢复，
-    // 否则审批卡永远回主屏中间（实测）
+    let state = AiIslandState::global();
+    *state.drag.lock().unwrap() = None;
+    state.user_moved.store(true, Ordering::SeqCst);
+    if let Some(win) = island_window(&app) {
+        let (wx, wy) = get_position(&win);
+        let (ww, wh) = get_size(&win);
+        let (bx, by, bw, _, scale) = monitor_bounds_and_scale_at(
+            &app,
+            (wx + ww / 2.0).round() as i32,
+            (wy + wh / 2.0).round() as i32,
+        );
+        let canvas_w_phys = (CANVAS_W * scale).round();
+        let canvas_h_phys = (CANVAS_H * scale).round();
+        let (cw_log, ch_log) = *state.last_content_size.lock().unwrap();
+        let cw_phys = cw_log * scale;
+        let min_cx = bx as f64 + cw_phys / 2.0;
+        let max_cx = (bx as f64 + bw as f64 - cw_phys / 2.0).max(min_cx);
+        let cx = (wx + ww / 2.0).clamp(min_cx, max_cx);
+        *state.anchor_cx.lock().unwrap() = Some(cx);
+        let new_x = (cx - canvas_w_phys / 2.0).round();
+        let new_y = by as f64;
+        set_bounds_phys(&app, &win, new_x, new_y, canvas_w_phys, canvas_h_phys);
+        let rect = centered_content_rect(&app, new_x, new_y, canvas_w_phys, cw_log, ch_log, scale);
+        update_content_and_poll(&app, rect);
+    }
+    // 保存拖后水平中心锚点：卡片懒创建（notify_card_change）重建岛时恢复，
+    // 并在最后存盘，确保写入的是边界夹紧后的最终位置
     save_island_position(&app);
-    *AiIslandState::global().drag.lock().unwrap() = None;
-    // 拖过就是「用户已移动」，与 flat 与否无关：flat 态的 resize 居中分支同样要被
-    // user_moved 短路（此前只在非 flat 置位 → flat 岛拖完一次状态广播就回居中，实测）
-    AiIslandState::global()
-        .user_moved
-        .store(true, Ordering::SeqCst);
+}
+
+#[tauri::command]
+pub fn ai_island_drag_cancel(app: AppHandle) {
+    let state = AiIslandState::global();
+    *state.drag.lock().unwrap() = None;
+    poll_pass_through(&app);
 }
 
 /// 渲染层 mousemove/pointerdown 兜底切换穿透（对齐 set-ai-island-mouse-mode）
@@ -666,8 +822,14 @@ pub fn set_ai_island_mouse_mode(app: AppHandle, interactive: bool) {
     let Some(win) = island_window(&app) else {
         return;
     };
-    let ignore = !interactive;
     let state = AiIslandState::global();
+    if !interactive && state.drag.lock().unwrap().is_some() {
+        if primary_mouse_button_down() {
+            return;
+        }
+        *state.drag.lock().unwrap() = None;
+    }
+    let ignore = !interactive;
     if ignore != state.mouse_ignored.load(Ordering::SeqCst) {
         state.mouse_ignored.store(ignore, Ordering::SeqCst);
         let _ = win.set_ignore_cursor_events(ignore);

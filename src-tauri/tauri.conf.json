@@ -37,7 +37,8 @@
     "resources": {
       "../vendor/ffmpeg/ffmpeg.exe": "ffmpeg.exe",
       "../src-tauri/resources/clawd-hook.js": "clawd-hook.js",
-      "../src-tauri/resources/antigravity-hook.js": "antigravity-hook.js"
+      "../src-tauri/resources/antigravity-hook.js": "antigravity-hook.js",
+      "../src-tauri/resources/zcode-hook.js": "zcode-hook.js"
     },
     "windows": {
       "nsis": {

@@ -154,6 +154,12 @@ pub async fn start(app: AppHandle) {
             Err(e) => log::error!("Antigravity hooks auto-install failed: {e}"),
         }
     }
+    if crate::modules::agent::hooks::is_zcode_env_present() {
+        match crate::modules::agent::hooks::install_zcode(&app) {
+            Ok(()) => log::info!("ZCode hooks auto-installed to ~/.zcode/cli/config.json"),
+            Err(e) => log::error!("ZCode hooks auto-install failed: {e}"),
+        }
+    }
     crate::modules::agent::hooks::start_watcher(app.clone());
 
     // 立即探测一次 Claude 运行态，再进入 30s 轮询（供状态机僵尸回收判定）。
@@ -205,6 +211,7 @@ pub fn get_status() -> Value {
         "port": s.get_port(),
         "hookInstalled": crate::modules::agent::hooks::is_installed(),
         "antigravityHookInstalled": crate::modules::agent::hooks::is_antigravity_installed(),
+        "zcodeHookInstalled": crate::modules::agent::hooks::is_zcode_installed(),
         "displayState": sm.resolve_display_state(),
         "currentCard": s.head_payload(),
         "sessionCount": sm.sessions_snapshot().len(),

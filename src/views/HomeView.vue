@@ -524,8 +524,7 @@ onMounted(() => {
   })
   onUnmounted(() => cleanupMainWindowClose())
 
-  // 显示系统级悬浮球
-  window.muerzhiAPI.showFloatingBall()
+
 
   // 监听悬浮球操作
   const cleanupBallAction = window.muerzhiAPI.onFloatingBallAction((action: string) => {
@@ -826,7 +825,7 @@ watch(() => isConverting.value, (val) => {
 .source-btn svg {
   flex-shrink: 0;
   color: var(--accent);
-  filter: drop-shadow(0 1px 1px rgba(233, 69, 96, 0.2));
+  filter: drop-shadow(0 1px 1px rgba(200, 109, 116, 0.2));
 }
 
 /* 全屏录制下拉菜单 */

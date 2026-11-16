@@ -6,6 +6,7 @@
 #![allow(dead_code, non_snake_case)]
 
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
@@ -169,7 +170,21 @@ fn restore_sticky_pos(app: &AppHandle) -> Option<(f64, f64)> {
     Some((px as f64 / s, py as f64 / s))
 }
 
+static STICKY_BUILDING: AtomicBool = AtomicBool::new(false);
+
+struct StickyBuildGuard;
+impl Drop for StickyBuildGuard {
+    fn drop(&mut self) {
+        STICKY_BUILDING.store(false, Ordering::SeqCst);
+    }
+}
+
 fn create_sticky_board(app: &AppHandle) {
+    if STICKY_BUILDING.swap(true, Ordering::SeqCst) {
+        log::info!("create_sticky_board: 已有建窗在途，跳过重复请求");
+        return;
+    }
+    let _guard = StickyBuildGuard;
     let (ax, ay, aw, ah) = work_area_physical(app);
     let scale = display_scale(app);
     // 物理坐标 → 逻辑坐标给 builder（builder 吃逻辑单位），宽高不再除 scale：
@@ -436,7 +451,7 @@ pub async fn close_sticky_notes(app: AppHandle) {
 }
 
 #[tauri::command]
-pub fn hide_todo_reminder_cmd(app: AppHandle) {
+pub async fn hide_todo_reminder_cmd(app: AppHandle) {
     hide_todo_reminder(&app);
 }
 
@@ -478,11 +493,34 @@ pub fn on_sticky_unpin(app: &AppHandle, id: &str) {
 }
 
 /// 贴屏便签「打开待办」：拉起待办窗口并聚焦该条
+static PENDING_FOCUS_TODO: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+pub fn set_pending_focus_todo(id: &str) {
+    *PENDING_FOCUS_TODO.lock().unwrap() = Some(id.to_string());
+}
+
+pub fn take_pending_focus_todo() -> Option<String> {
+    PENDING_FOCUS_TODO.lock().unwrap().take()
+}
+
+#[tauri::command]
+pub fn todo_get_pending_focus() -> Option<String> {
+    take_pending_focus_todo()
+}
+
 pub fn on_sticky_open(app: &AppHandle, id: &str) {
     log::info!("sticky open: {id}");
     // todo 窗口按需创建：便签打开入口在窗口从未开过时也要能建出
-    super::open_or_focus(app, "todo", "/todo");
+    set_pending_focus_todo(id);
+    let hash_route = format!("/todo?focus={id}");
+    super::open_or_focus(app, "todo", &hash_route);
     let _ = app.emit("todo-focus-item", id);
+    if let Some(win) = app.get_webview_window("todo") {
+        let id_json = serde_json::to_string(id).unwrap_or_default();
+        let _ = win.eval(&format!(
+            "window.dispatchEvent(new CustomEvent('todo-focus-item', {{ detail: {id_json} }}));"
+        ));
+    }
 }
 
 /// 贴屏便签「已完成」（✓）：状态改 done 并从贴屏板移除（✕ 只取消贴屏，这条连状态一起改）。

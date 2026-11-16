@@ -216,12 +216,12 @@ onUnmounted(() => {
 }
 
 .arc-item:hover {
-  fill: rgba(233, 69, 96, 0.18);
-  stroke: #e94560;
+  fill: rgba(200, 109, 116, 0.18);
+  stroke: #C86D74;
 }
 
 .arc-item:active {
-  fill: rgba(233, 69, 96, 0.28);
+  fill: rgba(200, 109, 116, 0.28);
 }
 
 /* 圆弧上文字：也从圆心弹出 */
@@ -245,7 +245,7 @@ onUnmounted(() => {
 
 .arc-label .icon {
   font-size: 14px;
-  fill: var(--accent, #e94560);
+  fill: var(--accent, #C86D74);
 }
 
 .arc-label .label {
@@ -270,10 +270,10 @@ onUnmounted(() => {
   transition-delay: 0.25s;
 }
 .sun-dot .glow {
-  fill: rgba(233, 69, 96, 0.15);
+  fill: rgba(200, 109, 116, 0.15);
 }
 .sun-dot .core {
-  fill: #e94560;
+  fill: #C86D74;
 }
 
 /* ===== 闪一下的小岛 ===== */
@@ -293,11 +293,11 @@ onUnmounted(() => {
   animation: flash-pop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 @keyframes flash-pop {
-  0% { opacity: 0; transform: scale(0.3); box-shadow: 0 0 0 rgba(233, 69, 96, 0); }
-  12% { opacity: 1; transform: scale(1.2); box-shadow: 0 0 40px rgba(233, 69, 96, 0.6), 0 2px 12px rgba(0, 0, 0, 0.15); }
-  30% { opacity: 0.8; transform: scale(0.9); box-shadow: 0 0 15px rgba(233, 69, 96, 0.3), 0 2px 12px rgba(0, 0, 0, 0.1); }
-  60% { opacity: 0.2; transform: scale(1.1); box-shadow: 0 0 25px rgba(233, 69, 96, 0.1); }
-  100% { opacity: 0; transform: scale(0.5); box-shadow: 0 0 0 rgba(233, 69, 96, 0); }
+  0% { opacity: 0; transform: scale(0.3); box-shadow: 0 0 0 rgba(200, 109, 116, 0); }
+  12% { opacity: 1; transform: scale(1.2); box-shadow: 0 0 40px rgba(200, 109, 116, 0.6), 0 2px 12px rgba(0, 0, 0, 0.15); }
+  30% { opacity: 0.8; transform: scale(0.9); box-shadow: 0 0 15px rgba(200, 109, 116, 0.3), 0 2px 12px rgba(0, 0, 0, 0.1); }
+  60% { opacity: 0.2; transform: scale(1.1); box-shadow: 0 0 25px rgba(200, 109, 116, 0.1); }
+  100% { opacity: 0; transform: scale(0.5); box-shadow: 0 0 0 rgba(200, 109, 116, 0); }
 }
 
 /* ===== 触发按钮 ===== */
@@ -315,7 +315,7 @@ onUnmounted(() => {
   justify-content: center;
   color: #fff;
 
-  background: linear-gradient(135deg, #e94560 0%, #ff6b81 100%);
+  background: linear-gradient(135deg, #DE8990 0%, #C86D74 100%);
   transition:
     transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -329,7 +329,7 @@ onUnmounted(() => {
 }
 
 .trigger-button.is-expanded {
-  background: linear-gradient(135deg, #d63c55 0%, #e94560 100%);
+  background: linear-gradient(135deg, #B65B62 0%, #C86D74 100%);
   transform: rotate(45deg);
 }
 

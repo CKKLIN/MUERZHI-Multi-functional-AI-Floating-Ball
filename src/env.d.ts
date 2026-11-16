@@ -214,6 +214,8 @@ export interface MuerzhiAPI {
   agentUninstallHooks: () => Promise<AgentBridgeStatus | null>
   agentInstallAntigravityHooks: () => Promise<AgentBridgeStatus | null>
   agentUninstallAntigravityHooks: () => Promise<AgentBridgeStatus | null>
+  agentInstallZcodeHooks: () => Promise<AgentBridgeStatus | null>
+  agentUninstallZcodeHooks: () => Promise<AgentBridgeStatus | null>
   agentResolvePermission: (behavior: string) => Promise<void>
   agentDismissQuestion: () => Promise<void>
   agentSubmitQuestion: (sessionId: string, answers: Record<string, unknown>) => Promise<void>
@@ -247,6 +249,7 @@ export interface MuerzhiAPI {
   todoTogglePin: (id: string) => Promise<TodoItem[]>
   onTodoFocusItem: (callback: (id: string) => void) => () => void
   onTodoDataChanged: (callback: (items: TodoItem[]) => void) => () => void
+  todoGetPendingFocus: () => Promise<string | null>
   showTodoWindow: () => Promise<void>
   closeTodoWindow: () => Promise<void>
   todoWindowVisible: () => Promise<boolean>
@@ -287,6 +290,7 @@ export interface AgentBridgeStatus {
   port: number | null
   hookInstalled: boolean | null
   antigravityHookInstalled?: boolean | null
+  zcodeHookInstalled?: boolean | null
   displayState: string
   currentCard: AgentCardPayload | null
   sessionCount: number

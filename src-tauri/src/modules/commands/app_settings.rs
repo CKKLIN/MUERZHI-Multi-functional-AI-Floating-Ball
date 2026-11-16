@@ -21,7 +21,7 @@ pub fn get_floating_ball_settings(app: AppHandle) -> Value {
 }
 
 #[tauri::command]
-pub fn set_floating_ball_settings(app: AppHandle, patch: Value) -> Value {
+pub async fn set_floating_ball_settings(app: AppHandle, patch: Value) -> Value {
     let current = BallSettings::load(&app);
     let visible_changed = patch.get("visible").is_some();
     let always_on_top_changed = patch.get("alwaysOnTop").is_some();
@@ -267,13 +267,13 @@ pub fn set_ai_island_settings(app: AppHandle, patch: Value) -> Value {
 // ---------- 窗口控制（主窗口四件 + AI/设置窗口拉起）----------
 
 #[tauri::command]
-pub fn show_ai_window(app: AppHandle) {
+pub async fn show_ai_window(app: AppHandle) {
     log::info!("show_ai_window");
     windows::open_or_focus(&app, "ai", "/ai");
 }
 
 #[tauri::command]
-pub fn show_settings_window(app: AppHandle) {
+pub async fn show_settings_window(app: AppHandle) {
     log::info!("show_settings_window");
     windows::open_or_focus(&app, "settings", "/settings");
 }

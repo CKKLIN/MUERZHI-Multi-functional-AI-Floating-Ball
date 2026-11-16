@@ -18,6 +18,8 @@ const SNAP: f64 = 40.0;
 const PASS_R_EXPANDED: f64 = 78.0;
 const PASS_R_BALL: f64 = 30.0;
 const POS_FILE: &str = "floating-ball-pos.json";
+/// 建窗预约标志（对齐 ai_island.rs ISLAND_BUILDING，杜绝并发建窗产生孤儿窗口）
+static BALL_BUILDING: AtomicBool = AtomicBool::new(false);
 const COLLAPSE_TIMER_MS: u64 = 920; // > 花瓣动画 0.5s + 最大错落 0.4s
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -113,7 +115,13 @@ pub fn set_ball_bounds(win: &tauri::WebviewWindow, x: f64, y: f64, w: f64, h: f6
         return;
     }
     let _ = win.set_position(PhysicalPosition::new(x.round() as i32, y.round() as i32));
-    let _ = win.set_size(PhysicalSize::new(w.round() as u32, h.round() as u32));
+    if let Ok(cur_size) = win.outer_size() {
+        if (cur_size.width as f64 - w).abs() > 0.5 || (cur_size.height as f64 - h).abs() > 0.5 {
+            let _ = win.set_size(PhysicalSize::new(w.round() as u32, h.round() as u32));
+        }
+    } else {
+        let _ = win.set_size(PhysicalSize::new(w.round() as u32, h.round() as u32));
+    }
 }
 
 /// CSS 尺寸 → 该屏物理尺寸（悬浮球常量在调用方与 set_ball_bounds 之间走这一步）
@@ -155,6 +163,25 @@ fn ball_pos_from_window(wx: f64, wy: f64, ww: f64, wh: f64) -> (i32, i32) {
 }
 
 fn primary_bounds(app: &AppHandle) -> (i32, i32, i32, i32) {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Foundation::POINT;
+        use windows_sys::Win32::Graphics::Gdi::{
+            GetMonitorInfoW, MonitorFromPoint, MONITORINFOEXW, MONITOR_DEFAULTTOPRIMARY,
+        };
+        unsafe {
+            let pt = POINT { x: 0, y: 0 };
+            let hmon = MonitorFromPoint(pt, MONITOR_DEFAULTTOPRIMARY);
+            if !hmon.is_null() {
+                let mut mi: MONITORINFOEXW = std::mem::zeroed();
+                mi.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
+                if GetMonitorInfoW(hmon, &mut mi as *mut MONITORINFOEXW as *mut _) != 0 {
+                    let rc = mi.monitorInfo.rcWork;
+                    return (rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top);
+                }
+            }
+        }
+    }
     app.primary_monitor()
         .ok()
         .flatten()
@@ -169,10 +196,29 @@ fn primary_bounds(app: &AppHandle) -> (i32, i32, i32, i32) {
         .unwrap_or((0, 0, 1920, 1080))
 }
 
-/// 找包含窗口中心的显示器物理 bounds（对齐 getDisplayMatching）
+/// 找包含窗口中心的显示器物理工作区 bounds（对齐 getDisplayMatching，优先工作区避免遮挡任务栏）
 fn display_bounds_of(app: &AppHandle, x: i32, y: i32, w: i32, h: i32) -> (i32, i32, i32, i32) {
     let cx = x + w / 2;
     let cy = y + h / 2;
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Foundation::POINT;
+        use windows_sys::Win32::Graphics::Gdi::{
+            GetMonitorInfoW, MonitorFromPoint, MONITORINFOEXW, MONITOR_DEFAULTTONEAREST,
+        };
+        unsafe {
+            let pt = POINT { x: cx, y: cy };
+            let hmon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+            if !hmon.is_null() {
+                let mut mi: MONITORINFOEXW = std::mem::zeroed();
+                mi.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
+                if GetMonitorInfoW(hmon, &mut mi as *mut MONITORINFOEXW as *mut _) != 0 {
+                    let rc = mi.monitorInfo.rcWork;
+                    return (rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top);
+                }
+            }
+        }
+    }
     if let Ok(monitors) = app.available_monitors() {
         for m in monitors {
             let (mx, my, mw, mh) = (
@@ -191,23 +237,12 @@ fn display_bounds_of(app: &AppHandle, x: i32, y: i32, w: i32, h: i32) -> (i32, i
 
 /// 窗口中心所在显示器的缩放比（供 CSS↔物理换算；找不到时退主屏）
 pub fn ball_scale_at(app: &AppHandle, x: i32, y: i32, w: i32, h: i32) -> f64 {
-    let (bx, by, _, _) = display_bounds_of(app, x, y, w, h);
     let cx = x + w / 2;
     let cy = y + h / 2;
-    if let Ok(monitors) = app.available_monitors() {
-        for m in monitors {
-            let (mx, my) = (m.position().x, m.position().y);
-            if cx >= mx
-                && cx < mx + m.size().width as i32
-                && cy >= my
-                && cy < my + m.size().height as i32
-            {
-                return m.scale_factor();
-            }
-        }
+    // O(1) 物理点直查显示器，避免每次轮询全量枚举 available_monitors 分配 Vec
+    if let Ok(Some(m)) = app.monitor_from_point(cx as f64, cy as f64) {
+        return m.scale_factor();
     }
-    let _ = bx;
-    let _ = by;
     app.primary_monitor()
         .ok()
         .flatten()
@@ -244,10 +279,27 @@ fn detect_edge_snap(app: &AppHandle, x: i32, y: i32, w: i32, h: i32) -> Option<S
     let w = (BALL_SIZE * scale).round() as i32;
     let h = w;
     let (bx, by, bw, bh) = display_bounds_of(app, x, y, w, h);
-    let dl = (x as f64 - (bx as f64 + gutter)).abs();
-    let dr = ((bx as f64 + bw as f64 - gutter) - (x + w) as f64).abs();
-    let dt = (y as f64 - (by as f64 + gutter)).abs();
-    let db = ((by as f64 + bh as f64 - gutter) - (y + h) as f64).abs();
+    // 用户把球拖到屏幕边缘甚至拖出界外时，到该边的有效距离视为 0（必须吸附，不能因为超界判定为 > snap 漏吸）
+    let dl = if (x as f64) <= bx as f64 + gutter {
+        0.0
+    } else {
+        x as f64 - (bx as f64 + gutter)
+    };
+    let dr = if (x + w) as f64 >= bx as f64 + bw as f64 - gutter {
+        0.0
+    } else {
+        (bx as f64 + bw as f64 - gutter) - (x + w) as f64
+    };
+    let dt = if (y as f64) <= by as f64 + gutter {
+        0.0
+    } else {
+        y as f64 - (by as f64 + gutter)
+    };
+    let db = if (y + h) as f64 >= by as f64 + bh as f64 - gutter {
+        0.0
+    } else {
+        (by as f64 + bh as f64 - gutter) - (y + h) as f64
+    };
     let mut best: Option<(f64, SnapSide)> = None;
     for (d, side) in [
         (dl, SnapSide::Left),
@@ -274,11 +326,13 @@ fn snap_target_for(app: &AppHandle, side: SnapSide, x: i32, y: i32, w: i32, h: i
     let w = (BALL_SIZE * scale).round() as i32;
     let h = w;
     let (bx, by, bw, bh) = display_bounds_of(app, x, y, w, h);
+    let clamped_x = x.clamp(bx + gutter as i32, bx + bw - gutter as i32 - w);
+    let clamped_y = y.clamp(by + gutter as i32, by + bh - gutter as i32 - h);
     match side {
-        SnapSide::Left => (bx + gutter as i32, y),
-        SnapSide::Right => (bx + bw - gutter as i32 - w, y),
-        SnapSide::Top => (x, by + gutter as i32),
-        SnapSide::Bottom => (x, by + bh - gutter as i32 - h),
+        SnapSide::Left => (bx + gutter as i32, clamped_y),
+        SnapSide::Right => (bx + bw - gutter as i32 - w, clamped_y),
+        SnapSide::Top => (clamped_x, by + gutter as i32),
+        SnapSide::Bottom => (clamped_x, by + bh - gutter as i32 - h),
     }
 }
 
@@ -293,8 +347,15 @@ pub fn ball_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
 
 /// 光标轮询穿透判定（对齐 pollBallPassThrough）：
 /// 拖拽强制交互 / 展开窗心圆 78 / 吸附胶囊+2 / 收起圆 30
-fn poll_with_cursor(app: &AppHandle, cursor: tauri::PhysicalPosition<i32>) {
-    let Some(win) = ball_window(app) else { return };
+fn poll_with_cursor(
+    app: &AppHandle,
+    win: &tauri::WebviewWindow,
+    cursor: tauri::PhysicalPosition<i32>,
+    wx: f64,
+    wy: f64,
+    ww: f64,
+    wh: f64,
+) {
     let state = BallState::global();
     if state.drag.lock().unwrap().is_some() {
         if state.mouse_ignored.load(Ordering::SeqCst) {
@@ -303,8 +364,6 @@ fn poll_with_cursor(app: &AppHandle, cursor: tauri::PhysicalPosition<i32>) {
         }
         return;
     }
-    let (wx, wy) = get_position(&win);
-    let (ww, wh) = get_size(&win);
     let cpx = cursor.x as f64;
     let cpy = cursor.y as f64;
     // 下列几何常量全是 **CSS 语义**（与 floating-ball.html 一一对应），光标/窗口坐标
@@ -398,20 +457,31 @@ fn start_mouse_polling(app: &AppHandle) {
                         let state = BallState::global();
                         let busy = state.expanded.load(Ordering::SeqCst)
                             || state.drag.lock().unwrap().is_some();
+                        let (wx, wy) = get_position(&win);
+                        let (ww, wh) = get_size(&win);
                         if !busy {
-                            let (wx, wy) = get_position(&win);
-                            let dx = cursor.x as f64 - (wx + get_size(&win).0 / 2.0);
-                            let dy = cursor.y as f64 - (wy + get_size(&win).1 / 2.0);
+                            let dx = cursor.x as f64 - (wx + ww / 2.0);
+                            let dy = cursor.y as f64 - (wy + wh / 2.0);
                             if dx * dx + dy * dy > FAR_PX * FAR_PX {
                                 interval_ms = FAR_MS;
+                                // 光标远离且已经处于穿透状态：直接跳过几何计算，待机 CPU 归零
+                                if state.mouse_ignored.load(Ordering::SeqCst) {
+                                    tokio::time::sleep(std::time::Duration::from_millis(FAR_MS)).await;
+                                    continue;
+                                }
                             }
                         }
                         poll_with_cursor(
                             &app,
+                            &win,
                             tauri::PhysicalPosition::new(
                                 cursor.x.round() as i32,
                                 cursor.y.round() as i32,
                             ),
+                            wx,
+                            wy,
+                            ww,
+                            wh,
                         );
                     }
                 }
@@ -507,13 +577,13 @@ pub fn animate_snap_to_edge(app: &AppHandle, from: (f64, f64), to: (f64, f64), s
             let e = elastic_out(t);
             let nx = from.0 + (to.0 - half - from.0) * e;
             let ny = from.1 + (to.1 - half - from.1) * e;
-            set_ball_bounds(&win, nx, ny, ring, ring);
+            let _ = win.set_position(PhysicalPosition::new(nx.round() as i32, ny.round() as i32));
             if t >= 1.0 {
                 let final_x = to.0 - half;
                 let final_y = to.1 - half;
                 let (ax, ay) = get_position(&win);
                 if (ax as i32) != final_x.round() as i32 || (ay as i32) != final_y.round() as i32 {
-                    set_ball_bounds(&win, final_x, final_y, ring, ring);
+                    let _ = win.set_position(PhysicalPosition::new(final_x.round() as i32, final_y.round() as i32));
                 }
                 let state = BallState::global();
                 *state.snapped_side.lock().unwrap() = Some(side);
@@ -636,6 +706,31 @@ pub fn show_ball(app: &AppHandle) {
         start_mouse_polling(app);
         return;
     }
+
+    // 建窗预约防并发（对齐 ai_island.rs ISLAND_BUILDING，杜绝并发建窗产生孤儿窗口）：
+    // show_floating_ball 是 async 命令，与 lib.rs setup 中的 show_ball 若并发执行，
+    // 会两次通过 ball_window 为 None 的检查同时调 build()，后建覆盖 map，
+    // 先建的成为脱管孤儿窗（留在桌面、光标永远穿透、点不动拖不动）。
+    if BALL_BUILDING.swap(true, Ordering::SeqCst) {
+        log::warn!("show_ball: building in progress, skipping duplicate call");
+        return;
+    }
+    struct BuildingGuard;
+    impl Drop for BuildingGuard {
+        fn drop(&mut self) {
+            BALL_BUILDING.store(false, Ordering::SeqCst);
+        }
+    }
+    let _guard = BuildingGuard;
+
+    // 二次检查，避免在获取预约标志前一刻已有窗口建好
+    if let Some(win) = ball_window(app) {
+        let _ = win.show();
+        let _ = win.set_focus();
+        start_mouse_polling(app);
+        return;
+    }
+
     let mut pos = state.pos.lock().unwrap();
     if pos.is_none() {
         *pos = load_ball_position(app).or_else(|| {
@@ -693,17 +788,18 @@ pub fn show_ball(app: &AppHandle) {
     };
     let ring0 = RING_SIZE * pos_scale;
     let half0 = (ring0 - BALL_SIZE * pos_scale) / 2.0;
+    let win_x_phys = px as f64 - half0;
+    let win_y_phys = py as f64 - half0;
+    let x_logical = win_x_phys / pos_scale;
+    let y_logical = win_y_phys / pos_scale;
 
     // WebviewUrl::App 在 dev 下自动映射到 devUrl，打包态指向 dist（External 运行时创建会导航失败）
     let url = WebviewUrl::App("windows/floating-ball.html".into());
     let ball_data = ball_data_script(app);
     match WebviewWindowBuilder::new(app, "floating-ball", url)
         .title("MUERZHI")
-        .inner_size(
-            (ring0 / pos_scale).round() as f64,
-            (ring0 / pos_scale).round() as f64,
-        )
-        .position(px as f64 + half0, py as f64 + half0)
+        .inner_size(RING_SIZE, RING_SIZE)
+        .position(x_logical.round(), y_logical.round())
         .decorations(false)
         .transparent(true)
         .resizable(false)
@@ -890,18 +986,16 @@ fn start_drag_follow(app: &AppHandle) {
             } else {
                 (o.w, o.h)
             };
-            // 顺序关键：先 set_size 后 set_position。跨屏时 Windows 会因 DPI 切换按
-            // 新尺寸重排窗口位置，后设置的 set_position 用中心语义覆盖重排 —— 顺序
-            // 反了（或一步到位的 set_bounds）会被重排拉偏，实测固定 -130,-130。
-            let _ = win.set_size(PhysicalSize::new(w.round() as u32, h.round() as u32));
+            // 跨屏导致目标物理尺寸变动时才调用 set_size，避免每 16ms 频繁重置 WebView2 交换链造成堆损坏
+            if (o.w - target).abs() > 0.5 || (o.h - target).abs() > 0.5 {
+                let _ = win.set_size(PhysicalSize::new(w.round() as u32, h.round() as u32));
+            }
             let _ = win.set_position(PhysicalPosition::new(
                 (cx - w / 2.0).round() as i32,
                 (cy - h / 2.0).round() as i32,
             ));
-            // ⚠️ 不要读回修正：set_position 异步生效，立刻读回拿到旧值会把偏差放大
-            // 成跳变（实测）。跟随循环每帧按光标差绝对定位，天然自纠。
             // pos（66 球左上）= 环中心 - 球物理半边（按当前屏 scale）
-            let scale_now = ball_scale_at(&app, cx as i32, cy as i32, w as i32, h as i32);
+            let scale_now = target / RING_SIZE;
             let ball_half = BALL_SIZE * scale_now / 2.0;
             *BallState::global().pos.lock().unwrap() = Some((
                 (cx - ball_half).round() as i32,

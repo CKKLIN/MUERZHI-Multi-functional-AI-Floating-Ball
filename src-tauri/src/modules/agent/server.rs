@@ -48,12 +48,13 @@ fn auto_allow_state(session_id: &str) -> (bool, bool) {
 pub struct CardItem {
     pub kind: String, // "permission" | "question"
     pub session_id: String,
+    pub agent_id: String,
     pub tool_name: String,
     pub tool_input: Value,
     pub tool_use_id: Option<String>,
     pub questions: Option<Value>,
     pub answerable: bool,
-    /// 回传通道（None = 已被外部/断连处理）
+    /// 回传通道（None = 只读提醒或已被外部/断连处理）
     pub reply: Option<oneshot::Sender<Value>>,
     #[allow(dead_code)]
     pub created_at: i64,
@@ -66,6 +67,7 @@ impl CardItem {
             json!({
                 "kind": "question",
                 "sessionId": self.session_id,
+                "agentId": self.agent_id,
                 "toolName": self.tool_name,
                 "toolInput": self.tool_input,
                 "questions": self.questions,
@@ -75,6 +77,7 @@ impl CardItem {
             json!({
                 "kind": "permission",
                 "sessionId": self.session_id,
+                "agentId": self.agent_id,
                 "toolName": self.tool_name,
                 "toolInput": self.tool_input,
                 "suggestions": Value::Null,
@@ -101,18 +104,25 @@ impl AgentServer {
     pub fn global() -> &'static AgentServer {
         use std::sync::OnceLock;
         static S: OnceLock<AgentServer> = OnceLock::new();
-        S.get_or_init(|| {
-            let (tx, rx) = tokio::sync::watch::channel(false);
-            AgentServer {
-                queue: Arc::new(Mutex::new(Vec::new())),
-                port: Arc::new(AtomicU16::new(0)),
-                running: Arc::new(AtomicBool::new(false)),
-                head_timeout_ms: Arc::new(Mutex::new(DEFAULT_HEAD_TIMEOUT_MS)),
-                timer_epoch: Arc::new(Mutex::new(0)),
-                shutdown_tx: Arc::new(tx),
-                shutdown_rx: rx,
-            }
-        })
+        S.get_or_init(|| Self::create(DEFAULT_HEAD_TIMEOUT_MS))
+    }
+
+    #[allow(dead_code)]
+    pub fn new_isolated() -> AgentServer {
+        Self::create(0)
+    }
+
+    fn create(head_timeout_ms: u64) -> AgentServer {
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        AgentServer {
+            queue: Arc::new(Mutex::new(Vec::new())),
+            port: Arc::new(AtomicU16::new(0)),
+            running: Arc::new(AtomicBool::new(false)),
+            head_timeout_ms: Arc::new(Mutex::new(head_timeout_ms)),
+            timer_epoch: Arc::new(Mutex::new(0)),
+            shutdown_tx: Arc::new(tx),
+            shutdown_rx: rx,
+        }
     }
 
     pub fn get_port(&self) -> Option<u16> {
@@ -174,20 +184,88 @@ impl AgentServer {
                 }
             };
             if let Some(mut card) = expired {
-                if let Some(tx) = card.reply.take() {
-                    // permission → cancel；answerable question → deny；只读 → 静默
-                    if card.kind == "question" && !card.answerable {
-                        // 静默丢弃
-                    } else {
-                        let _ = tx.send(json!({"__expired": true}));
-                    }
-                }                crate::modules::agent::bridge::notify_card_change(
+                if card.kind == "question" && !card.answerable {
+                    // 只读提问卡无挂起 HTTP 通道：超时静默丢弃并复位孤立 notification 状态
+                    crate::modules::agent::state_machine::StateMachine::global()
+                        .reset_notification_to_idle(&card.session_id);
+                } else if let Some(tx) = card.reply.take() {
+                    let _ = tx.send(json!({"__expired": true}));
+                }
+                crate::modules::agent::bridge::notify_card_change(
                     AgentServer::global().head_payload().unwrap_or(Value::Null),
                 );
                 // 队首换人：重新计时
                 AgentServer::global().schedule_head_timer();
             }
         });
+    }
+
+    pub fn has_active_question(&self, session_id: &str) -> bool {
+        let q = self.queue.lock().unwrap();
+        q.iter()
+            .any(|c| c.kind == "question" && c.session_id == session_id)
+    }
+
+    fn same_question_card(a: &CardItem, b: &CardItem) -> bool {
+        if a.kind != "question" || b.kind != "question" || a.session_id != b.session_id {
+            return false;
+        }
+        if let (Some(id_a), Some(id_b)) = (a.tool_use_id.as_deref(), b.tool_use_id.as_deref()) {
+            if !id_a.is_empty() && !id_b.is_empty() {
+                return id_a == id_b;
+            }
+        }
+        if let (Some(qa), Some(qb)) = (a.questions.as_ref(), b.questions.as_ref()) {
+            return crate::modules::agent::permission_match::permission_content_signature(qa)
+                == crate::modules::agent::permission_match::permission_content_signature(qb);
+        }
+        a.tool_name == b.tool_name
+    }
+
+    /// 推送只读提问卡（/question PreToolUse 兜底）：若同会话已有可作答卡或同题只读卡则去重跳过
+    pub fn push_readonly_question(&self, card: CardItem) -> bool {
+        let mut q = self.queue.lock().unwrap();
+        if q.iter()
+            .any(|c| c.kind == "question" && c.session_id == card.session_id && c.answerable)
+        {
+            return false;
+        }
+        if let Some(idx) = q
+            .iter()
+            .position(|c| !c.answerable && Self::same_question_card(c, &card))
+        {
+            if q[idx].questions.is_none() && card.questions.is_some() {
+                q[idx].questions = card.questions;
+                if q[idx].tool_input.is_null() && !card.tool_input.is_null() {
+                    q[idx].tool_input = card.tool_input;
+                }
+                let is_head = idx == 0;
+                drop(q);
+                if is_head {
+                    let payload = self.head_payload().unwrap_or(Value::Null);
+                    crate::modules::agent::bridge::notify_card_change(payload);
+                }
+            }
+            return false;
+        }
+        if q.len() >= MAX_QUEUE {
+            drop(q);
+            log::warn!(
+                "[AgentServer] 审批队列已满（{MAX_QUEUE}），跳过只读提问卡: tool={}, session={}",
+                card.tool_name,
+                short_id(&card.session_id)
+            );
+            return false;
+        }
+        q.push(card);
+        let len = q.len();
+        drop(q);
+        if len == 1 {
+            self.schedule_head_timer();
+        }
+        let payload = self.head_payload().unwrap_or(Value::Null);
+        crate::modules::agent::bridge::notify_card_change(payload);
+        true
     }
 
     /// 入队 + 队首计时（对齐 pushCard）
@@ -214,6 +292,46 @@ impl AgentServer {
             }
         }
         let mut q = self.queue.lock().unwrap();
+        // PreToolUse /question 若先于 PermissionRequest /permission 到达，原地升级只读卡为可作答卡
+        if card.kind == "question" && card.answerable {
+            let match_idx = q
+                .iter()
+                .position(|c| !c.answerable && Self::same_question_card(c, &card))
+                .or_else(|| {
+                    q.iter()
+                        .position(|c| c.kind == "question" && !c.answerable && c.session_id == card.session_id)
+                });
+            if let Some(idx) = match_idx {
+                let sid = card.session_id.clone();
+                q[idx] = card;
+                let mut write = 0;
+                let mut new_idx = idx;
+                for read in 0..q.len() {
+                    let drop_dup = read != idx
+                        && q[read].kind == "question"
+                        && !q[read].answerable
+                        && q[read].session_id == sid;
+                    if !drop_dup {
+                        if read == idx {
+                            new_idx = write;
+                        }
+                        if write != read {
+                            q.swap(write, read);
+                        }
+                        write += 1;
+                    }
+                }
+                q.truncate(write);
+                let is_head = new_idx == 0;
+                drop(q);
+                if is_head {
+                    self.schedule_head_timer();
+                    let payload = self.head_payload().unwrap_or(Value::Null);
+                    crate::modules::agent::bridge::notify_card_change(payload);
+                }
+                return;
+            }
+        }
         if q.len() >= MAX_QUEUE {
             drop(q);
             log::warn!(
@@ -607,6 +725,62 @@ fn field<'a>(v: &'a Value, snake: &str, camel: &str) -> Option<&'a Value> {
     v.get(snake).or_else(|| v.get(camel))
 }
 
+/// 识别各 Agent 的提问工具名（Claude/ZCode: AskUserQuestion，Antigravity: ask_question）
+pub fn is_question_tool(name: &str) -> bool {
+    matches!(name, "AskUserQuestion" | "ask_question" | "askQuestion")
+}
+
+/// 判断 /state 事件是否应关闭该会话的提问卡：
+/// 回合结束/报错无条件清理；PostToolUse* 仅在未报工具名或正是提问工具完成时清理，避免并行只读工具完成时误关活跃提问。
+pub fn should_clear_questions_on_state(event: &str, tool_name: Option<&str>) -> bool {
+    if matches!(event, "Stop" | "StopFailure" | "SessionEnd" | "ApiError") {
+        return true;
+    }
+    if matches!(event, "PostToolUse" | "PostToolUseFailure") {
+        return tool_name.map_or(true, |t| t.is_empty() || is_question_tool(t));
+    }
+    false
+}
+
+/// 从顶层 `questions` 或 `tool_input` 提取提问列表；若为单题对象形态（question/text/prompt/header）自动包成单元素数组
+fn extract_questions(body: Option<&Value>, tool_input: &Value) -> Option<Value> {
+    if let Some(qs) = body
+        .and_then(|v| v.get("questions"))
+        .filter(|x| !x.is_null() && !x.as_array().is_some_and(|a| a.is_empty()))
+    {
+        return Some(qs.clone());
+    }
+    if let Some(qs) = tool_input
+        .get("questions")
+        .filter(|x| !x.is_null() && !x.as_array().is_some_and(|a| a.is_empty()))
+    {
+        return Some(qs.clone());
+    }
+    if let Some(obj) = tool_input.as_object() {
+        let has_single_prompt = ["question", "text", "prompt", "header"].iter().any(|k| {
+            obj.get(*k)
+                .and_then(|v| v.as_str())
+                .is_some_and(|s| !s.trim().is_empty())
+        });
+        if has_single_prompt {
+            return Some(Value::Array(vec![tool_input.clone()]));
+        }
+    }
+    None
+}
+
+fn resolve_agent_id(body: &Value, session_id: &str) -> String {
+    field(body, "agent_id", "agentId")
+        .and_then(|x| x.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            crate::modules::agent::state_machine::StateMachine::global()
+                .session_agent_id(session_id)
+        })
+        .unwrap_or_else(|| "claude-code".to_string())
+}
+
 async fn handle_health(State(app): State<tauri::AppHandle>) -> Response {
     let _ = app;
     let s = AgentServer::global();
@@ -664,10 +838,18 @@ async fn handle_state(State(app): State<tauri::AppHandle>, body: Bytes) -> Respo
         .and_then(|x| x.as_str())
         .map(|s| s.to_string());
 
+    let server = AgentServer::global();
+    // PreToolUse /question 或 /permission 已弹出提问卡期间，紧随的 PreToolUse /state(working) 不得把灯退回绿灯
+    let effective_state = if event == "PreToolUse" && server.has_active_question(session_id) {
+        "notification"
+    } else {
+        state
+    };
+
     let sm = crate::modules::agent::state_machine::StateMachine::global();
     sm.update_session(
         session_id,
-        state,
+        effective_state,
         event,
         crate::modules::agent::state_machine::SessionOpts {
             agent_id,
@@ -683,20 +865,11 @@ async fn handle_state(State(app): State<tauri::AppHandle>, body: Bytes) -> Respo
     sm.apply_claude_title(session_id);
 
     // 事件副作用（对齐 agent-server.ts 的三组事件表）
-    const COMPLETION: [&str; 6] = [
-        "PostToolUse",
-        "PostToolUseFailure",
-        "Stop",
-        "StopFailure",
-        "SessionEnd",
-        "ApiError",
-    ];
     const SESSION_END: [&str; 3] = ["Stop", "StopFailure", "SessionEnd"];
     const EXTERNAL_RESOLUTION: [&str; 3] =
         ["PostToolUse", "PostToolUseFailure", "PermissionDenied"];
 
-    let server = AgentServer::global();
-    if COMPLETION.contains(&event) {
+    if should_clear_questions_on_state(event, tool_name.as_deref()) {
         server.remove_questions_for_session(session_id);
     }
     if SESSION_END.contains(&event) {
@@ -740,22 +913,61 @@ async fn handle_permission(State(_app): State<tauri::AppHandle>, body: Bytes) ->
         .and_then(|x| x.as_str())
         .map(|s| s.to_string());
 
-    // AskUserQuestion 走 /permission 通道才可回传答案
-    let is_question = tool_name == "AskUserQuestion";
+    let agent_id = resolve_agent_id(&v, &session_id);
+
+    // AskUserQuestion 等提问工具走 /permission 通道可挂起回传答案（Antigravity 协议不支持答案回注，兜底放行并展示只读卡）
+    let is_question = is_question_tool(&tool_name);
+    let antigravity_question = is_question && agent_id == "antigravity";
     log::info!(
-        "[AgentServer] /permission 入队: kind={}, tool={tool_name}, session={}",
+        "[AgentServer] /permission 入队: kind={}, agent={}, tool={tool_name}, session={}",
         if is_question {
             "question"
         } else {
             "permission"
         },
+        agent_id,
         short_id(&session_id)
     );
     let questions = if is_question {
-        tool_input.get("questions").cloned()
+        extract_questions(Some(&v), &tool_input)
     } else {
         None
     };
+
+    if antigravity_question {
+        crate::modules::agent::state_machine::StateMachine::global().update_session(
+            &session_id,
+            "notification",
+            "AskUserQuestion",
+            crate::modules::agent::state_machine::SessionOpts {
+                agent_id: Some(agent_id.clone()),
+                tool_name: Some(tool_name.clone()),
+                tool_input: Some(tool_input.clone()),
+                ..Default::default()
+            },
+        );
+        AgentServer::global().push_readonly_question(CardItem {
+            kind: "question".into(),
+            session_id: session_id.clone(),
+            agent_id,
+            tool_name,
+            tool_input,
+            tool_use_id,
+            questions,
+            answerable: false,
+            reply: None,
+            created_at: crate::modules::todo::store::now_ms(),
+        });
+        return json_response(
+            StatusCode::OK,
+            json!({
+                "hookSpecificOutput": {
+                    "hookEventName": "PermissionRequest",
+                    "decision": { "behavior": "allow" }
+                }
+            }),
+        );
+    }
 
     let (tx, rx) = oneshot::channel::<Value>();
     let card = CardItem {
@@ -765,6 +977,7 @@ async fn handle_permission(State(_app): State<tauri::AppHandle>, body: Bytes) ->
             "permission".into()
         },
         session_id: session_id.clone(),
+        agent_id: agent_id.clone(),
         tool_name: tool_name.clone(),
         tool_input: tool_input.clone(),
         tool_use_id,
@@ -793,6 +1006,7 @@ async fn handle_permission(State(_app): State<tauri::AppHandle>, body: Bytes) ->
                 "PermissionRequest"
             },
             crate::modules::agent::state_machine::SessionOpts {
+                agent_id: Some(agent_id),
                 tool_name: Some(tool_name.clone()),
                 tool_input: Some(tool_input.clone()),
                 ..Default::default()
@@ -861,7 +1075,7 @@ async fn handle_permission(State(_app): State<tauri::AppHandle>, body: Bytes) ->
     json_response(StatusCode::OK, hook_output)
 }
 
-/// POST /question（PreToolUse 通知）：不建卡，仅更新会话状态
+/// POST /question（PreToolUse 通知）：更新会话状态并按需推入只读提问提醒卡（不阻塞调用方）
 async fn handle_question(State(app): State<tauri::AppHandle>, body: Bytes) -> Response {
     let v = match parse_body(&body) {
         Ok(v) => v,
@@ -869,17 +1083,60 @@ async fn handle_question(State(app): State<tauri::AppHandle>, body: Bytes) -> Re
     };
     let session_id = field(&v, "session_id", "sessionId")
         .and_then(|x| x.as_str())
-        .unwrap_or("");
+        .unwrap_or("")
+        .to_string();
+    let tool_name = field(&v, "tool_name", "toolName")
+        .and_then(|x| x.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("AskUserQuestion")
+        .to_string();
+    let tool_input = field(&v, "tool_input", "toolInput")
+        .cloned()
+        .unwrap_or(Value::Null);
+    let tool_use_id = field(&v, "tool_use_id", "toolUseId")
+        .and_then(|x| x.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let model = v.get("model").and_then(|x| x.as_str()).map(|s| s.to_string());
+    let agent_id = resolve_agent_id(&v, &session_id);
+    let questions = extract_questions(Some(&v), &tool_input);
+
+    log::info!(
+        "[AgentServer] /question: agent={}, tool={}, session={}, has_questions={}",
+        agent_id,
+        tool_name,
+        short_id(&session_id),
+        questions.is_some()
+    );
+
     crate::modules::agent::state_machine::StateMachine::global().update_session(
-        session_id,
+        &session_id,
         "notification",
         "AskUserQuestion",
         crate::modules::agent::state_machine::SessionOpts {
-            tool_name: Some("AskUserQuestion".into()),
-            tool_input: field(&v, "tool_input", "toolInput").cloned(),
+            agent_id: Some(agent_id.clone()),
+            tool_name: Some(tool_name.clone()),
+            tool_input: (!tool_input.is_null()).then(|| tool_input.clone()),
+            model,
             ..Default::default()
         },
     );
+
+    if !session_id.is_empty() && (questions.is_some() || is_question_tool(&tool_name)) {
+        AgentServer::global().push_readonly_question(CardItem {
+            kind: "question".into(),
+            session_id,
+            agent_id,
+            tool_name,
+            tool_input,
+            tool_use_id,
+            questions,
+            answerable: false,
+            reply: None,
+            created_at: crate::modules::todo::store::now_ms(),
+        });
+    }
+
     let _ = app;
     json_response(
         StatusCode::OK,
@@ -890,6 +1147,29 @@ async fn handle_question(State(app): State<tauri::AppHandle>, body: Bytes) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn mk_question_card(
+        session_id: &str,
+        agent_id: &str,
+        tool_name: &str,
+        tool_use_id: Option<&str>,
+        answerable: bool,
+        reply: Option<oneshot::Sender<Value>>,
+    ) -> CardItem {
+        let questions = json!([{"question": "选哪个？", "options": ["A", "B"]}]);
+        CardItem {
+            kind: "question".into(),
+            session_id: session_id.into(),
+            agent_id: agent_id.into(),
+            tool_name: tool_name.into(),
+            tool_input: json!({ "questions": questions }),
+            tool_use_id: tool_use_id.map(|s| s.to_string()),
+            questions: Some(questions),
+            answerable,
+            reply,
+            created_at: 1,
+        }
+    }
 
     #[test]
     fn short_id_truncates_by_chars_not_bytes() {
@@ -912,5 +1192,67 @@ mod tests {
         let e2 = *s.timer_epoch.lock().unwrap();
         assert!(e1 > e0, "首次排程推进 epoch");
         assert!(e2 > e1, "二次排程继续推进 epoch");
+    }
+
+    #[test]
+    fn question_tool_and_extraction_cover_all_agents() {
+        assert!(is_question_tool("AskUserQuestion"));
+        assert!(is_question_tool("ask_question"));
+        assert!(is_question_tool("askQuestion"));
+        assert!(!is_question_tool("run_command"));
+
+        let top = json!({ "questions": [{"question": "Q1"}] });
+        assert_eq!(extract_questions(Some(&top), &Value::Null), Some(json!([{"question": "Q1"}])));
+
+        let nested = json!({ "questions": [{"question": "Q2", "options": ["A"]}] });
+        assert_eq!(extract_questions(None, &nested), Some(json!([{"question": "Q2", "options": ["A"]}])));
+
+        let single = json!({ "question": "Q3", "options": ["Yes", "No"] });
+        assert_eq!(extract_questions(None, &single), Some(json!([single])));
+    }
+
+    #[test]
+    fn readonly_question_skipped_when_answerable_already_queued() {
+        let s = AgentServer::new_isolated();
+        let (tx, _rx) = oneshot::channel();
+        s.push_card(mk_question_card("s1", "claude-code", "AskUserQuestion", Some("tu-1"), true, Some(tx)));
+        let pushed = s.push_readonly_question(mk_question_card("s1", "claude-code", "AskUserQuestion", Some("tu-1"), false, None));
+        assert!(!pushed, "已有可作答卡时不应再追加只读提醒卡");
+        let q = s.queue.lock().unwrap();
+        assert_eq!(q.len(), 1);
+        assert!(q[0].answerable);
+    }
+
+    #[test]
+    fn permission_question_upgrades_existing_readonly_card_in_place() {
+        let s = AgentServer::new_isolated();
+        assert!(s.push_readonly_question(mk_question_card("s1", "zcode", "AskUserQuestion", Some("tu-2"), false, None)));
+        let head1 = s.head_payload().unwrap();
+        assert_eq!(head1["answerable"], json!(false));
+        assert_eq!(head1["agentId"], json!("zcode"));
+
+        let (tx, mut rx) = oneshot::channel();
+        s.push_card(mk_question_card("s1", "zcode", "AskUserQuestion", Some("tu-2"), true, Some(tx)));
+        {
+            let q = s.queue.lock().unwrap();
+            assert_eq!(q.len(), 1, "原地升级后队列中不能残留旧只读卡");
+            assert!(q[0].answerable);
+        }
+        let head2 = s.head_payload().unwrap();
+        assert_eq!(head2["answerable"], json!(true));
+
+        s.submit_question("s1", json!({"选哪个？": "A"}));
+        assert_eq!(rx.try_recv().unwrap(), json!({"__answers": {"选哪个？": "A"}}));
+        assert!(s.head_payload().is_none());
+    }
+
+    #[test]
+    fn completion_state_rules_protect_active_questions_from_unrelated_tools() {
+        assert!(should_clear_questions_on_state("PostToolUse", Some("ask_question")));
+        assert!(should_clear_questions_on_state("PostToolUse", Some("AskUserQuestion")));
+        assert!(should_clear_questions_on_state("PostToolUse", None));
+        assert!(!should_clear_questions_on_state("PostToolUse", Some("Read")));
+        assert!(should_clear_questions_on_state("Stop", None));
+        assert!(should_clear_questions_on_state("PostToolUseFailure", Some("ask_question")));
     }
 }

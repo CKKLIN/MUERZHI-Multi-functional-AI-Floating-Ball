@@ -64,10 +64,10 @@ const headingText = computed(() => {
 </template>
 
 <style scoped>
-.preview { display: flex; flex-direction: column; height: 100%; width: 100%; min-width: 0; }
+.preview { display: flex; flex-direction: column; height: 100%; width: 100%; min-width: 0; user-select: text; -webkit-user-select: text; }
 
 /* 滚动区占满剩余空间；卡片自适应宽高（内容多时随卡片滚动） */
-.pv-scroll { flex: 1; min-height: 0; min-width: 0; overflow: auto; padding: 6px 16px 16px; }
+.pv-scroll { flex: 1; min-height: 0; min-width: 0; overflow: auto; padding: 6px 16px 16px; user-select: text; -webkit-user-select: text; }
 .pv-card {
   width: 100%;
   min-width: 0;
@@ -77,14 +77,16 @@ const headingText = computed(() => {
   border-radius: 14px;
   padding: 14px 16px;
   box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 8px 20px -6px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.9);
+  user-select: text;
+  -webkit-user-select: text;
 }
 .pv-head { display: flex; align-items: center; gap: 10px; }
-.check { width: 22px; height: 22px; border-radius: 11px; border: 1.5px solid var(--border-light); background: var(--bg-surface); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; color: #fff; font-size: 13px; }
+.check { width: 22px; height: 22px; border-radius: 11px; border: 1.5px solid var(--border-light); background: var(--bg-surface); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; color: #fff; font-size: 13px; user-select: none; -webkit-user-select: none; }
 .check.on { background: var(--accent); border-color: var(--accent); }
-.pv-heading { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; color: var(--text-primary); }
+.pv-heading { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; color: var(--text-primary); user-select: text; -webkit-user-select: text; cursor: text; }
 .pv-heading.struck { text-decoration: line-through; color: var(--text-muted); }
 
-.pv-meta { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 12px; color: var(--text-muted); }
+.pv-meta { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 12px; color: var(--text-muted); user-select: text; -webkit-user-select: text; }
 .type { padding: 1px 7px; border-radius: 5px; font-size: 11px; }
 .type.todo { background: var(--info-bg); color: var(--info); }
 .type.memo { background: var(--warning-bg); color: var(--warning); }
@@ -95,10 +97,10 @@ const headingText = computed(() => {
 .pv-time.reminder { display: inline-flex; align-items: center; gap: 4px; }
 .pv-time.reminder svg { flex-shrink: 0; }
 
-.pv-body { margin-top: 14px; font-size: 14px; line-height: 1.6; color: var(--text-secondary); }
+.pv-body { margin-top: 14px; font-size: 14px; line-height: 1.6; color: var(--text-secondary); user-select: text; -webkit-user-select: text; cursor: text; }
 .pv-body :deep(img) { max-width: 100%; border-radius: 10px; }
 .pv-body :deep(p) { margin: 0 0 8px; }
 .pv-body :deep(h1), .pv-body :deep(h2), .pv-body :deep(h3) { color: var(--text-primary); }
 .pv-body :deep(blockquote) { margin: 8px 0; padding-left: 10px; border-left: 3px solid var(--border-light); color: var(--text-muted); }
-.pv-empty { margin-top: 14px; color: var(--text-muted); font-size: 13px; }
+.pv-empty { margin-top: 14px; color: var(--text-muted); font-size: 13px; user-select: text; -webkit-user-select: text; }
 </style>

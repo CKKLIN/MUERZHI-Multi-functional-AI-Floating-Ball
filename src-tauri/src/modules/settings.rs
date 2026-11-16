@@ -155,7 +155,7 @@ pub struct BallSettings {
 }
 
 fn default_snap_gutter() -> f64 {
-    40.0
+    0.0
 }
 
 impl Default for BallSettings {
@@ -181,10 +181,16 @@ impl BallSettings {
     pub fn load(app: &AppHandle) -> Self {
         let path = Self::path(app);
         match fs::read_to_string(&path) {
-            Ok(text) => serde_json::from_str(&text).unwrap_or_else(|e| {
-                log::warn!("floating-ball-settings.json parse failed: {e}; using defaults");
-                Self::default()
-            }),
+            Ok(text) => {
+                let mut s: Self = serde_json::from_str(&text).unwrap_or_else(|e| {
+                    log::warn!("floating-ball-settings.json parse failed: {e}; using defaults");
+                    Self::default()
+                });
+                if (s.snap_gutter - 40.0).abs() < f64::EPSILON {
+                    s.snap_gutter = 0.0;
+                }
+                s
+            },
             Err(_) => {
                 let defaults = Self::default();
                 let _ = defaults.save(app);

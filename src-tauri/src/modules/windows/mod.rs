@@ -11,6 +11,8 @@ pub use floating_ball::{
     load_ball_position, restore_snap_if_needed, show_ball, BallState, SnapSide, BALL_SIZE,
 };
 
+use std::collections::HashSet;
+use std::sync::{Mutex, OnceLock};
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl};
 
 /// 强制窗口重绘一遍（show 之后补一次 INVALIDATE + 立即更新）
@@ -72,21 +74,31 @@ pub fn apply_window_corners(win: &tauri::WebviewWindow) {
         cb_attribute: u32,
     ) -> i32;
 
-    unsafe {
+    static DWM_SET_ATTR: OnceLock<Option<DwmSetWindowAttributeFn>> = OnceLock::new();
+    let func = *DWM_SET_ATTR.get_or_init(|| unsafe {
+        use windows_sys::Win32::Foundation::FreeLibrary;
         use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryA};
         let dwmapi = LoadLibraryA(b"dwmapi.dll\0".as_ptr());
-        if !dwmapi.is_null() {
-            let func = GetProcAddress(dwmapi, b"DwmSetWindowAttribute\0".as_ptr());
-            if let Some(func) = func {
-                let func: DwmSetWindowAttributeFn = std::mem::transmute(func);
-                let preference: u32 = 2; // DWMWCP_ROUND
-                let _ = func(
-                    hwnd,
-                    33,
-                    &preference as *const _ as *const _,
-                    std::mem::size_of::<u32>() as u32,
-                );
+        if dwmapi.is_null() {
+            return None;
+        }
+        match GetProcAddress(dwmapi, b"DwmSetWindowAttribute\0".as_ptr()) {
+            Some(f) => Some(std::mem::transmute::<_, DwmSetWindowAttributeFn>(f)),
+            None => {
+                let _ = FreeLibrary(dwmapi);
+                None
             }
+        }
+    });
+    if let Some(func) = func {
+        let preference: u32 = 2; // DWMWCP_ROUND
+        unsafe {
+            let _ = func(
+                hwnd,
+                33,
+                &preference as *const _ as *const _,
+                std::mem::size_of::<u32>() as u32,
+            );
         }
     }
 }
@@ -118,12 +130,29 @@ pub fn show_and_refresh(win: &tauri::WebviewWindow) {
 /// 都不开 —— 全部改为首次 open_or_focus 时按需创建（本函数同时承担重建：窗口被
 /// close 销毁后走同一分支）。visible(false) 建出，**等页面加载完（on_page_load Finished，
 /// 3s 超时兜底）再 show+focus**，避免用户看到背景色空窗后才等 Vue 挂载。
+static BUILDING_LABELS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+struct LabelBuildGuard(String);
+impl Drop for LabelBuildGuard {
+    fn drop(&mut self) {
+        if let Some(set) = BUILDING_LABELS.get() {
+            set.lock().unwrap().remove(&self.0);
+        }
+    }
+}
+
 pub fn open_or_focus(app: &tauri::AppHandle, label: &str, hash_route: &str) {
     if let Some(win) = app.get_webview_window(label) {
         log::info!("open_or_focus: {label} 已存在 → unminimize + show + 重绘 + focus");
         show_and_refresh(&win);
         return;
     }
+    let set = BUILDING_LABELS.get_or_init(|| Mutex::new(HashSet::new()));
+    if !set.lock().unwrap().insert(label.to_string()) {
+        log::info!("open_or_focus: {label} 已有建窗在途，跳过重复请求");
+        return;
+    }
+    let _build_guard = LabelBuildGuard(label.to_string());
     log::info!("open_or_focus: {label} 不存在 → 按需创建（route={hash_route}）");
     let (title, size, resizable, skip_taskbar) = match label {
         "ai" => ("AI 助手", (480.0, 540.0), true, false),
@@ -194,7 +223,7 @@ pub fn open_about_window(app: &tauri::AppHandle) {
 }
 
 #[tauri::command]
-pub fn show_about_window(app: AppHandle) {
+pub async fn show_about_window(app: AppHandle) {
     open_about_window(&app);
 }
 

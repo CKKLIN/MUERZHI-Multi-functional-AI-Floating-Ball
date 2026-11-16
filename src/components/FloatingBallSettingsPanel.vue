@@ -164,7 +164,7 @@ onMounted(loadSettings)
               v-for="m in BALL_MENUS"
               :key="m.key"
               class="menu-chip"
-              :class="{ on: menuItems[m.key] }"
+              :class="[{ on: menuItems[m.key] }, 'menu-chip-' + m.key]"
               @click="toggleMenuItem(m.key)"
             >
               {{ t(m.labelKey) }}
@@ -249,12 +249,12 @@ onMounted(loadSettings)
    左上内高光 + 右下内阴影 + 外投影；
    hover 向左上浮起 translate(-1px,-1px)，按下向右下凹陷 translate(1px,1px)+inset。 */
 .fb-settings-panel {
-  /* 悬浮球主题色 = 靛蓝，映射到全局 --surface-accent*；
+  /* 悬浮球设置主题色 = 莫兰迪燕麦亚麻，映射到全局 --surface-accent*；
      壳层(.settings-section/.group-header/.toggle-btn/.menu-chip)已在全局 style.css 定义 */
-  --surface-accent: #4a6cf7;
-  --surface-accent-grad: linear-gradient(135deg, #6a8cff 0%, #4a6cf7 100%);
-  --surface-accent-glow: rgba(74, 108, 247, 0.35);
-  --surface-accent-bg: rgba(74, 108, 247, 0.15);
+  --surface-accent: #9E8B77;
+  --surface-accent-grad: linear-gradient(135deg, #B5A492 0%, #9E8B77 100%);
+  --surface-accent-glow: rgba(158, 139, 119, 0.35);
+  --surface-accent-bg: rgba(158, 139, 119, 0.12);
 
   display: flex;
   flex-direction: column;

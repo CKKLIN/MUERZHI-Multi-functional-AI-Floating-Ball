@@ -2,6 +2,7 @@
 // TodoApp.vue —— 待办便签主面板（Apple 高级风）
 // 列表只给"一目了然"的信息：标题 + 一行轻量元信息 + 单行纯文本摘要（不含图片）；图文在点开编辑器看。
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useTodoStore, type TodoDraft } from '../stores/todo'
 import TodoEditor from './TodoEditor.vue'
 import TodoPreview from './TodoPreview.vue'
@@ -11,6 +12,7 @@ import { formatTodoDate } from '../utils/todo-date'
 import { hideTip } from '../utils/tip'
 
 const store = useTodoStore()
+const route = useRoute()
 
 // “⋯”更多菜单（气泡显隐/置顶等设置收进去，让顶栏只剩标题+新建，保持极简）
 const menuOpen = ref(false)
@@ -296,17 +298,85 @@ async function onPreviewDelete() {
   store.toastMsg(t('todo.deleted'))
 }
 
+async function onPreviewCopy() {
+  const item = store.previewItem
+  if (!item) return
+  let text = ''
+  if (item.type === 'memo') {
+    const title = item.title?.trim()
+    const content = plainText(item.content).trim()
+    if (title && content) {
+      text = `${title}\n\n${content}`
+    } else {
+      text = title || content
+    }
+  } else {
+    text = plainText(item.content).trim()
+  }
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    store.toastMsg(t('todo.copied'))
+  } catch {
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+      store.toastMsg(t('todo.copied'))
+    } catch {}
+  }
+}
+
+async function openDetail(id: string) {
+  if (!id) return
+  if (!store.loaded) {
+    await store.load()
+  }
+  if (!store.items.some(it => it.id === id)) {
+    await store.load()
+  }
+  store.startPreview(id)
+}
+
 let unsubDataChanged: (() => void) | null = null
 let unsubFocusItem: (() => void) | null = null
+let onWindowEvent: ((e: Event) => void) | null = null
+
+watch(() => route.query.focus, (newFocus) => {
+  if (typeof newFocus === 'string' && newFocus) {
+    openDetail(newFocus)
+  }
+})
 
 onMounted(() => {
   store.load()
-  // 贴屏便签点击“打开待办”→ 主进程广播定位到该条预览
-  // （返回的退订函数必须保存：丢弃的话组件卸载即泄漏监听器，重复挂载后一次事件触发多次）
+  // 贴屏便签点击“打开待办”→ 主进程广播定位到该条预览详情
+  const focusFromQuery = route.query.focus as string | undefined
+  if (focusFromQuery) {
+    openDetail(focusFromQuery)
+  }
+
+  window.muerzhiAPI.todoGetPendingFocus?.().then((id) => {
+    if (id) openDetail(id)
+  }).catch(() => {})
+
   unsubFocusItem = window.muerzhiAPI.onTodoFocusItem(async (id) => {
-    if (!store.loaded) await store.load()
-    store.startPreview(id)
+    openDetail(id)
   })
+
+  onWindowEvent = (e: Event) => {
+    const ce = e as CustomEvent<string>
+    if (ce.detail) {
+      openDetail(ce.detail)
+    }
+  }
+  window.addEventListener('todo-focus-item', onWindowEvent)
+
   // 便签板等主进程侧改数据（如 ✕ 取消贴屏）时，推送全量 items 刷新列表镜像，
   // 保证贴屏按钮等状态及时同步
   unsubDataChanged = window.muerzhiAPI.onTodoDataChanged((items) => {
@@ -319,6 +389,9 @@ onMounted(() => {
 onUnmounted(() => {
   unsubDataChanged?.()
   unsubFocusItem?.()
+  if (onWindowEvent) {
+    window.removeEventListener('todo-focus-item', onWindowEvent)
+  }
   window.removeEventListener('resize', moveSegIndicator)
 })
 </script>
@@ -340,6 +413,7 @@ onUnmounted(() => {
         <template v-else-if="store.previewId">
                   <!-- 预览态：← 返回列表 也进顶栏行 -->
         <button v-if="!inEditor && store.previewId" class="back-btn" v-tip="t('todo.back')" @click="store.closePreview()">{{ t('todo.back') }}</button>
+          <button class="add-btn copy-btn" v-tip="t('todo.copy')" @click="onPreviewCopy()">{{ t('todo.copy') }}</button>
           <button class="add-btn" v-tip="t('todo.edit')" @click="store.startEdit(store.previewId)">{{ t('todo.edit') }}</button>
           <button class="del-btn" v-tip="t('todo.delete')" @click="onPreviewDelete()">{{ t('todo.delete') }}</button>
         </template>
@@ -464,6 +538,8 @@ onUnmounted(() => {
 .add-btn:active { transform: translate(1px,1px); filter: brightness(0.92); box-shadow: inset 2px 2px 5px rgba(0,0,0,0.2); }
 .back-btn { padding: 4px 11px; border: 1px solid rgba(255,255,255,0.7); border-top-color: rgba(255,255,255,0.9); border-left-color: rgba(255,255,255,0.85); border-right-color: rgba(200,200,210,0.4); border-bottom-color: rgba(190,190,200,0.5); border-radius: 8px; background: var(--surface-grad); color: var(--text-secondary); box-shadow: var(--bevel-shadow); cursor: pointer; font-size: 14px; flex-shrink: 0; transition: all 0.2s var(--bevel-ease); }
 .back-btn:hover { color: var(--text-primary); transform: translate(-1px,-1px); box-shadow: var(--bevel-shadow-hover); }
+.copy-btn { background: var(--surface-grad); border: 1px solid rgba(255,255,255,0.7); border-top-color: rgba(255,255,255,0.9); border-left-color: rgba(255,255,255,0.85); border-right-color: rgba(200,200,210,0.4); border-bottom-color: rgba(190,190,200,0.5); color: var(--text-secondary); box-shadow: var(--bevel-shadow); text-shadow: none; }
+.copy-btn:hover { color: var(--accent); transform: translate(-1px,-1px); box-shadow: var(--bevel-shadow-hover); }
 .del-btn { padding: 4px 11px; border: 1px solid rgba(255,255,255,0.7); border-top-color: rgba(255,255,255,0.9); border-left-color: rgba(255,255,255,0.85); border-right-color: rgba(200,200,210,0.4); border-bottom-color: rgba(190,190,200,0.5); border-radius: 9px; background: var(--surface-grad); color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: var(--bevel-shadow); transition: all 0.2s var(--bevel-ease); }
 .del-btn:hover { color: #fff; background: var(--surface-accent-grad); border-color: var(--surface-accent); box-shadow: 3px 3px 8px var(--surface-accent-glow), inset 1px 1px 2px rgba(255,255,255,0.4); }
 

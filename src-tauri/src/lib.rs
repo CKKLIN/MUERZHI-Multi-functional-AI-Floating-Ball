@@ -152,6 +152,7 @@ pub fn run() {
             modules::windows::ai_island::ai_island_drag_start,
             modules::windows::ai_island::ai_island_drag_move,
             modules::windows::ai_island::ai_island_drag_end,
+            modules::windows::ai_island::ai_island_drag_cancel,
             modules::windows::ai_island::set_ai_island_mouse_mode,
             // 待办窗口族（P2 实装：贴屏便签/提醒弹窗/散热面板）
             modules::windows::todo_windows::push_sticky_notes_cmd,
@@ -184,6 +185,7 @@ pub fn run() {
             modules::todo::store::todo_toggle_pin,
             modules::todo::store::todo_reorder,
             modules::commands::stubs::todo_show_window,
+            modules::windows::todo_windows::todo_get_pending_focus,
             modules::commands::stubs::todo_close_window,
             modules::commands::stubs::todo_window_visible,
             modules::commands::stubs::todo_toggle_always_on_top,
@@ -195,6 +197,8 @@ pub fn run() {
             agent_uninstall_hooks,
             agent_install_antigravity_hooks,
             agent_uninstall_antigravity_hooks,
+            agent_install_zcode_hooks,
+            agent_uninstall_zcode_hooks,
             agent_resolve_permission,
             agent_dismiss_question,
             agent_submit_question,
@@ -508,14 +512,23 @@ fn setup_ball_events(app: &tauri::AppHandle) {
             // 拿到 None 就静默返回，第二次点悬浮球「全部没反应」（实测）。
             // open_or_focus 会先 show 已存在的，销毁过则按预定义配置重建。
             "ai" => {
-                modules::windows::open_or_focus(&app, "ai", "/ai");
+                let app_spawn = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    modules::windows::open_or_focus(&app_spawn, "ai", "/ai");
+                });
             }
             "todo" => {
-                modules::windows::open_or_focus(&app, "todo", "/todo");
                 modules::windows::todo_windows::set_badge_flash(&app, false);
+                let app_spawn = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    modules::windows::open_or_focus(&app_spawn, "todo", "/todo");
+                });
             }
             "settings" => {
-                modules::windows::open_or_focus(&app, "settings", "/settings");
+                let app_spawn = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    modules::windows::open_or_focus(&app_spawn, "settings", "/settings");
+                });
             }
             other => {
                 log::info!("Floating ball action → broadcast: {other}");
@@ -598,27 +611,39 @@ fn setup_todo_events(app: &tauri::AppHandle) {
     app.listen("todo-sticky-open".to_string(), move |event| {
         let id = event.payload().trim().trim_matches('"').to_string();
         log::info!("Sticky open event: {id}");
-        modules::windows::todo_windows::on_sticky_open(&app_owned2, &id);
+        let app_spawn = app_owned2.clone();
+        tauri::async_runtime::spawn(async move {
+            modules::windows::todo_windows::on_sticky_open(&app_spawn, &id);
+        });
     });
 
     let app_owned6 = app.clone();
     app.listen("todo-sticky-done".to_string(), move |event| {
         let id = event.payload().trim().trim_matches('"').to_string();
         log::info!("Sticky done event: {id}");
-        modules::windows::todo_windows::on_sticky_done(&app_owned6, &id);
+        let app_spawn = app_owned6.clone();
+        tauri::async_runtime::spawn(async move {
+            modules::windows::todo_windows::on_sticky_done(&app_spawn, &id);
+        });
     });
 
     let app_owned3 = app.clone();
     app.listen("todo-reminder-close".to_string(), move |_event| {
-        modules::windows::todo_windows::hide_todo_reminder(&app_owned3);
+        let app_spawn = app_owned3.clone();
+        tauri::async_runtime::spawn(async move {
+            modules::windows::todo_windows::hide_todo_reminder(&app_spawn);
+        });
     });
 
     let app_owned4 = app.clone();
     app.listen("todo-reminder-open".to_string(), move |_event| {
         log::info!("Reminder open → 清队列 + 拉起待办窗口");
-        modules::windows::todo_windows::clear_todo_reminder_queue(&app_owned4);
-        // todo 窗口按需创建：提醒打开时窗口可能从未开过
-        modules::windows::open_or_focus(&app_owned4, "todo", "/todo");
+        let app_spawn = app_owned4.clone();
+        tauri::async_runtime::spawn(async move {
+            modules::windows::todo_windows::clear_todo_reminder_queue(&app_spawn);
+            // todo 窗口按需创建：提醒打开时窗口可能从未开过
+            modules::windows::open_or_focus(&app_spawn, "todo", "/todo");
+        });
     });
 
     // 便签板页面就绪：补推一次 pinned 列表。建窗后立即 eval 会被尚未加载完的页面
@@ -703,6 +728,28 @@ fn agent_uninstall_antigravity_hooks() -> serde_json::Value {
         Ok(()) => modules::agent::bridge::get_status(),
         Err(e) => {
             log::error!("agent_uninstall_antigravity_hooks failed: {e}");
+            serde_json::Value::Null
+        }
+    }
+}
+
+#[tauri::command]
+fn agent_install_zcode_hooks(app: tauri::AppHandle) -> serde_json::Value {
+    match modules::agent::hooks::install_zcode(&app) {
+        Ok(()) => modules::agent::bridge::get_status(),
+        Err(e) => {
+            log::error!("agent_install_zcode_hooks failed: {e}");
+            serde_json::Value::Null
+        }
+    }
+}
+
+#[tauri::command]
+fn agent_uninstall_zcode_hooks() -> serde_json::Value {
+    match modules::agent::hooks::uninstall_zcode() {
+        Ok(()) => modules::agent::bridge::get_status(),
+        Err(e) => {
+            log::error!("agent_uninstall_zcode_hooks failed: {e}");
             serde_json::Value::Null
         }
     }

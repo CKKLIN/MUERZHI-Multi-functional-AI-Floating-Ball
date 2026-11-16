@@ -188,10 +188,10 @@ const hasSource = computed(() => !!store.selectedSource)
 
 /* 录制按钮 */
 .record-btn {
-  background: linear-gradient(135deg, #ff6b81 0%, #e94560 100%);
-  border-color: rgba(255, 140, 160, 0.5);
-  border-top-color: rgba(255, 180, 195, 0.6);
-  border-left-color: rgba(255, 170, 185, 0.55);
+  background: linear-gradient(135deg, #DE8990 0%, #C86D74 100%);
+  border-color: rgba(222, 137, 144, 0.5);
+  border-top-color: rgba(235, 170, 175, 0.6);
+  border-left-color: rgba(230, 160, 165, 0.55);
   color: white;
   font-weight: 600;
   padding: 7px 18px;
@@ -199,8 +199,8 @@ const hasSource = computed(() => !!store.selectedSource)
   font-size: 12px;
   border-radius: 12px;
   box-shadow:
-    4px 4px 12px rgba(233, 69, 96, 0.35),
-    1px 1px 3px rgba(233, 69, 96, 0.2),
+    4px 4px 12px rgba(200, 109, 116, 0.35),
+    1px 1px 3px rgba(200, 109, 116, 0.2),
     inset 1px 1px 2px rgba(255, 255, 255, 0.4),
     inset -1px -1px 0 rgba(0, 0, 0, 0.1);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
@@ -209,28 +209,28 @@ const hasSource = computed(() => !!store.selectedSource)
 /* 悬浮：底色转浅粉、文字与圆点变红 —— 只换字色会红字压红底看不清，
    转浅底后红字才立得住，且与暂停/继续“浅底+深色字”的 hover 语言一致 */
 .record-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #fff1f4 0%, #ffdde2 100%);
-  border-color: rgba(255, 170, 185, 0.7);
-  border-top-color: rgba(255, 200, 210, 0.9);
-  border-left-color: rgba(255, 180, 195, 0.85);
+  background: linear-gradient(135deg, #FAF0F1 0%, #F3DEE0 100%);
+  border-color: rgba(222, 137, 144, 0.7);
+  border-top-color: rgba(235, 170, 175, 0.9);
+  border-left-color: rgba(230, 160, 165, 0.85);
   color: var(--accent);
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
   box-shadow:
-    6px 6px 18px rgba(233, 69, 96, 0.4),
-    2px 2px 5px rgba(233, 69, 96, 0.25),
+    6px 6px 18px rgba(200, 109, 116, 0.4),
+    2px 2px 5px rgba(200, 109, 116, 0.25),
     inset 1px 1px 2px rgba(255, 255, 255, 0.9),
     inset -1px -1px 0 rgba(0, 0, 0, 0.05);
 }
 
 .record-btn:hover:not(:disabled) .record-icon {
   background: var(--accent);
-  box-shadow: 0 1px 2px rgba(233, 69, 96, 0.35);
+  box-shadow: 0 1px 2px rgba(200, 109, 116, 0.35);
 }
 
 .record-btn:active:not(:disabled) {
-  background: linear-gradient(135deg, #d93d56 0%, #c23050 100%);
-  border-color: rgba(180, 50, 70, 0.5);
-  border-top-color: rgba(200, 60, 80, 0.6);
+  background: linear-gradient(135deg, #B65B62 0%, #A54D54 100%);
+  border-color: rgba(165, 77, 84, 0.5);
+  border-top-color: rgba(182, 91, 98, 0.6);
   box-shadow:
     inset 3px 3px 8px rgba(0, 0, 0, 0.2),
     inset 1px 1px 3px rgba(0, 0, 0, 0.15),

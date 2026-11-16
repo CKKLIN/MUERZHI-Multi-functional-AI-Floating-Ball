@@ -7,9 +7,9 @@
   --text-primary: #2a2a3a;
   --text-secondary: #5a5a6e;
   --text-muted: #8e8ea0;
-  --accent: #e94560;
-  --accent-hover: #ff6b81;
-  --accent-bg: rgba(233, 69, 96, 0.08);
+  --accent: #C86D74;
+  --accent-hover: #DE8990;
+  --accent-bg: rgba(200, 109, 116, 0.12);
   --success: #2ea87a;
   --success-bg: rgba(46, 168, 122, 0.08);
   --warning: #d4a017;
@@ -52,9 +52,30 @@
   --surface-grad-hover: linear-gradient(135deg, #ffffff 0%, #ededf4 100%);
   --surface-grad-active: linear-gradient(135deg, #ebebf0 0%, #dedee6 100%);
   --surface-accent: var(--accent);
-  --surface-accent-grad: linear-gradient(135deg, #ff6b81 0%, #e94560 100%);
-  --surface-accent-glow: rgba(233, 69, 96, 0.35);
-  --surface-accent-bg: rgba(233, 69, 96, 0.15);
+  --surface-accent-grad: linear-gradient(135deg, #DE8990 0%, #C86D74 100%);
+  --surface-accent-glow: rgba(200, 109, 116, 0.35);
+  --surface-accent-bg: rgba(200, 109, 116, 0.12);
+
+  /* ===== 莫兰迪专属菜单色体系 (Morandi Palette) ===== */
+  --morandi-record: #C86D74;
+  --morandi-record-grad: linear-gradient(135deg, #DE8990 0%, #C86D74 100%);
+  --morandi-record-glow: rgba(200, 109, 116, 0.35);
+  --morandi-record-bg: rgba(200, 109, 116, 0.12);
+
+  --morandi-ai: #5E9387;
+  --morandi-ai-grad: linear-gradient(135deg, #78AFA3 0%, #5E9387 100%);
+  --morandi-ai-glow: rgba(94, 147, 135, 0.35);
+  --morandi-ai-bg: rgba(94, 147, 135, 0.12);
+
+  --morandi-todo: #6876A4;
+  --morandi-todo-grad: linear-gradient(135deg, #818FB9 0%, #6876A4 100%);
+  --morandi-todo-glow: rgba(104, 118, 164, 0.35);
+  --morandi-todo-bg: rgba(104, 118, 164, 0.12);
+
+  --morandi-settings: #9E8B77;
+  --morandi-settings-grad: linear-gradient(135deg, #B5A492 0%, #9E8B77 100%);
+  --morandi-settings-glow: rgba(158, 139, 119, 0.35);
+  --morandi-settings-bg: rgba(158, 139, 119, 0.12);
 
   font-family: var(--font-sans);
   font-size: 14px;
@@ -682,6 +703,28 @@ select.input {
     inset 3px 3px 8px rgba(0, 0, 0, 0.2),
     inset 1px 1px 3px rgba(0, 0, 0, 0.15),
     inset -1px -1px 1px rgba(255, 255, 255, 0.15);
+}
+
+/* 莫兰迪独立菜单 Chip 颜色 */
+.menu-chip.menu-chip-record.on {
+  background: var(--morandi-record-grad);
+  border-color: var(--morandi-record);
+  box-shadow: 4px 4px 12px var(--morandi-record-glow), 1px 1px 3px rgba(0, 0, 0, 0.1), inset 1px 1px 2px rgba(255, 255, 255, 0.4), inset -1px -1px 0 rgba(0, 0, 0, 0.1);
+}
+.menu-chip.menu-chip-ai.on {
+  background: var(--morandi-ai-grad);
+  border-color: var(--morandi-ai);
+  box-shadow: 4px 4px 12px var(--morandi-ai-glow), 1px 1px 3px rgba(0, 0, 0, 0.1), inset 1px 1px 2px rgba(255, 255, 255, 0.4), inset -1px -1px 0 rgba(0, 0, 0, 0.1);
+}
+.menu-chip.menu-chip-todo.on {
+  background: var(--morandi-todo-grad);
+  border-color: var(--morandi-todo);
+  box-shadow: 4px 4px 12px var(--morandi-todo-glow), 1px 1px 3px rgba(0, 0, 0, 0.1), inset 1px 1px 2px rgba(255, 255, 255, 0.4), inset -1px -1px 0 rgba(0, 0, 0, 0.1);
+}
+.menu-chip.menu-chip-settings.on {
+  background: var(--morandi-settings-grad);
+  border-color: var(--morandi-settings);
+  box-shadow: 4px 4px 12px var(--morandi-settings-glow), 1px 1px 3px rgba(0, 0, 0, 0.1), inset 1px 1px 2px rgba(255, 255, 255, 0.4), inset -1px -1px 0 rgba(0, 0, 0, 0.1);
 }
 
 /* 加载 */

@@ -169,21 +169,26 @@ async function main() {
     return;
   }
 
-  // 3. PreToolUse (工具调用前：问答交互 / 权限审批 / 状态更新)
+  // 3. PreToolUse (工具调用前：问答只读提醒 / 权限审批 / 状态更新)
   if (eventName === "PreToolUse") {
-    // 问答工具 AskQuestion 特殊处理
-    if (toolName === "ask_question" && toolInput && toolInput.questions) {
+    // Antigravity PreToolUse 协议不支持答案回注，走 /question 弹出非阻塞只读提醒卡后立刻 allow 放行，
+    // 让 Antigravity 原生界面展示提问；待用户答完触发 PostToolUse 自动收起提醒卡。
+    if (toolName === "ask_question" || toolName === "AskUserQuestion" || toolName === "askQuestion") {
       await postToMuerzhi("/question", {
         session_id: sessionId,
         agent_id: "antigravity",
         tool_name: toolName,
         tool_input: toolInput,
-        questions: toolInput.questions,
+        tool_use_id: toolUseId,
+        questions: (toolInput && toolInput.questions) || null,
+        model,
       }, port);
+      process.stdout.write(JSON.stringify({ decision: "allow" }) + "\n");
+      return;
     }
 
     // 只读工具直接放行，但向悬浮岛上报 working 状态展示正在读取
-    if (!WRITE_TOOLS.has(toolName) && toolName !== "ask_question") {
+    if (!WRITE_TOOLS.has(toolName)) {
       await postToMuerzhi("/state", {
         session_id: sessionId,
         agent_id: "antigravity",

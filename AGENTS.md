@@ -66,7 +66,7 @@ npm run build:web    # 仅 vite build（tauri build 的 beforeCommand）
 
 **区域录制支持副屏**：`region_selected` 按选区中心点推导显示器下标，事件载荷带 `sourceId: "screen:{n}"`（曾硬编码 screen:0——在屏幕 2 上框选会录成屏幕 1 的内容，crop 坐标按屏 1 原点平移后落进屏 1 画面）。渲染层 selectRegion 原样透传 → `targetDisplayId` 贯通 WGC 采集/裁剪/PiP。画中画换算原点 = 选区左上角本身（虚拟桌面物理坐标），与落在哪块屏无关。选区底图抓取走 `grab_data_url_awake`：副屏刚被唤醒时 GDI 首抓常为全黑帧，按平均亮度检测、350ms×5 次重试（真·关闭的屏仍返回黑图，与旧行为一致）。
 
-**AI 悬浮岛窗口尺寸 == 可见内容尺寸（无透明缓冲带）**：Electron 版留了 +20 右侧缓冲与 +28 底部气泡带（给 tooltip 用），Tauri 版页面没有任何 tooltip，那两条缓冲就是凭空一块「看不见但吃点击」的窗口 —— 全靠 120ms 光标轮询调 `set_ignore_cursor_events` 才穿透，轮询一断（窗口重建竞态 / 脱离管理的孤儿窗）可见岛下方 28px 就永久吞掉下方应用的点击（实测反馈「AI 悬浮岛底下的区域没办法点击」）。现在 `resize_ai_island` 直接按页面上报的 `offsetWidth/offsetHeight`（border box）设窗口，指针在任何位置都无需猜测，穿透轮询退化为兜底。页面上报宽度也必须用 `offsetWidth`（`scrollWidth` 是 padding box，少 2px 会裁掉右边框）。
+**AI 悬浮岛采用固定透明画布 + 严格内容穿透（同悬浮球 `RING_SIZE` 方案）**：WebView2 透明窗口在展开/收起时若同步更改原生窗口宽与左上角坐标（88 → 380），`wry` `WM_SIZE` 会把尚未完成新视口重排的旧表面贴到新左上角，导致 1 帧横向残影。现改为固定 `CANVAS_W × CANVAS_H`（560×480）画布居中承载 `.island` 纯 CSS 形变，`resize_ai_island` 仅更新 `AiIslandState.content` 可见岛命中矩形（仅贴屏边展开时用 `SWP_NOSIZE` 内移防裁切），配合 32ms/250ms 自适应光标轮询与页面 `mousemove`/`mouseleave` 即时放行保障空白透明区始终穿透；展开时卡片内容使用离屏测量确保宽高不裁剪。
 
 **选区页必须是完整 HTML**：`public/windows/region-selector.html` 曾只有 CSS+JS 片段（缺 `<!DOCTYPE>/<body>`），浏览器当纯文本渲染 → 内联脚本永不执行 → 点「区域录制」毫无反应。改动该文件时务必保持完整文档结构。
 

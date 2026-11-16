@@ -76,7 +76,7 @@ pub fn close_window(window: tauri::Window, app: tauri::AppHandle) {
 // ===== 待办窗口控制（P3 实装：show/close/visible/alwaysOnTop）=====
 
 #[tauri::command]
-pub fn todo_show_window(app: tauri::AppHandle) {
+pub async fn todo_show_window(app: tauri::AppHandle) {
     log::info!("todo_show_window");
     crate::modules::windows::open_or_focus(&app, "todo", "/todo");
     // 打开即视为已查看到期项：熄灭角标闪烁（对齐 acknowledgeTodoBadgeFlash）

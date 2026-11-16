@@ -27,13 +27,24 @@ body.expanded .ring-svg{pointer-events:none}
 
 /* 花瓣：开花式绽放（scale(0)+摆动 → scale(1)），无缝铺满 */
 .arc-item{
-  fill:url(#cardGrad);stroke:none;cursor:pointer;pointer-events:none;
+  fill:url(#cardGrad_default);stroke:none;cursor:pointer;pointer-events:none;
   opacity:0;transform:scale(0) rotate(var(--swing,0deg));
   transform-origin:120px 120px;
   transition:transform 0.5s cubic-bezier(0.34,1.56,0.64,1),opacity 0.3s ease,fill 0.2s ease;
 }
 body.expanded .arc-item{opacity:1;transform:scale(1) rotate(0deg);pointer-events:auto}
-.arc-item:hover{fill:url(#cardGradHover)}
+.arc-item:hover{fill:url(#cardGradHover_default)}
+
+/* 莫兰迪专属花瓣底色与 Hover 微色调 */
+.arc-item.theme-record{fill:url(#cardGrad_record)}
+.arc-item.theme-record:hover{fill:url(#cardGradHover_record)}
+.arc-item.theme-ai{fill:url(#cardGrad_ai)}
+.arc-item.theme-ai:hover{fill:url(#cardGradHover_ai)}
+.arc-item.theme-todo{fill:url(#cardGrad_todo)}
+.arc-item.theme-todo:hover{fill:url(#cardGradHover_todo)}
+.arc-item.theme-settings{fill:url(#cardGrad_settings)}
+.arc-item.theme-settings:hover{fill:url(#cardGradHover_settings)}
+
 body.no-anim .arc-item,body.no-anim .arc-shadow,body.no-anim .arc-label{transition:none !important}
 
 .arc-shadow{
@@ -50,7 +61,11 @@ body.expanded .arc-shadow{opacity:1;transform:scale(1) rotate(0deg)}
   transition:transform 0.35s cubic-bezier(0.34,1.56,0.64,1),opacity 0.25s ease;
 }
 body.expanded .arc-label{opacity:1;transform:scale(1)}
-.arc-label .icon{font-size:15px;fill:#4a6cf7;font-weight:700;filter:drop-shadow(0 1px 0 rgba(255,255,255,0.55))}
+.arc-label .icon{font-size:15px;fill:#6876A4;font-weight:700;filter:drop-shadow(0 1px 0 rgba(255,255,255,0.55))}
+.arc-label.theme-record .icon{fill:#C86D74}
+.arc-label.theme-ai .icon{fill:#5E9387}
+.arc-label.theme-todo .icon{fill:#6876A4}
+.arc-label.theme-settings .icon{fill:#9E8B77}
 .arc-label .label{font-size:9px;font-weight:600;fill:#3a4156;stroke:rgba(255,255,255,0.75);stroke-width:2px;paint-order:stroke}
 
 #trigger{
@@ -131,11 +146,11 @@ body.snap-left #trigger:hover,body.snap-right #trigger:hover{transform:none}
 }
 .core #trigger{pointer-events:auto}
 
-/* 待办数量气泡 */
+/* 待办数量气泡 - 莫兰迪烟波蓝 */
 #ballBadge{
   position:absolute;top:0;right:0;z-index:20;
   min-width:15px;height:15px;padding:0 3px;border-radius:999px;
-  background:#4e5cd4;color:#fff;font-size:9px;font-weight:700;line-height:15px;text-align:center;
+  background:#6876A4;color:#fff;font-size:9px;font-weight:700;line-height:15px;text-align:center;
   display:none;align-items:center;justify-content:center;
   box-shadow:0 1px 3px rgba(0,0,0,0.35);
 }
@@ -230,8 +245,18 @@ function ensureMenu(){
   const SHADOW_ROT = 4
 
   const defs = document.createElementNS('http://www.w3.org/2000/svg','defs')
-  defs.appendChild(makeGradient('cardGrad', '#ffffff', '#f2f4f9'))
-  defs.appendChild(makeGradient('cardGradHover', '#eef1ff', '#dbe2ff'))
+  defs.appendChild(makeGradient('cardGrad_default', '#ffffff', '#f2f4f9'))
+  defs.appendChild(makeGradient('cardGradHover_default', '#eef1ff', '#dbe2ff'))
+
+  // 莫兰迪菜单专属渐变：底色微白过渡，Hover 呈现柔和专属调
+  defs.appendChild(makeGradient('cardGrad_record', '#ffffff', '#f8eff0'))
+  defs.appendChild(makeGradient('cardGradHover_record', '#faebee', '#edd5d7'))
+  defs.appendChild(makeGradient('cardGrad_ai', '#ffffff', '#eef5f3'))
+  defs.appendChild(makeGradient('cardGradHover_ai', '#e5f0ec', '#cfe1dc'))
+  defs.appendChild(makeGradient('cardGrad_todo', '#ffffff', '#eff1f7'))
+  defs.appendChild(makeGradient('cardGradHover_todo', '#e7eaf5', '#cfd5eb'))
+  defs.appendChild(makeGradient('cardGrad_settings', '#ffffff', '#f6f4f0'))
+  defs.appendChild(makeGradient('cardGradHover_settings', '#f0ece5', '#dfd8ce'))
   svg.appendChild(defs)
 
   ITEMS.forEach(function(item, i){
@@ -239,7 +264,7 @@ function ensureMenu(){
     const ea = sa + segArc
     const d = total === 1 ? fullRingPath(120, 120, 34, 75) : arcPath(120, 120, 34, 75, sa, ea)
     const path = document.createElementNS('http://www.w3.org/2000/svg','path')
-    path.setAttribute('class','arc-item')
+    path.setAttribute('class','arc-item theme-' + item.action)
     path.setAttribute('d',d)
     if(total === 1) path.setAttribute('fill-rule','evenodd')
     path.setAttribute('data-action',item.action)
@@ -287,7 +312,7 @@ function ensureMenu(){
     const lx = 120 + mr*Math.cos(ma*Math.PI/180)
     const ly = 120 + mr*Math.sin(ma*Math.PI/180)
     const txt = document.createElementNS('http://www.w3.org/2000/svg','text')
-    txt.setAttribute('class','arc-label')
+    txt.setAttribute('class','arc-label theme-' + item.action)
     txt.setAttribute('x',lx)
     txt.setAttribute('y',ly)
     txt.style.transitionDelay = (i*0.10+0.08)+'s'

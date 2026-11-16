@@ -1,5 +1,5 @@
 // AI 会话状态机 — 移植 electron/main/agent-state-machine.ts
-// 状态优先级 error(4) > notification(3) > working(2) > thinking(1) > idle(0)；
+// 状态优先级 notification(4) > working(3) > thinking(2) > error(1) > idle(0)；
 // Stop 事件触发 2s done 闪烁；僵尸回收（idle 10min / 非 idle 5min 且 Claude 未运行）。
 
 use serde::{Deserialize, Serialize};
@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 pub const SESSION_STALE_MS: u64 = 10 * 60 * 1000;
 pub const WORKING_STALE_MS: u64 = 5 * 60 * 1000;
 pub const DONE_DURATION_MS: u64 = 2000;
+pub const ERROR_DURATION_MS: u64 = 4000;
 pub const TITLE_MAX_LEN: usize = 60;
 const CLEANUP_INTERVAL_MS: u64 = 10_000;
 
@@ -90,10 +91,10 @@ impl StateMachine {
 
     fn priority(state: &str) -> i32 {
         match state {
-            "error" => 4,
-            "notification" => 3,
-            "working" => 2,
-            "thinking" => 1,
+            "error" => 1,
+            "notification" => 4,
+            "working" => 3,
+            "thinking" => 2,
             _ => 0,
         }
     }
@@ -185,6 +186,8 @@ impl StateMachine {
             // 东西在到期时推送 → 岛闪一下「完成」就永远停在 done 态（最多 10min 后
             // 被僵尸清理循环顺手清掉才恢复 idle）。
             self.arm_done_reset(session_id.to_string());
+        } else if state == "error" {
+            self.arm_error_reset(session_id.to_string(), now);
         }
         self.notify();
     }
@@ -225,6 +228,37 @@ impl StateMachine {
         });
     }
 
+    /// 4s 后若会话仍处于同一错误态（未被新事件接管），则自动复位为 idle 并广播
+    pub fn arm_error_reset(&self, session_id: String, updated_at: i64) {
+        self.arm_error_reset_after(session_id, updated_at, Duration::from_millis(ERROR_DURATION_MS));
+    }
+
+    /// 与 arm_error_reset 同逻辑，延时可注入（单测用毫秒级跑完整复位路径）
+    pub fn arm_error_reset_after(&self, session_id: String, updated_at: i64, delay: Duration) {
+        let h = self.done_handles();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(delay).await;
+            let mut should_notify = false;
+            {
+                let mut sessions = h.sessions.lock().unwrap();
+                if let Some(s) = sessions.get_mut(&session_id) {
+                    if s.state == "error" && s.updated_at == updated_at {
+                        log::info!(
+                            "[StateMachine] session={} 错误状态已超时，自动复位为 idle",
+                            crate::modules::agent::server::short_id(&session_id),
+                        );
+                        s.state = "idle".into();
+                        s.updated_at = crate::modules::todo::store::now_ms();
+                        should_notify = true;
+                    }
+                }
+            }
+            if should_notify {
+                notify_via(&h);
+            }
+        });
+    }
+
     fn done_handles(&self) -> DoneResetHandles {
         DoneResetHandles {
             sessions: self.sessions.clone(),
@@ -240,10 +274,47 @@ impl StateMachine {
     }
 
     pub fn sessions_snapshot(&self) -> Vec<AgentSession> {
-        let sessions = self.sessions.lock().unwrap();
+        let mut sessions = self.sessions.lock().unwrap();
+        for s in sessions.values_mut() {
+            if s.title.is_none() {
+                if let Some(name) = crate::modules::agent::session_title::TitleCache::global().get(&s.session_id) {
+                    s.title = Some(name);
+                }
+            }
+        }
         let mut v: Vec<AgentSession> = sessions.values().cloned().collect();
         v.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
         v
+    }
+
+    /// 查询已有会话所属 Agent 标识（用于未显式上报 agent_id 的回调兜底）
+    pub fn session_agent_id(&self, session_id: &str) -> Option<String> {
+        self.sessions
+            .lock()
+            .unwrap()
+            .get(session_id)
+            .map(|s| s.agent_id.clone())
+    }
+
+    /// 仅当会话仍处于 notification 时复位为 idle（只读提问卡超时专用，不覆盖 working/thinking）
+    pub fn reset_notification_to_idle(&self, session_id: &str) {
+        let changed = {
+            let mut sessions = self.sessions.lock().unwrap();
+            if let Some(s) = sessions.get_mut(session_id) {
+                if s.state == "notification" {
+                    s.state = "idle".into();
+                    s.updated_at = crate::modules::todo::store::now_ms();
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        };
+        if changed {
+            self.notify();
+        }
     }
 
     /// 清空某会话（会话结束）
@@ -438,10 +509,35 @@ mod tests {
 
     #[test]
     fn priority_ordering() {
-        assert!(StateMachine::priority("error") > StateMachine::priority("notification"));
+
         assert!(StateMachine::priority("notification") > StateMachine::priority("working"));
         assert!(StateMachine::priority("working") > StateMachine::priority("thinking"));
-        assert!(StateMachine::priority("thinking") > StateMachine::priority("idle"));
+        assert!(StateMachine::priority("thinking") > StateMachine::priority("error"));
+        assert!(StateMachine::priority("error") > StateMachine::priority("idle"));
+    }
+
+    #[test]
+    fn session_agent_id_and_reset_notification_work() {
+        let sm = isolated();
+        assert_eq!(sm.session_agent_id("missing"), None);
+
+        sm.update_session(
+            "s-agy",
+            "notification",
+            "AskUserQuestion",
+            SessionOpts {
+                agent_id: Some("antigravity".into()),
+                ..Default::default()
+            },
+        );
+        assert_eq!(sm.session_agent_id("s-agy").as_deref(), Some("antigravity"));
+        sm.reset_notification_to_idle("s-agy");
+        assert_eq!(sm.resolve_display_state(), "idle");
+
+        // 非 notification 状态不应被 reset_notification_to_idle 误重置
+        sm.update_session("s-agy", "working", "PreToolUse", SessionOpts::default());
+        sm.reset_notification_to_idle("s-agy");
+        assert_eq!(sm.resolve_display_state(), "working");
     }
 
     fn isolated() -> StateMachine {
@@ -456,6 +552,34 @@ mod tests {
         assert_eq!(sm.resolve_display_state(), "working");
         sm.update_session("s2", "idle", "PostToolUse", SessionOpts::default());
         assert_eq!(sm.resolve_display_state(), "thinking");
+    }
+
+    #[test]
+    fn active_session_not_blocked_by_error_session() {
+        let sm = isolated();
+        sm.update_session("s1", "error", "PostToolUseFailure", SessionOpts::default());
+        assert_eq!(sm.resolve_display_state(), "error", "仅有错误会话时展示 error");
+
+        // 另一个会话正在工作：不被已报错的会话阻塞
+        sm.update_session("s2", "working", "PreToolUse", SessionOpts::default());
+        assert_eq!(sm.resolve_display_state(), "working", "正常工作的会话优先于报错会话");
+
+        // 工作完成：若报错会话尚未超时复位，显示 error
+        sm.update_session("s2", "idle", "PostToolUse", SessionOpts::default());
+        assert_eq!(sm.resolve_display_state(), "error");
+    }
+
+    #[tokio::test]
+    async fn error_resets_to_idle_after_duration() {
+        let sm = isolated();
+        sm.update_session("s1", "error", "PostToolUseFailure", SessionOpts::default());
+        assert_eq!(sm.resolve_display_state(), "error");
+
+        let now = sm.sessions.lock().unwrap().get("s1").unwrap().updated_at;
+        sm.arm_error_reset_after("s1".into(), now, Duration::from_millis(15));
+        tokio::time::sleep(Duration::from_millis(40)).await;
+
+        assert_eq!(sm.resolve_display_state(), "idle", "错误超时后自动恢复 idle");
     }
 
     #[test]

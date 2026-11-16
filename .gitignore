@@ -51,5 +51,6 @@ agent-settings.json
 recordings.json
 
 # Rust/Tauri 构建产物与本地 schema（capabilities 变更时自动再生成）
+target*/
 src-tauri/target*/
 src-tauri/gen/

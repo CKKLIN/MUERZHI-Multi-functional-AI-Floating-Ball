@@ -81,6 +81,55 @@ function postToClawd(path, payload, port, timeoutMs) {
   });
 }
 
+function extractPromptFromTranscript(transcriptPath, promptId) {
+  if (!transcriptPath) return null;
+  try {
+    if (!fs.existsSync(transcriptPath)) return null;
+    const fd = fs.openSync(transcriptPath, "r");
+    const stat = fs.fstatSync(fd);
+    const bytesToRead = Math.min(stat.size, 128 * 1024);
+    const buf = Buffer.alloc(bytesToRead);
+    fs.readSync(fd, buf, 0, bytesToRead, 0);
+    fs.closeSync(fd);
+
+    const text = buf.toString("utf8");
+    const lines = text.split("\n");
+    let firstRealPrompt = null;
+    let targetPrompt = null;
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      let obj;
+      try {
+        obj = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (obj.type === "user" && obj.message && obj.message.content) {
+        let msgText = "";
+        if (typeof obj.message.content === "string") {
+          msgText = obj.message.content;
+        } else if (Array.isArray(obj.message.content)) {
+          const tb = obj.message.content.find((b) => b && b.type === "text" && typeof b.text === "string");
+          if (tb) msgText = tb.text;
+        }
+        msgText = msgText.trim();
+        if (msgText && !msgText.startsWith("<") && !msgText.startsWith("[Request interrupted")) {
+          if (!firstRealPrompt) firstRealPrompt = msgText;
+          if (promptId && obj.promptId === promptId) {
+            targetPrompt = msgText;
+            break;
+          }
+        }
+      }
+    }
+    return targetPrompt || firstRealPrompt || null;
+  } catch (e) {
+    hookDebug(`extractPrompt error: ${e.message}`);
+    return null;
+  }
+}
+
 // 事件名 → 状态映射
 const EVENT_TO_STATE = {
   SessionStart: "idle",
@@ -177,12 +226,15 @@ async function main() {
 
   // AskUserQuestion 是工具调用，走 PreToolUse 触发；仅拦截 PreToolUse（PostToolUse 同名但无 questions，
   // 避免重复推送）。只读通知卡片用：把问题+选项发给悬浮岛展示，而不是注入答案（hook 无法返回工具结果）。
-  if (eventName === "PreToolUse" && toolName === "AskUserQuestion") {
+  if (eventName === "PreToolUse" && (toolName === "AskUserQuestion" || toolName === "ask_question" || toolName === "askQuestion")) {
     await postToClawd("/question", {
       session_id: sessionId,
       tool_name: toolName,
       tool_input: toolInput,
+      agent_id: "claude-code",
+      tool_use_id: toolUseId,
       questions: (toolInput && toolInput.questions) || null,
+      model: event.model || null,
     }, port);
   }
 
@@ -204,7 +256,8 @@ async function main() {
     model: event.model || null,
     context_usage: event.context_usage || event.contextUsage || null,
     // 用户消息原文（仅 UserPromptSubmit 事件携带）：主进程取会话的首条 prompt 当标题
-    prompt: event.prompt || null,
+    prompt: event.prompt || (event.transcript_path ? extractPromptFromTranscript(event.transcript_path, event.prompt_id || event.promptId) : null),
+    transcript_path: event.transcript_path || null,
   };
 
   await postToClawd("/state", payload, port);

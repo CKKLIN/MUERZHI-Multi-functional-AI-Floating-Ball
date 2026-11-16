@@ -60,13 +60,26 @@ pub fn settings_path() -> PathBuf {
 /// clawd-hook.js 路径：打包走 resources（tauri.conf.json 映射到 exe 旁），dev 走仓库 src-tauri/resources
 pub fn hook_script_path(app: &AppHandle) -> PathBuf {
     if let Ok(res) = app.path().resource_dir() {
-        let p = res.join("clawd-hook.js");
-        if p.exists() {
-            return p;
+        for candidate in [
+            res.join("clawd-hook.js"),
+            res.join("resources").join("clawd-hook.js"),
+        ] {
+            if candidate.exists() {
+                return candidate;
+            }
         }
     }
-    // dev：src-tauri/target/debug → 上四级 = 项目根（electron/ 目录已删除，真实文件在 src-tauri/resources）
     if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            for candidate in [
+                dir.join("clawd-hook.js"),
+                dir.join("resources").join("clawd-hook.js"),
+            ] {
+                if candidate.exists() {
+                    return candidate;
+                }
+            }
+        }
         if let Some(root) = exe.ancestors().nth(4) {
             let p = root.join("src-tauri").join("resources").join("clawd-hook.js");
             if p.exists() {
@@ -355,12 +368,26 @@ pub fn antigravity_hooks_path() -> PathBuf {
 
 pub fn antigravity_hook_script_path(app: &AppHandle) -> PathBuf {
     if let Ok(res) = app.path().resource_dir() {
-        let p = res.join("antigravity-hook.js");
-        if p.exists() {
-            return p;
+        for candidate in [
+            res.join("antigravity-hook.js"),
+            res.join("resources").join("antigravity-hook.js"),
+        ] {
+            if candidate.exists() {
+                return candidate;
+            }
         }
     }
     if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            for candidate in [
+                dir.join("antigravity-hook.js"),
+                dir.join("resources").join("antigravity-hook.js"),
+            ] {
+                if candidate.exists() {
+                    return candidate;
+                }
+            }
+        }
         if let Some(root) = exe.ancestors().nth(4) {
             let p = root.join("src-tauri").join("resources").join("antigravity-hook.js");
             if p.exists() {
@@ -493,6 +520,223 @@ pub fn uninstall_antigravity() -> Result<(), String> {
     std::fs::write(&path, text)
         .map_err(|e| format!("write hooks.json failed: {e}"))?;
     log::info!("Antigravity hooks uninstalled from {}", path.display());
+    Ok(())
+}
+
+// ===== ZCode (智谱 AI 代码助手) Hooks 管理 =====
+
+pub fn zcode_config_dir() -> PathBuf {
+    home_dir().join(".zcode").join("cli")
+}
+
+pub fn zcode_config_path() -> PathBuf {
+    zcode_config_dir().join("config.json")
+}
+
+pub fn zcode_hook_script_path(app: &AppHandle) -> PathBuf {
+    if let Ok(res) = app.path().resource_dir() {
+        for candidate in [
+            res.join("zcode-hook.js"),
+            res.join("resources").join("zcode-hook.js"),
+        ] {
+            if candidate.exists() {
+                return candidate;
+            }
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            for candidate in [
+                dir.join("zcode-hook.js"),
+                dir.join("resources").join("zcode-hook.js"),
+            ] {
+                if candidate.exists() {
+                    return candidate;
+                }
+            }
+        }
+        if let Some(root) = exe.ancestors().nth(4) {
+            let p = root.join("src-tauri").join("resources").join("zcode-hook.js");
+            if p.exists() {
+                return p;
+            }
+        }
+    }
+    PathBuf::from("zcode-hook.js")
+}
+
+pub fn is_zcode_env_present() -> bool {
+    home_dir().join(".zcode").exists()
+}
+
+pub fn is_zcode_installed() -> bool {
+    let path = zcode_config_path();
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return false;
+    };
+    let Ok(v): Result<Value, _> = serde_json::from_str(&text) else {
+        return false;
+    };
+    let Some(hooks) = v.get("hooks") else {
+        return false;
+    };
+    if hooks.get("enabled").and_then(|e| e.as_bool()) != Some(true) {
+        return false;
+    }
+    let Some(events) = hooks.get("events").and_then(|e| e.as_object()) else {
+        return false;
+    };
+    events.values().any(|arr| {
+        if let Some(entries) = arr.as_array() {
+            entries.iter().any(|item| {
+                if let Some(hook_list) = item.get("hooks").and_then(|h| h.as_array()) {
+                    hook_list.iter().any(|h| {
+                        h.get("command")
+                            .and_then(|c| c.as_str())
+                            .map(|s| s.contains("zcode-hook.js"))
+                            .unwrap_or(false)
+                    })
+                } else {
+                    false
+                }
+            })
+        } else {
+            false
+        }
+    })
+}
+
+fn ensure_zcode_timeout_ms(hooks_map: &mut serde_json::Map<String, Value>) {
+    // 将旧版默认 60000ms（1 分钟）一并升级到与单事件一致的 1860s，避免用户思考回答时被外层超时掐断
+    let should_upgrade = hooks_map
+        .get("timeoutMs")
+        .and_then(|v| v.as_u64())
+        .is_none_or(|ms| ms == 60000);
+    if should_upgrade {
+        hooks_map.insert("timeoutMs".to_string(), json!(HOOK_HTTP_TIMEOUT_S * 1000));
+    }
+}
+
+pub fn install_zcode(app: &AppHandle) -> Result<(), String> {
+    let path = zcode_config_path();
+    let mut config: Value = match std::fs::read_to_string(&path) {
+        Ok(text) => serde_json::from_str(&text).unwrap_or_else(|_| json!({})),
+        Err(_) => json!({}),
+    };
+
+    let script = zcode_hook_script_path(app);
+    let script_str = win_api_path(&script).replace('\\', "/");
+    let cmd_path = if script_str.contains(' ') {
+        format!("\"{script_str}\"")
+    } else {
+        script_str
+    };
+
+    let events = [
+        ("SessionStart", 10),
+        ("UserPromptSubmit", 10),
+        ("PreToolUse", 1860),
+        ("PermissionRequest", 1860),
+        ("PostToolUse", 10),
+        ("PostToolUseFailure", 10),
+        ("Stop", 10),
+    ];
+
+    let hooks_obj = config
+        .as_object_mut()
+        .ok_or_else(|| "config is not a JSON object".to_string())?
+        .entry("hooks".to_string())
+        .or_insert_with(|| json!({}));
+
+    let hooks_map = hooks_obj
+        .as_object_mut()
+        .ok_or_else(|| "hooks is not a JSON object".to_string())?;
+
+    hooks_map.insert("enabled".to_string(), json!(true));
+    ensure_zcode_timeout_ms(hooks_map);
+
+    let events_obj = hooks_map
+        .entry("events".to_string())
+        .or_insert_with(|| json!({}));
+    let events_map = events_obj
+        .as_object_mut()
+        .ok_or_else(|| "hooks.events is not a JSON object".to_string())?;
+
+    for (event_name, timeout) in events {
+        let entry = events_map
+            .entry(event_name.to_string())
+            .or_insert_with(|| json!([]));
+        if let Some(arr) = entry.as_array_mut() {
+            arr.retain(|item| {
+                if let Some(hook_list) = item.get("hooks").and_then(|h| h.as_array()) {
+                    !hook_list.iter().any(|h| {
+                        h.get("command")
+                            .and_then(|c| c.as_str())
+                            .map(|s| s.contains("zcode-hook.js"))
+                            .unwrap_or(false)
+                    })
+                } else {
+                    true
+                }
+            });
+            arr.push(json!({
+                "matcher": ".*",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": format!("node {cmd_path} {event_name}"),
+                        "timeout": timeout
+                    }
+                ]
+            }));
+        }
+    }
+
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let text = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("serialize config.json failed: {e}"))?;
+    std::fs::write(&path, text)
+        .map_err(|e| format!("write config.json failed: {e}"))?;
+    log::info!("ZCode hooks installed to {}", path.display());
+    Ok(())
+}
+
+pub fn uninstall_zcode() -> Result<(), String> {
+    let path = zcode_config_path();
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Ok(());
+    };
+    let mut config: Value = serde_json::from_str(&text)
+        .map_err(|e| format!("parse config.json failed: {e}"))?;
+
+    if let Some(hooks_map) = config.get_mut("hooks").and_then(|h| h.as_object_mut()) {
+        if let Some(events_map) = hooks_map.get_mut("events").and_then(|e| e.as_object_mut()) {
+            for arr_val in events_map.values_mut() {
+                if let Some(arr) = arr_val.as_array_mut() {
+                    arr.retain(|item| {
+                        if let Some(hook_list) = item.get("hooks").and_then(|h| h.as_array()) {
+                            !hook_list.iter().any(|h| {
+                                h.get("command")
+                                    .and_then(|c| c.as_str())
+                                    .map(|s| s.contains("zcode-hook.js"))
+                                    .unwrap_or(false)
+                            })
+                        } else {
+                            true
+                        }
+                    });
+                }
+            }
+        }
+    }
+
+    let text = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("serialize config.json failed: {e}"))?;
+    std::fs::write(&path, text)
+        .map_err(|e| format!("write config.json failed: {e}"))?;
+    log::info!("ZCode hooks uninstalled from {}", path.display());
     Ok(())
 }
 
@@ -656,5 +900,34 @@ mod tests {
     #[test]
     fn antigravity_env_detected() {
         assert!(is_antigravity_env_present());
+    }
+
+    #[test]
+    fn zcode_config_path_in_cli_dir() {
+        let p = zcode_config_path();
+        assert!(p.to_string_lossy().contains(".zcode"));
+        assert!(p.to_string_lossy().ends_with("config.json"));
+    }
+
+    #[test]
+    fn zcode_env_detected() {
+        assert!(is_zcode_env_present());
+    }
+
+    #[test]
+    fn zcode_timeout_ms_upgrades_legacy_default_but_keeps_custom() {
+        let mut missing = serde_json::Map::new();
+        ensure_zcode_timeout_ms(&mut missing);
+        assert_eq!(missing.get("timeoutMs").and_then(|v| v.as_u64()), Some(HOOK_HTTP_TIMEOUT_S * 1000));
+
+        let mut legacy = serde_json::Map::new();
+        legacy.insert("timeoutMs".into(), json!(60000));
+        ensure_zcode_timeout_ms(&mut legacy);
+        assert_eq!(legacy.get("timeoutMs").and_then(|v| v.as_u64()), Some(HOOK_HTTP_TIMEOUT_S * 1000));
+
+        let mut custom = serde_json::Map::new();
+        custom.insert("timeoutMs".into(), json!(120000));
+        ensure_zcode_timeout_ms(&mut custom);
+        assert_eq!(custom.get("timeoutMs").and_then(|v| v.as_u64()), Some(120000));
     }
 }
