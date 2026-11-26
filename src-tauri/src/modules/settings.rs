@@ -9,7 +9,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
-pub const MENU_KEYS: [&str; 4] = ["record", "ai", "todo", "settings"];
+pub const MENU_KEYS: [&str; 5] = ["record", "ai", "todo", "tools", "settings"];
 
 /// 设置文件目录：dev 态（cargo 调试运行）放项目根（src-tauri 的上级），
 /// 打包态放 userData —— 与 Electron 版 dev/prod 分轨完全一致
@@ -188,6 +188,9 @@ impl BallSettings {
                 });
                 if (s.snap_gutter - 40.0).abs() < f64::EPSILON {
                     s.snap_gutter = 0.0;
+                }
+                for key in MENU_KEYS {
+                    s.menu_items.entry(key.to_string()).or_insert(true);
                 }
                 s
             },

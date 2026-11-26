@@ -3,6 +3,15 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { t } from '../stores/i18n'
 
+withDefaults(
+  defineProps<{
+    title?: string
+  }>(),
+  {
+    title: 'MUERZHI',
+  }
+)
+
 const isMaximized = ref(false)
 let appWindow: ReturnType<typeof getCurrentWebviewWindow> | null = null
 
@@ -12,6 +21,15 @@ async function maximize() {
   setTimeout(updateMaximizedState, 120)
 }
 function close() { window.muerzhiAPI.closeWindow() }
+
+function onTitlebarMouseDown(e: MouseEvent) {
+  if (e.button !== 0) return
+  const target = e.target as HTMLElement | null
+  if (target?.closest('button, input, select, textarea, .no-drag, [style*="no-drag"]')) {
+    return
+  }
+  window.muerzhiAPI?.startDragging?.()
+}
 
 async function updateMaximizedState() {
   try {
@@ -37,12 +55,25 @@ onMounted(async () => {
 
 <template>
   <div class="layout" :class="{ 'is-maximized': isMaximized }">
-    <div class="titlebar" style="-webkit-app-region: drag" data-tauri-drag-region>
+    <div
+      class="titlebar"
+      style="-webkit-app-region: drag"
+      data-tauri-drag-region
+      @mousedown="onTitlebarMouseDown"
+    >
       <div class="titlebar-brand" style="-webkit-app-region: drag" data-tauri-drag-region>
         <img class="titlebar-logo" src="/logo.png" alt="Logo" />
-        <span class="titlebar-title">MUERZHI</span>
+        <span class="titlebar-title">{{ title }}</span>
       </div>
+
+      <div v-if="$slots.center" class="titlebar-center" style="-webkit-app-region: drag" data-tauri-drag-region>
+        <slot name="center" />
+      </div>
+
       <div class="titlebar-controls" style="-webkit-app-region: no-drag">
+        <div v-if="$slots.actions" class="titlebar-actions">
+          <slot name="actions" />
+        </div>
         <button style="-webkit-app-region: no-drag" class="titlebar-btn" @click="minimize" v-tip.below="t('win.minimize')">
           <svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1.5"/></svg>
         </button>
@@ -99,6 +130,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   user-select: none;
+  flex-shrink: 0;
 }
 
 .titlebar-logo {
@@ -112,10 +144,29 @@ onMounted(async () => {
   font-size: 13px;
   color: var(--text-primary);
   letter-spacing: 2px;
+  margin-left: 6px;
+}
+
+.titlebar-center {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  margin: 0 8px;
 }
 
 .titlebar-controls {
   display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.titlebar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 6px;
 }
 
 .titlebar-btn {

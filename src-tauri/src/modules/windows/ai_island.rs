@@ -30,6 +30,7 @@ const CAPSULE_TOP_GAP: f64 = 4.0;
 const ACTIVE_POLL_MS: u64 = 16;
 const FAR_POLL_MS: u64 = 120;
 const FAR_MARGIN_PHYS: f64 = 200.0;
+const TOPMOST_CHECK_MS: u64 = 1000;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Rect {
@@ -52,6 +53,7 @@ pub struct AiIslandState {
     pub user_moved: AtomicBool,
     pub mouse_ignored: AtomicBool,
     pub poll_running: AtomicBool,
+    pub last_topmost_check_ms: std::sync::atomic::AtomicU64,
 }
 
 impl AiIslandState {
@@ -66,6 +68,7 @@ impl AiIslandState {
             user_moved: AtomicBool::new(false),
             mouse_ignored: AtomicBool::new(false),
             poll_running: AtomicBool::new(false),
+            last_topmost_check_ms: std::sync::atomic::AtomicU64::new(0),
         })
     }
 }
@@ -196,24 +199,31 @@ fn set_bounds_phys(
 
     // Windows 必须单次 SetWindowPos 原子更新位置与宽高：
     // 先 set_position 再 set_size 会把旧宽度的窗口先移到新中心 X 再缩窄，造成内容横跳闪动。
+    // 同时顺带重申 HWND_TOPMOST（全屏选区期间除外），避免缩放/移动后被其他置顶窗压住。
     #[cfg(windows)]
     {
         use windows_sys::Win32::UI::WindowsAndMessaging::{
-            SetWindowPos, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+            SetWindowPos, HWND_TOPMOST, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOMOVE,
+            SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER,
         };
         if let Ok(hwnd) = win.hwnd() {
             let hwnd = hwnd.0 as *mut std::ffi::c_void;
             if !hwnd.is_null() {
-                let mut flags = SWP_ASYNCWINDOWPOS | SWP_NOZORDER | SWP_NOACTIVATE;
+                let yield_to_region = app.get_webview_window("region-selector").is_some();
+                let mut flags = SWP_ASYNCWINDOWPOS | SWP_NOACTIVATE | SWP_NOOWNERZORDER;
+                let insert_after = if yield_to_region {
+                    flags |= SWP_NOZORDER;
+                    std::ptr::null_mut()
+                } else {
+                    HWND_TOPMOST
+                };
                 if pos_same {
                     flags |= SWP_NOMOVE;
                 }
                 if size_same {
                     flags |= SWP_NOSIZE;
                 }
-                let ok = unsafe {
-                    SetWindowPos(hwnd, std::ptr::null_mut(), px, py, pw, ph, flags) != 0
-                };
+                let ok = unsafe { SetWindowPos(hwnd, insert_after, px, py, pw, ph, flags) != 0 };
                 if ok {
                     return (px, py, pw, ph);
                 }
@@ -301,6 +311,128 @@ fn primary_mouse_button_down() -> bool {
     }
 }
 
+fn monotonic_ms() -> u64 {
+    use std::sync::OnceLock;
+    static START: OnceLock<std::time::Instant> = OnceLock::new();
+    START.get_or_init(std::time::Instant::now).elapsed().as_millis() as u64
+}
+
+fn rect_intersects(
+    ax1: f64,
+    ay1: f64,
+    ax2: f64,
+    ay2: f64,
+    bx1: f64,
+    by1: f64,
+    bx2: f64,
+    by2: f64,
+) -> bool {
+    ax1 < bx2 && ax2 > bx1 && ay1 < by2 && ay2 > by1
+}
+
+/// 确保 AI 岛处于 Windows TOPMOST 置顶层最上方（不抢焦点、不改尺寸位置）。
+/// 若当前正在进行全屏选区（region-selector 存在），则让位给选区遮罩。
+fn ensure_topmost(app: &AppHandle, win: &tauri::WebviewWindow) {
+    if app.get_webview_window("region-selector").is_some() {
+        return;
+    }
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, HWND_TOPMOST, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOMOVE,
+            SWP_NOOWNERZORDER, SWP_NOSIZE,
+        };
+        if let Ok(hwnd) = win.hwnd() {
+            let hwnd = hwnd.0 as *mut std::ffi::c_void;
+            if !hwnd.is_null() {
+                unsafe {
+                    SetWindowPos(
+                        hwnd,
+                        HWND_TOPMOST,
+                        0,
+                        0,
+                        0,
+                        0,
+                        SWP_NOMOVE
+                            | SWP_NOSIZE
+                            | SWP_NOACTIVATE
+                            | SWP_NOOWNERZORDER
+                            | SWP_ASYNCWINDOWPOS,
+                    );
+                }
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = win;
+    }
+}
+
+/// 检查 AI 岛是否丢失了 WS_EX_TOPMOST，或被 Z 序上方的可见窗口遮挡了可见内容区
+fn needs_topmost_restore(win: &tauri::WebviewWindow, content: &Rect) -> bool {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Foundation::RECT;
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            GetWindow, GetWindowLongW, GetWindowRect, IsWindowVisible, GWL_EXSTYLE, GW_HWNDPREV,
+            WS_EX_TOPMOST,
+        };
+        let Ok(hwnd) = win.hwnd() else {
+            return false;
+        };
+        let hwnd = hwnd.0 as *mut std::ffi::c_void;
+        if hwnd.is_null() {
+            return false;
+        }
+        unsafe {
+            let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
+            if (ex_style & WS_EX_TOPMOST) == 0 {
+                return true;
+            }
+            let cx1 = content.x;
+            let cy1 = content.y;
+            let cx2 = content.x + content.width;
+            let cy2 = content.y + content.height;
+            let mut prev = GetWindow(hwnd, GW_HWNDPREV);
+            let mut steps = 0;
+            while !prev.is_null() && steps < 32 {
+                steps += 1;
+                if IsWindowVisible(prev) != 0 {
+                    let mut r = RECT {
+                        left: 0,
+                        top: 0,
+                        right: 0,
+                        bottom: 0,
+                    };
+                    if GetWindowRect(prev, &mut r) != 0
+                        && r.right > r.left
+                        && r.bottom > r.top
+                        && rect_intersects(
+                            r.left as f64,
+                            r.top as f64,
+                            r.right as f64,
+                            r.bottom as f64,
+                            cx1,
+                            cy1,
+                            cx2,
+                            cy2,
+                        )
+                    {
+                        return true;
+                    }
+                }
+                prev = GetWindow(prev, GW_HWNDPREV);
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (win, content);
+    }
+    false
+}
+
 /// 单拍完成穿透状态更新与下一拍间隔计算（同一拍内复用光标与缩放信息，避免重复枚举显示器）
 fn poll_tick(app: &AppHandle, win: &tauri::WebviewWindow) -> u64 {
     let state = AiIslandState::global();
@@ -334,6 +466,18 @@ fn poll_tick(app: &AppHandle, win: &tauri::WebviewWindow) -> u64 {
     if ignore != state.mouse_ignored.load(Ordering::SeqCst) {
         state.mouse_ignored.store(ignore, Ordering::SeqCst);
         let _ = win.set_ignore_cursor_events(ignore);
+        if !ignore {
+            ensure_topmost(app, win);
+        }
+    }
+    // 定期校验置顶态：任务栏/其他 TOPMOST 窗抢占 Z 序或全屏切换剥离 WS_EX_TOPMOST 时自动恢复
+    let now = monotonic_ms();
+    let last_check = state.last_topmost_check_ms.load(Ordering::Relaxed);
+    if now.saturating_sub(last_check) >= TOPMOST_CHECK_MS {
+        state.last_topmost_check_ms.store(now, Ordering::Relaxed);
+        if needs_topmost_restore(win, &content) {
+            ensure_topmost(app, win);
+        }
     }
     // 展开列表或卡片期间始终高频响应点击/移出
     if content.height > (ISLAND_H + 6.0) * scale {
@@ -609,6 +753,7 @@ fn show_island_inner(app: &AppHandle) {
             update_content_and_poll(app, init_rect);
             start_polling(app);
             let _ = win.show();
+            ensure_topmost(app, &win);
             // 横条态设置注入（HTML 读 window.__AI_FLAT__，启动时传 immediate=true 避免多余过渡）
             let _ = win.eval(&format!(
                 "window.__AI_FLAT__ = {flat}; if (window.setFlat) setFlat({flat}, true); void 0;"
@@ -834,6 +979,9 @@ pub fn set_ai_island_mouse_mode(app: AppHandle, interactive: bool) {
         state.mouse_ignored.store(ignore, Ordering::SeqCst);
         let _ = win.set_ignore_cursor_events(ignore);
     }
+    if interactive {
+        ensure_topmost(&app, &win);
+    }
 }
 
 /// 状态/卡片推送到岛（对齐 agent-state-update / agent-card-update 的 webContents.send）
@@ -851,6 +999,9 @@ pub fn push_state(app: &AppHandle, payload: serde_json::Value) {
 #[allow(dead_code)]
 pub fn push_card(app: &AppHandle, payload: serde_json::Value) {
     if let Some(win) = island_window(app) {
+        if !payload.is_null() {
+            ensure_topmost(app, &win);
+        }
         let _ = win.eval(&format!(
             "window.applyCard && window.applyCard({}); void 0;",
             payload

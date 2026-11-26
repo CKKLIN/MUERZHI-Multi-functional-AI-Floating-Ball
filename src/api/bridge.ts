@@ -240,6 +240,7 @@ const muerzhiAPI = {
   showWindow: () => cmd<void>('show_window'),
   maximizeWindow: () => cmd<void>('maximize_window'),
   closeWindow: () => cmd<void>('close_window'),
+  startDragging: () => cmd<void>('start_dragging_window'),
 
   // ===== Tray notifications =====
   notifyConversionStart: () => { tauriInvoke('notify_conversion_start') },
@@ -427,6 +428,19 @@ const muerzhiAPI = {
   todoToggleAlwaysOnTop: () => cmd<boolean>('todo_toggle_always_on_top'),
   todoGetSettings: () => cmd<Record<string, unknown>>('todo_get_settings'),
   todoSetSettings: (patch: Record<string, unknown>) => cmd<Record<string, unknown>>('todo_set_settings', { patch }),
+
+  // ===== Custom Tools =====
+  listCustomTools: () => cmd<any[]>('list_custom_tools'),
+  openCustomToolsDir: () => cmd<void>('open_custom_tools_dir'),
+  locateCustomTool: (relativePath: string) => cmd<void>('locate_custom_tool', { relativePath }),
+  openCustomToolInBrowser: (relativePath: string) => cmd<void>('open_custom_tool_in_browser', { relativePath }),
+  deleteCustomTool: (relativePath: string) => cmd<void>('delete_custom_tool', { relativePath }),
+  createDemoCustomTool: () => cmd<any>('create_demo_custom_tool'),
+  openCustomTool: (relativePath: string) => cmd<void>('open_custom_tool', { relativePath }),
+  readCustomToolContent: (relativePath: string) => cmd<string>('read_custom_tool_content', { relativePath }),
+  getInitialToolTab: () => cmd<any>('get_initial_tool_tab'),
+  onOpenToolTab: (cb: (tool: any) => void) => on('open-tool-tab', cb),
+  showToolsWindow: () => cmd<void>('show_tools_window'),
 }
 
 export function installApiBridge() {

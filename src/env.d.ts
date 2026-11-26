@@ -24,7 +24,7 @@ export interface CaptureSource {
   thumbnail: string
 }
 
-export type BallMenuKey = 'record' | 'ai' | 'todo' | 'settings'
+export type BallMenuKey = 'record' | 'ai' | 'todo' | 'tools' | 'settings'
 export type AppLocale = 'zh' | 'en'
 
 export interface FloatingBallSettings {
@@ -38,6 +38,21 @@ export interface FloatingBallSettings {
 
 export interface AiIslandSettings {
   flat: boolean
+}
+
+export interface CustomToolItem {
+  id: string
+  name: string
+  fileName: string
+  relativePath: string
+  absolutePath: string
+  description?: string | null
+  icon?: string | null
+  width?: number | null
+  height?: number | null
+  modifiedTime: number
+  fileSize: number
+  toolUrl?: string
 }
 
 export type TodoType = 'todo' | 'memo'
@@ -156,6 +171,7 @@ export interface MuerzhiAPI {
   showWindow: () => Promise<void>
   maximizeWindow: () => Promise<void>
   closeWindow: () => Promise<void>
+  startDragging: () => Promise<void>
 
   // Tray notifications
   notifyConversionStart: () => void
@@ -256,6 +272,19 @@ export interface MuerzhiAPI {
   todoToggleAlwaysOnTop: () => Promise<boolean>
   todoGetSettings: () => Promise<TodoSettings>
   todoSetSettings: (patch: Partial<TodoSettings>) => Promise<TodoSettings>
+
+  // Custom Tools / 自定义工具
+  listCustomTools: () => Promise<CustomToolItem[]>
+  openCustomToolsDir: () => Promise<void>
+  locateCustomTool: (relativePath: string) => Promise<void>
+  openCustomToolInBrowser: (relativePath: string) => Promise<void>
+  deleteCustomTool: (relativePath: string) => Promise<void>
+  createDemoCustomTool: () => Promise<CustomToolItem>
+  openCustomTool: (relativePath: string) => Promise<void>
+  readCustomToolContent: (relativePath: string) => Promise<string>
+  getInitialToolTab: () => Promise<CustomToolItem | null>
+  onOpenToolTab: (cb: (tool: CustomToolItem) => void) => () => void
+  showToolsWindow: () => Promise<void>
 }
 
 export interface AgentSession {

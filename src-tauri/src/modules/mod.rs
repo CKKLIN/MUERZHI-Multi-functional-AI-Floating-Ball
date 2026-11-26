@@ -10,4 +10,5 @@ pub mod media;
 pub mod recording;
 pub mod settings;
 pub mod todo;
+pub mod tools;
 pub mod windows;

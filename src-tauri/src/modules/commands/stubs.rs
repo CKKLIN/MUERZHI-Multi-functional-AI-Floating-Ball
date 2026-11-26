@@ -17,6 +17,11 @@ pub fn minimize_window(window: tauri::Window) {
 }
 
 #[tauri::command]
+pub fn start_dragging_window(window: tauri::Window) {
+    let _ = window.start_dragging();
+}
+
+#[tauri::command]
 pub fn show_window(window: tauri::Window, app: tauri::AppHandle) {
     // 录屏时主窗口是**最小化**状态（避免挡画面），停止后要它回来 ——
     // 只 show() 不会从最小化恢复（Windows 的 SW_SHOW 对最小化窗无效，得 SW_RESTORE），

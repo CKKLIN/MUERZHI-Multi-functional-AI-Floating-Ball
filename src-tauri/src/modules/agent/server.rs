@@ -658,6 +658,10 @@ async fn try_listen(
         .route("/permission", post(handle_permission))
         .route("/question", post(handle_question))
         .route("/health", get(handle_health))
+        .route(
+            "/custom-tool/{*path}",
+            get(handle_custom_tool_http).options(handle_custom_tool_options),
+        )
         .with_state(app);
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
     let mut shutdown_rx = AgentServer::global().shutdown_rx.clone();
@@ -793,6 +797,23 @@ async fn handle_health(State(app): State<tauri::AppHandle>) -> Response {
             "sessionCount": s.session_count(),
         }),
     )
+}
+
+async fn handle_custom_tool_http(
+    State(app): State<tauri::AppHandle>,
+    axum::extract::Path(path): axum::extract::Path<String>,
+) -> Response {
+    crate::modules::tools::serve_tool_file_http(&app, &path)
+}
+
+async fn handle_custom_tool_options() -> Response {
+    let mut resp = StatusCode::NO_CONTENT.into_response();
+    for (k, v) in cors_headers() {
+        if let Some(k) = k {
+            resp.headers_mut().insert(k, v);
+        }
+    }
+    resp
 }
 
 async fn handle_state(State(app): State<tauri::AppHandle>, body: Bytes) -> Response {

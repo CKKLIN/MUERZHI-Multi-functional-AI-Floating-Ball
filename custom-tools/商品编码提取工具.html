@@ -1,0 +1,1258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>商品编码智能提取</title>
+  <!-- 离线优先加载本地 xlsx 库，未加载则平滑降级至高速 CDN -->
+  <script src="./xlsx.full.min.js"></script>
+  <script>
+    if (typeof XLSX === 'undefined') {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"><\/script>');
+    }
+  </script>
+  <style>
+    /* -------------------------------------------------------------
+       Apple macOS 左右分栏专业工作台设计语言
+       - 左侧：数据源载入 + 过滤设置 + 明细数据大表 (Data & Preview)
+       - 右侧：选择工作表 + 提取操作 + 编码速览列表 (Inspector & Actions)
+       - 毛玻璃材质与微光漫反射
+       - 经典苹果蓝 #0071e3 与淡灰背景 #f5f5f7
+    -------------------------------------------------------------- */
+    :root {
+      --apple-bg: #f5f5f7;
+      --apple-card: rgba(255, 255, 255, 0.88);
+      --apple-card-solid: #ffffff;
+      --apple-border: rgba(0, 0, 0, 0.08);
+      --apple-border-light: rgba(0, 0, 0, 0.04);
+      --apple-text: #1d1d1f;
+      --apple-text-secondary: #86868b;
+      --apple-text-tertiary: #a1a1a6;
+      --apple-blue: #0071e3;
+      --apple-blue-hover: #0077ed;
+      --apple-blue-active: #006edb;
+      --apple-blue-light: rgba(0, 113, 227, 0.08);
+      --apple-green: #34c759;
+      --apple-green-light: rgba(52, 199, 89, 0.12);
+      --apple-gray-btn: rgba(0, 0, 0, 0.05);
+      --apple-gray-btn-hover: rgba(0, 0, 0, 0.09);
+      --apple-sidebar-hover: rgba(0, 0, 0, 0.04);
+      --apple-sidebar-active: rgba(0, 113, 227, 0.1);
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 18px;
+      --radius-pill: 980px;
+      --shadow-ambient: 0 4px 24px -2px rgba(0, 0, 0, 0.04), 0 1px 2px 0 rgba(0, 0, 0, 0.02);
+      --shadow-hover: 0 12px 32px -4px rgba(0, 0, 0, 0.08), 0 2px 6px 0 rgba(0, 0, 0, 0.03);
+      --ease-apple: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", Arial, sans-serif;
+      background-color: var(--apple-bg);
+      background-image: radial-gradient(50% 35% at 50% 0%, rgba(0, 113, 227, 0.04) 0%, rgba(245, 245, 247, 0) 100%);
+      color: var(--apple-text);
+      min-height: 100vh;
+      line-height: 1.47059;
+      padding: 24px 28px 48px;
+    }
+
+    .container {
+      max-width: 1440px;
+      margin: 0 auto;
+    }
+
+    /* 顶部极简标题栏 */
+    .top-header {
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .header-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .header-title h1 {
+      font-size: 24px;
+      font-weight: 600;
+      letter-spacing: -0.022em;
+      color: var(--apple-text);
+    }
+    .header-icon {
+      width: 26px;
+      height: 26px;
+      color: var(--apple-blue);
+      flex-shrink: 0;
+    }
+    .rule-capsules {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .rule-capsule {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--apple-card-solid);
+      border: 1px solid var(--apple-border);
+      padding: 3px 10px;
+      border-radius: var(--radius-pill);
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--apple-text);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+    }
+    .rule-capsule b {
+      color: var(--apple-blue);
+      font-weight: 600;
+    }
+
+    /* 左右分栏核心布局 (左侧：宽幅数据区，右侧：380px操作与速览栏) */
+    .app-layout {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 22px;
+      align-items: start;
+    }
+
+    @media (max-width: 1080px) {
+      .app-layout {
+        grid-template-columns: 1fr;
+      }
+      .right-inspector-panel {
+        position: static !important;
+      }
+    }
+
+    /* 卡片通用 Apple 质感 */
+    .card {
+      background: var(--apple-card);
+      backdrop-filter: blur(25px) saturate(180%);
+      -webkit-backdrop-filter: blur(25px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.85);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-ambient);
+      overflow: hidden;
+    }
+
+    .panel-block {
+      padding: 16px 18px;
+    }
+    .panel-block-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--apple-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* -------------------------------------------------------------
+       左侧区域：文件导入 + 过滤设置 + 明细数据大表
+    -------------------------------------------------------------- */
+    .left-main-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* 上传拖拽区域 */
+    .upload-dropzone {
+      border: 1px dashed rgba(0, 0, 0, 0.16);
+      background: rgba(255, 255, 255, 0.6);
+      border-radius: var(--radius-md);
+      padding: 22px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s var(--ease-apple);
+    }
+    .upload-dropzone:hover, .upload-dropzone.dragover {
+      background: #ffffff;
+      border-color: var(--apple-blue);
+      transform: scale(1.003);
+    }
+    .upload-icon-circle {
+      width: 44px;
+      height: 44px;
+      margin: 0 auto 10px;
+      background: var(--apple-blue-light);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--apple-blue);
+    }
+    .upload-dropzone h3 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--apple-text);
+      margin-bottom: 4px;
+    }
+    .upload-dropzone p {
+      font-size: 12px;
+      color: var(--apple-text-secondary);
+      margin-bottom: 12px;
+    }
+    .upload-btns-row {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    /* 苹果标准胶囊按钮 */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-size: 12.5px;
+      font-weight: 500;
+      padding: 7px 14px;
+      border-radius: var(--radius-pill);
+      border: 1px solid transparent;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.18s var(--ease-apple);
+      white-space: nowrap;
+    }
+    .btn:active {
+      transform: scale(0.975);
+    }
+    .btn-primary {
+      background: var(--apple-blue);
+      color: #ffffff;
+      box-shadow: 0 1px 3px rgba(0, 113, 227, 0.25);
+    }
+    .btn-primary:hover {
+      background: var(--apple-blue-hover);
+    }
+    .btn-secondary {
+      background: var(--apple-gray-btn);
+      color: var(--apple-text);
+    }
+    .btn-secondary:hover {
+      background: var(--apple-gray-btn-hover);
+    }
+    .btn-outline {
+      background: #ffffff;
+      border-color: rgba(0, 0, 0, 0.12);
+      color: var(--apple-text);
+    }
+    .btn-outline:hover {
+      background: #fafafa;
+      border-color: rgba(0, 0, 0, 0.2);
+    }
+
+    /* 文件就绪状态条 */
+    .file-loaded-card {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: #ffffff;
+      border: 1px solid var(--apple-border);
+      border-radius: var(--radius-md);
+    }
+    .file-desc-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+    .file-icon-box {
+      width: 32px;
+      height: 32px;
+      background: #eef2ff;
+      color: var(--apple-blue);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .file-name-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--apple-text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 320px;
+    }
+    .file-size-tag {
+      font-size: 11px;
+      color: var(--apple-text-secondary);
+    }
+
+    /* 规则过滤参数行 */
+    .filter-inline-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 12px;
+      align-items: flex-end;
+      margin-top: 4px;
+    }
+    .filter-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .filter-field label {
+      font-size: 11px;
+      color: var(--apple-text-secondary);
+      font-weight: 500;
+    }
+    .apple-input {
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.12);
+      border-radius: var(--radius-sm);
+      padding: 5px 8px;
+      font-size: 12.5px;
+      color: var(--apple-text);
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      width: 100%;
+    }
+    .apple-input:focus {
+      border-color: var(--apple-blue);
+      box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15);
+    }
+
+    /* 左侧大表格视窗 */
+    .left-table-panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 520px;
+    }
+    .table-top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--apple-border-light);
+      background: rgba(255, 255, 255, 0.95);
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .table-top-title {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--apple-text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .table-count-tag {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--apple-text-secondary);
+      background: var(--apple-gray-btn);
+      padding: 2px 8px;
+      border-radius: var(--radius-pill);
+    }
+    .search-capsule {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--apple-gray-btn);
+      padding: 4px 10px;
+      border-radius: var(--radius-pill);
+      border: 1px solid transparent;
+      transition: all 0.15s;
+    }
+    .search-capsule:focus-within {
+      background: #ffffff;
+      border-color: rgba(0, 0, 0, 0.15);
+      box-shadow: 0 0 0 2px rgba(0, 113, 227, 0.15);
+    }
+    .search-capsule input {
+      border: none;
+      background: transparent;
+      outline: none;
+      font-size: 12px;
+      color: var(--apple-text);
+      width: 150px;
+    }
+
+    .table-scroll-wrapper {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: auto;
+      max-height: calc(100vh - 270px);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 12.5px;
+    }
+    thead th {
+      background: rgba(245, 245, 247, 0.95);
+      backdrop-filter: blur(10px);
+      color: var(--apple-text-secondary);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--apple-border);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      white-space: nowrap;
+    }
+    tbody td {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--apple-border-light);
+      color: var(--apple-text);
+      vertical-align: middle;
+      transition: background 0.1s ease;
+    }
+    tbody tr:hover td {
+      background: rgba(0, 113, 227, 0.028);
+    }
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+    .code-badge-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-weight: 600;
+      color: var(--apple-text);
+      background: #f0f0f2;
+      padding: 2px 7px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+    .green-status-pill {
+      display: inline-block;
+      padding: 1px 7px;
+      border-radius: var(--radius-pill);
+      background: var(--apple-green-light);
+      color: #1b873f;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .sheet-crumb {
+      color: var(--apple-text-secondary);
+      font-size: 12px;
+    }
+
+    /* 空状态提示 */
+    .empty-state-pane {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 400px;
+      color: var(--apple-text-secondary);
+      text-align: center;
+      padding: 40px 20px;
+    }
+    .empty-state-pane svg {
+      width: 48px;
+      height: 48px;
+      margin-bottom: 12px;
+      color: var(--apple-text-tertiary);
+    }
+    .empty-state-pane p {
+      font-size: 14px;
+      color: var(--apple-text-secondary);
+    }
+
+    /* -------------------------------------------------------------
+       右侧控制栏：选择工作表 + 提取操作 + 编码速览列表
+    -------------------------------------------------------------- */
+    .right-inspector-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      position: sticky;
+      top: 20px;
+    }
+
+    /* 工作表侧栏列表项 */
+    .sheet-nav-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .sheet-nav-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--apple-text);
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.15s var(--ease-apple);
+    }
+    .sheet-nav-item:hover {
+      background: var(--apple-sidebar-hover);
+    }
+    .sheet-nav-item.active {
+      background: var(--apple-sidebar-active);
+      color: var(--apple-blue);
+      font-weight: 600;
+    }
+    .sheet-nav-item-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .sheet-item-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 1px 7px;
+      border-radius: var(--radius-pill);
+      background: rgba(0, 0, 0, 0.06);
+      color: var(--apple-text-secondary);
+      flex-shrink: 0;
+    }
+    .sheet-nav-item.active .sheet-item-badge {
+      background: var(--apple-blue);
+      color: #ffffff;
+    }
+
+    /* 提取汇总小卡片 */
+    .summary-card {
+      background: #ffffff;
+      border: 1px solid var(--apple-border-light);
+      border-radius: var(--radius-md);
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      text-align: center;
+    }
+    .summary-stat-val {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--apple-text);
+      line-height: 1.2;
+    }
+    .summary-stat-val.blue {
+      color: var(--apple-blue);
+    }
+    .summary-stat-lbl {
+      font-size: 11px;
+      color: var(--apple-text-secondary);
+      margin-top: 2px;
+    }
+
+    /* 操作快捷按钮网格 */
+    .action-button-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    /* 自适应高度编码预览框 */
+    .textarea-container {
+      position: relative;
+    }
+    .apple-textarea {
+      width: 100%;
+      min-height: 60px;
+      height: auto;
+      max-height: 360px;
+      padding: 10px 12px;
+      border: 1px solid var(--apple-border);
+      border-radius: var(--radius-md);
+      background: #ffffff;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: var(--apple-text);
+      line-height: 1.6;
+      resize: none;
+      outline: none;
+      box-sizing: border-box;
+      overflow-y: hidden;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, height 0.15s ease;
+    }
+    .apple-textarea:focus {
+      border-color: var(--apple-blue);
+      box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.12);
+    }
+
+    /* Apple 灵动岛悬浮提示 (Dynamic Island Toast) */
+    #appleToast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(30px);
+      background: rgba(29, 29, 31, 0.92);
+      color: #ffffff;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      padding: 8px 18px;
+      border-radius: var(--radius-pill);
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.25s var(--ease-apple);
+      z-index: 9999;
+    }
+    #appleToast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- 顶部标题栏 -->
+    <header class="top-header">
+      <div class="header-title">
+        <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="16" y1="13" x2="8" y2="13"></line>
+          <line x1="16" y1="17" x2="8" y2="17"></line>
+        </svg>
+        <h1>商品编码提取</h1>
+      </div>
+      <div class="rule-capsules">
+        <span class="rule-capsule">品名 <b>不含威纳德</b></span>
+        <span class="rule-capsule">套组 <b>为是</b></span>
+        <span class="rule-capsule">目标 <b>提取商品编码</b></span>
+      </div>
+    </header>
+
+    <!-- 左右分栏主体布局 -->
+    <div class="app-layout">
+      
+      <!-- ================= 左侧区域：数据源 + 过滤条件 + 明细数据大表 ================= -->
+      <main class="left-main-panel">
+        
+        <!-- 1. 数据源文件卡片 -->
+        <div class="card panel-block">
+          <div class="panel-block-title">
+            <span>数据源文件</span>
+            <button id="reselectBtn" class="btn btn-secondary" style="display:none; padding: 2px 8px; font-size: 11px;">更换文件</button>
+          </div>
+
+          <!-- 上传拖拽区域 -->
+          <div id="uploadDropzone" class="upload-dropzone">
+            <input type="file" id="fileInput" accept=".xlsx, .xls" style="display:none;">
+            <div class="upload-icon-circle">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+            </div>
+            <h3>拖拽 Excel 到此处</h3>
+            <p>或点击选择本地 .xlsx 文件，系统自动智能解析</p>
+            <div class="upload-btns-row">
+              <button type="button" class="btn btn-primary" onclick="document.getElementById('fileInput').click()">选择本地文件</button>
+              <button type="button" id="quickLoadBtn" class="btn btn-secondary">载入同目录《黑五价格表》</button>
+            </div>
+          </div>
+
+          <!-- 文件已载入胶囊条 -->
+          <div id="fileLoadedCard" class="file-loaded-card">
+            <div class="file-desc-group">
+              <div class="file-icon-box">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                </svg>
+              </div>
+              <div style="min-width: 0;">
+                <div id="fileName" class="file-name-title">文件名.xlsx</div>
+                <div id="fileMeta" class="file-size-tag">0 KB · 0 个工作表</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 过滤准则设置 (文件就绪后展示) -->
+          <div id="filterCard" style="display:none; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--apple-border-light);">
+            <div class="panel-block-title" style="margin-bottom: 6px;">
+              <span>过滤规则与去重参数</span>
+            </div>
+            <div class="filter-inline-grid">
+              <div class="filter-field">
+                <label>品名不包含关键词：</label>
+                <input type="text" id="excludeInput" class="apple-input" value="威纳德">
+              </div>
+              <div class="filter-field">
+                <label>是否套组等于：</label>
+                <input type="text" id="bundleInput" class="apple-input" value="是">
+              </div>
+              <div style="padding-bottom: 5px;">
+                <label style="cursor: pointer; display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--apple-text); white-space: nowrap;">
+                  <input type="checkbox" id="dedupCheckbox" checked> 编码自动去重
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. 明细数据大表视窗 -->
+        <div class="card left-table-panel">
+          <div class="table-top-bar">
+            <div class="table-top-title">
+              <span>明细数据核验</span>
+              <span id="tableCountTag" class="table-count-tag">0 条记录</span>
+            </div>
+            <div class="search-capsule">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="color: var(--apple-text-secondary);"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="text" id="searchInput" placeholder="搜索明细...">
+            </div>
+          </div>
+
+          <div class="table-scroll-wrapper">
+            <table id="dataTable" style="display:none;">
+              <thead>
+                <tr>
+                  <th style="width: 50px;">#</th>
+                  <th style="width: 130px;">商品编码</th>
+                  <th>商品名称</th>
+                  <th style="width: 90px;">是否套组</th>
+                  <th style="width: 140px;">所属工作表</th>
+                  <th style="width: 70px;">行号</th>
+                </tr>
+              </thead>
+              <tbody id="tableBody"></tbody>
+            </table>
+
+            <!-- 空状态 -->
+            <div id="emptyStatePane" class="empty-state-pane">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="12" y1="18" x2="12" y2="12"></line>
+                <line x1="9" y1="15" x2="15" y2="15"></line>
+              </svg>
+              <p>请在上方载入 Excel 文件</p>
+              <span style="font-size: 12px; color: var(--apple-text-tertiary); margin-top: 4px;">提取结果明细将在此完整展示并支持检索</span>
+            </div>
+          </div>
+        </div>
+
+      </main>
+
+      <!-- ================= 右侧控制栏：选择工作表 + 提取操作 + 编码速览列表 ================= -->
+      <aside class="right-inspector-panel">
+        
+        <!-- 1. 选择工作表 (SheetCard) -->
+        <div id="sheetCard" class="card panel-block" style="display:none;">
+          <div class="panel-block-title">选择工作表 (Sheet)</div>
+          <div id="sheetNavList" class="sheet-nav-list">
+            <!-- 动态生成工作表列表项 -->
+          </div>
+        </div>
+        <!-- 3. 编码速览列表 (PreviewCard) -->
+        <div id="previewCard" class="card panel-block" style="display:none;">
+          <div class="panel-block-title" style="margin-bottom: 8px;">
+            <span>编码速览列表</span>
+            <span style="font-size: 10px; color: var(--apple-text-tertiary); font-weight: normal;">高度自动贴合</span>
+          </div>
+          <div class="textarea-container">
+            <textarea id="codeTextarea" class="apple-textarea" readonly placeholder="提取到的商品编码将在此显示..."></textarea>
+          </div>
+        </div>
+        <!-- 2. 提取操作 (ActionCard) -->
+        <div id="actionCard" class="card panel-block" style="display:none;">
+          <div class="panel-block-title">提取操作与数据汇总</div>
+          
+          <div class="summary-card" style="margin-bottom: 12px;">
+            <div>
+              <div id="matchedCount" class="summary-stat-val">0</div>
+              <div class="summary-stat-lbl">符合条件条数</div>
+            </div>
+            <div style="width: 1px; height: 26px; background: var(--apple-border-light);"></div>
+            <div>
+              <div id="uniqueCount" class="summary-stat-val blue">0</div>
+              <div class="summary-stat-lbl">去重后唯一编码</div>
+            </div>
+          </div>
+
+          <div class="action-button-grid">
+            <button id="copyCommaBtn" class="btn btn-primary" title="逗号分隔，适合直接粘贴进商城后台">复制 (逗号)</button>
+            <button id="copyNewlineBtn" class="btn btn-secondary" title="每行一个，适合粘贴进Excel列">复制 (换行)</button>
+            <button id="exportExcelBtn" class="btn btn-outline">导出 Excel</button>
+            <button id="exportTxtBtn" class="btn btn-outline">导出 TXT</button>
+          </div>
+        </div>
+
+
+
+      </aside>
+
+    </div>
+  </div>
+
+  <!-- 灵动岛 Floating Toast -->
+  <div id="appleToast">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34c759" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+    <span id="toastMsg">已完成</span>
+  </div>
+
+  <script>
+    let currentWorkbook = null;
+    let currentFileName = '';
+    let currentSheetData = {};
+    let currentSelectedSheet = '__ALL__';
+    let currentResults = [];
+
+    // DOM 元素引用
+    const uploadDropzone = document.getElementById('uploadDropzone');
+    const fileInput = document.getElementById('fileInput');
+    const quickLoadBtn = document.getElementById('quickLoadBtn');
+    const reselectBtn = document.getElementById('reselectBtn');
+    const fileLoadedCard = document.getElementById('fileLoadedCard');
+    const fileNameEl = document.getElementById('fileName');
+    const fileMetaEl = document.getElementById('fileMeta');
+
+    const sheetCard = document.getElementById('sheetCard');
+    const sheetNavList = document.getElementById('sheetNavList');
+    const filterCard = document.getElementById('filterCard');
+    const actionCard = document.getElementById('actionCard');
+    const previewCard = document.getElementById('previewCard');
+
+    const excludeInput = document.getElementById('excludeInput');
+    const bundleInput = document.getElementById('bundleInput');
+    const dedupCheckbox = document.getElementById('dedupCheckbox');
+
+    const matchedCount = document.getElementById('matchedCount');
+    const uniqueCount = document.getElementById('uniqueCount');
+    const codeTextarea = document.getElementById('codeTextarea');
+
+    const dataTable = document.getElementById('dataTable');
+    const tableBody = document.getElementById('tableBody');
+    const emptyStatePane = document.getElementById('emptyStatePane');
+    const tableCountTag = document.getElementById('tableCountTag');
+    const searchInput = document.getElementById('searchInput');
+
+    // 灵动岛 Toast 反馈
+    function showAppleToast(msg) {
+      const toast = document.getElementById('appleToast');
+      const toastMsg = document.getElementById('toastMsg');
+      toastMsg.innerText = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2000);
+    }
+
+    // textarea 高度根据内容智能自适应
+    function autoResizeTextarea() {
+      if (!codeTextarea) return;
+      codeTextarea.style.height = 'auto';
+      const scrollHeight = codeTextarea.scrollHeight;
+      if (scrollHeight > 360) {
+        codeTextarea.style.height = '360px';
+        codeTextarea.style.overflowY = 'auto';
+      } else {
+        codeTextarea.style.height = Math.max(60, scrollHeight + 2) + 'px';
+        codeTextarea.style.overflowY = 'hidden';
+      }
+    }
+
+    // 拖拽与文件载入
+    uploadDropzone.addEventListener('click', (e) => {
+      if (e.target !== quickLoadBtn) fileInput.click();
+    });
+    reselectBtn.addEventListener('click', () => fileInput.click());
+
+    ['dragenter', 'dragover'].forEach(name => {
+      uploadDropzone.addEventListener(name, (e) => {
+        e.preventDefault();
+        uploadDropzone.classList.add('dragover');
+      });
+    });
+    ['dragleave', 'drop'].forEach(name => {
+      uploadDropzone.addEventListener(name, (e) => {
+        e.preventDefault();
+        uploadDropzone.classList.remove('dragover');
+      });
+    });
+    uploadDropzone.addEventListener('drop', (e) => {
+      const files = e.dataTransfer.files;
+      if (files && files.length > 0) handleFile(files[0]);
+    });
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length > 0) handleFile(e.target.files[0]);
+    });
+
+    // 快捷载入同目录下的《黑五价格表》
+    quickLoadBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const targetName = '感恩节&黑五价格表-1123.xlsx';
+      fetch('./' + encodeURIComponent(targetName))
+        .then(res => {
+          if (!res.ok) throw new Error();
+          return res.arrayBuffer();
+        })
+        .then(buffer => processBuffer(buffer, targetName, buffer.byteLength))
+        .catch(() => {
+          alert('因浏览器本地 file:// 协议安全策略，请直接将文件夹中的【' + targetName + '】拖入方框或点击选择文件即可！');
+        });
+    });
+
+    // 条件动态响应
+    excludeInput.addEventListener('input', runExtraction);
+    bundleInput.addEventListener('input', runExtraction);
+    dedupCheckbox.addEventListener('change', runExtraction);
+    searchInput.addEventListener('input', renderTable);
+
+    function handleFile(file) {
+      if (!file.name.match(/\.(xlsx|xls)$/i)) {
+        alert('请选择有效的 .xlsx 或 .xls 文件');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => processBuffer(e.target.result, file.name, file.size);
+      reader.readAsArrayBuffer(file);
+    }
+
+    function processBuffer(buffer, name, size) {
+      try {
+        currentFileName = name;
+        fileNameEl.innerText = name;
+        const sizeText = (size / 1024).toFixed(1) + ' KB';
+
+        const data = new Uint8Array(buffer);
+        currentWorkbook = XLSX.read(data, { type: 'array' });
+        fileMetaEl.innerText = `${sizeText} · ${currentWorkbook.SheetNames.length} 个工作表`;
+
+        currentSheetData = {};
+        currentWorkbook.SheetNames.forEach(sheet => {
+          currentSheetData[sheet] = XLSX.utils.sheet_to_json(currentWorkbook.Sheets[sheet], { header: 1, defval: '' });
+        });
+
+        // 切换左侧与右侧视图状态
+        uploadDropzone.style.display = 'none';
+        fileLoadedCard.style.display = 'flex';
+        reselectBtn.style.display = 'inline-block';
+        filterCard.style.display = 'block';
+
+        sheetCard.style.display = 'block';
+        actionCard.style.display = 'block';
+        previewCard.style.display = 'block';
+
+        dataTable.style.display = 'table';
+        emptyStatePane.style.display = 'none';
+
+        currentSelectedSheet = '__ALL__';
+        renderSheetList();
+        runExtraction();
+        requestAnimationFrame(autoResizeTextarea);
+        showAppleToast('已识别文件内容');
+      } catch (err) {
+        alert('解析失败：' + err.message);
+      }
+    }
+
+    // 渲染右侧 macOS 风格工作表选择列表
+    function renderSheetList() {
+      sheetNavList.innerHTML = '';
+
+      // 全部汇总项
+      const allItem = document.createElement('button');
+      allItem.className = `sheet-nav-item ${currentSelectedSheet === '__ALL__' ? 'active' : ''}`;
+      allItem.innerHTML = `
+        <div class="sheet-nav-item-left">
+          <span>🌟</span>
+          <span>全部工作表 (汇总)</span>
+        </div>
+        <span class="sheet-item-badge" id="badge_all">0</span>
+      `;
+      allItem.onclick = () => {
+        document.querySelectorAll('.sheet-nav-item').forEach(b => b.classList.remove('active'));
+        allItem.classList.add('active');
+        currentSelectedSheet = '__ALL__';
+        runExtraction();
+      };
+      sheetNavList.appendChild(allItem);
+
+      // 单独工作表项
+      currentWorkbook.SheetNames.forEach(name => {
+        const item = document.createElement('button');
+        item.className = `sheet-nav-item ${currentSelectedSheet === name ? 'active' : ''}`;
+        item.innerHTML = `
+          <div class="sheet-nav-item-left">
+            <span>📑</span>
+            <span title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+          </div>
+          <span class="sheet-item-badge" id="badge_${encodeId(name)}">0</span>
+        `;
+        item.onclick = () => {
+          document.querySelectorAll('.sheet-nav-item').forEach(b => b.classList.remove('active'));
+          item.classList.add('active');
+          currentSelectedSheet = name;
+          runExtraction();
+        };
+        sheetNavList.appendChild(item);
+      });
+    }
+
+    // 智能提取单表数据
+    function parseSheet(sheetName, rawRows) {
+      if (!rawRows || rawRows.length === 0) return [];
+
+      let headerIdx = -1;
+      let colCode = [], colName = [], colBundle = [];
+
+      for (let r = 0; r < Math.min(10, rawRows.length); r++) {
+        const row = rawRows[r];
+        if (!Array.isArray(row)) continue;
+
+        let hasCode = false;
+        let cCode = [], cName = [], cBundle = [];
+        row.forEach((cell, idx) => {
+          const str = String(cell || '').trim();
+          if (str.includes('商品编码') || str === '编码' || str.toLowerCase() === 'sku') {
+            cCode.push(idx);
+            hasCode = true;
+          }
+          if (str.includes('商品名称') || str === '品名' || str === '名称') cName.push(idx);
+          if (str.includes('是否套组') || str === '套组') cBundle.push(idx);
+        });
+
+        if (hasCode) {
+          headerIdx = r;
+          colCode = cCode;
+          colName = cName;
+          colBundle = cBundle;
+          break;
+        }
+      }
+
+      if (headerIdx === -1 || colCode.length === 0) return [];
+
+      const excludeWord = excludeInput.value.trim().toLowerCase();
+      const targetBundle = bundleInput.value.trim();
+
+      const matched = [];
+      for (let r = headerIdx + 1; r < rawRows.length; r++) {
+        const row = rawRows[r];
+        if (!row || row.length === 0) continue;
+
+        let code = '';
+        for (let idx of colCode) {
+          const v = String(row[idx] !== undefined ? row[idx] : '').trim();
+          if (v) { code = v; break; }
+        }
+
+        let names = [];
+        colName.forEach(idx => {
+          const v = String(row[idx] !== undefined ? row[idx] : '').trim();
+          if (v) names.push(v);
+        });
+
+        let bundle = '';
+        for (let idx of colBundle) {
+          const v = String(row[idx] !== undefined ? row[idx] : '').trim();
+          if (v) { bundle = v; break; }
+        }
+
+        if (!code) continue;
+
+        const isBundle = (bundle === targetBundle);
+        const hasExcluded = excludeWord ? names.some(n => n.toLowerCase().includes(excludeWord)) : false;
+
+        if (!hasExcluded && isBundle) {
+          matched.push({
+            sheetName,
+            rowNum: r + 1,
+            code,
+            name: names.join(' | ') || '未填写品名',
+            bundle
+          });
+        }
+      }
+      return matched;
+    }
+
+    function runExtraction() {
+      if (!currentWorkbook) return;
+
+      const dedup = dedupCheckbox.checked;
+      let totalAll = [];
+
+      currentWorkbook.SheetNames.forEach(sheet => {
+        const items = parseSheet(sheet, currentSheetData[sheet]);
+        const badge = document.getElementById(`badge_${encodeId(sheet)}`);
+        if (badge) badge.innerText = items.length;
+
+        if (currentSelectedSheet === '__ALL__' || currentSelectedSheet === sheet) {
+          totalAll = totalAll.concat(items);
+        }
+      });
+
+      // 更新汇总角标
+      let allSum = 0;
+      currentWorkbook.SheetNames.forEach(sheet => {
+        allSum += parseSheet(sheet, currentSheetData[sheet]).length;
+      });
+      const badgeAll = document.getElementById('badge_all');
+      if (badgeAll) badgeAll.innerText = allSum;
+
+      // 去重处理
+      let results = [];
+      if (dedup) {
+        const set = new Set();
+        totalAll.forEach(item => {
+          if (!set.has(item.code)) {
+            set.add(item.code);
+            results.push(item);
+          }
+        });
+      } else {
+        results = totalAll;
+      }
+
+      currentResults = results;
+
+      matchedCount.innerText = totalAll.length;
+      const uniqueSet = new Set(totalAll.map(i => i.code));
+      uniqueCount.innerText = uniqueSet.size;
+
+      // 填充预览框并自适应高度
+      codeTextarea.value = results.map(r => r.code).join(', ');
+      requestAnimationFrame(autoResizeTextarea);
+
+      renderTable();
+    }
+
+    function renderTable() {
+      const q = searchInput.value.trim().toLowerCase();
+      let list = currentResults;
+      if (q) {
+        list = list.filter(i => i.code.toLowerCase().includes(q) || i.name.toLowerCase().includes(q) || i.sheetName.toLowerCase().includes(q));
+      }
+
+      tableCountTag.innerText = `${list.length} 条记录`;
+
+      if (list.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 48px 16px; color: var(--apple-text-secondary);">暂无符合条件的数据</td></tr>`;
+        return;
+      }
+
+      let html = '';
+      list.forEach((item, idx) => {
+        html += `
+          <tr>
+            <td style="color: var(--apple-text-tertiary);">${idx + 1}</td>
+            <td><span class="code-badge-chip">${escapeHtml(item.code)}</span></td>
+            <td style="font-weight: 500;">${escapeHtml(item.name)}</td>
+            <td><span class="green-status-pill">${escapeHtml(item.bundle)}</span></td>
+            <td><span class="sheet-crumb">${escapeHtml(item.sheetName)}</span></td>
+            <td style="color: var(--apple-text-tertiary); font-size: 11.5px;">第 ${item.rowNum} 行</td>
+          </tr>
+        `;
+      });
+      tableBody.innerHTML = html;
+    }
+
+    // 复制与导出交互
+    document.getElementById('copyCommaBtn').addEventListener('click', () => {
+      if (currentResults.length === 0) return showAppleToast('暂无数据');
+      const text = currentResults.map(r => r.code).join(', ');
+      codeTextarea.value = text;
+      autoResizeTextarea();
+      copy(text);
+      showAppleToast(`已复制 ${currentResults.length} 个编码 (逗号分隔)`);
+    });
+
+    document.getElementById('copyNewlineBtn').addEventListener('click', () => {
+      if (currentResults.length === 0) return showAppleToast('暂无数据');
+      const text = currentResults.map(r => r.code).join('\n');
+      codeTextarea.value = text;
+      autoResizeTextarea();
+      copy(text);
+      showAppleToast(`已复制 ${currentResults.length} 个编码 (换行分隔)`);
+    });
+
+    document.getElementById('exportExcelBtn').addEventListener('click', () => {
+      if (currentResults.length === 0) return showAppleToast('暂无数据');
+      const rows = currentResults.map((r, i) => ({
+        '序号': i + 1,
+        '商品编码': r.code,
+        '商品名称': r.name,
+        '是否套组': r.bundle,
+        '所属工作表': r.sheetName,
+        '原始行号': r.rowNum
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "商品编码");
+      XLSX.writeFile(wb, `${currentFileName.replace(/\.[^/.]+$/, "")}_提取编码.xlsx`);
+      showAppleToast('已导出 Excel 表格');
+    });
+
+    document.getElementById('exportTxtBtn').addEventListener('click', () => {
+      if (currentResults.length === 0) return showAppleToast('暂无数据');
+      const blob = new Blob([currentResults.map(r => r.code).join('\n')], { type: 'text/plain;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `商品编码_${currentResults.length}条.txt`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      showAppleToast('已导出 TXT 纯编码');
+    });
+
+    function copy(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function encodeId(str) {
+      return encodeURIComponent(str).replace(/%/g, '_');
+    }
+
+    // 监听内容输入与窗口缩放，实时自适应高度
+    codeTextarea.addEventListener('input', autoResizeTextarea);
+    window.addEventListener('resize', autoResizeTextarea);
+  </script>
+</body>
+</html>

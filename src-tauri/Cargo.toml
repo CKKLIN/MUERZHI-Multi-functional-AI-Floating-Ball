@@ -1,6 +1,6 @@
 [package]
 name = "muerzhi"
-version = "1.1.1"
+version = "1.1.2"
 description = "MUERZHI 万能 AI 悬浮球 — Tauri 后端"
 authors = ["muerzhi"]
 edition = "2021"

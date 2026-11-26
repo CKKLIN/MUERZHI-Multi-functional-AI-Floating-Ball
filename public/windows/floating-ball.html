@@ -42,6 +42,8 @@ body.expanded .arc-item{opacity:1;transform:scale(1) rotate(0deg);pointer-events
 .arc-item.theme-ai:hover{fill:url(#cardGradHover_ai)}
 .arc-item.theme-todo{fill:url(#cardGrad_todo)}
 .arc-item.theme-todo:hover{fill:url(#cardGradHover_todo)}
+.arc-item.theme-tools{fill:url(#cardGrad_tools)}
+.arc-item.theme-tools:hover{fill:url(#cardGradHover_tools)}
 .arc-item.theme-settings{fill:url(#cardGrad_settings)}
 .arc-item.theme-settings:hover{fill:url(#cardGradHover_settings)}
 
@@ -65,8 +67,9 @@ body.expanded .arc-label{opacity:1;transform:scale(1)}
 .arc-label.theme-record .icon{fill:#C86D74}
 .arc-label.theme-ai .icon{fill:#5E9387}
 .arc-label.theme-todo .icon{fill:#6876A4}
+.arc-label.theme-tools .icon{fill:#A27B5C}
 .arc-label.theme-settings .icon{fill:#9E8B77}
-.arc-label .label{font-size:9px;font-weight:600;fill:#3a4156;stroke:rgba(255,255,255,0.75);stroke-width:2px;paint-order:stroke}
+.arc-label .label{font-size:8.5px;font-weight:600;fill:#3a4156;stroke:rgba(255,255,255,0.75);stroke-width:2px;paint-order:stroke}
 
 #trigger{
   position:absolute;z-index:10;
@@ -255,6 +258,8 @@ function ensureMenu(){
   defs.appendChild(makeGradient('cardGradHover_ai', '#e5f0ec', '#cfe1dc'))
   defs.appendChild(makeGradient('cardGrad_todo', '#ffffff', '#eff1f7'))
   defs.appendChild(makeGradient('cardGradHover_todo', '#e7eaf5', '#cfd5eb'))
+  defs.appendChild(makeGradient('cardGrad_tools', '#ffffff', '#f7f2ed'))
+  defs.appendChild(makeGradient('cardGradHover_tools', '#f0e6dc', '#e2d4c5'))
   defs.appendChild(makeGradient('cardGrad_settings', '#ffffff', '#f6f4f0'))
   defs.appendChild(makeGradient('cardGradHover_settings', '#f0ece5', '#dfd8ce'))
   svg.appendChild(defs)
@@ -325,6 +330,10 @@ function ensureMenu(){
     labelSpan.setAttribute('class','label')
     labelSpan.setAttribute('x',lx)
     labelSpan.setAttribute('dy','14')
+    if (item.label && item.label.length > 3) {
+      labelSpan.style.fontSize = '7.5px'
+      labelSpan.style.letterSpacing = '-0.5px'
+    }
     labelSpan.textContent = item.label
     txt.appendChild(iconSpan); txt.appendChild(labelSpan)
     svg.appendChild(txt)

@@ -1084,6 +1084,7 @@ fn ball_data_script(app: &AppHandle) -> String {
         ("record", "\u{25cf}", "record"),
         ("ai", "\u{2726}", "ai"),
         ("todo", "\u{2611}", "todo"),
+        ("tools", "\u{2692}", "tools"),
         ("settings", "\u{2699}", "settings"),
     ];
     let items: Vec<String> = catalog

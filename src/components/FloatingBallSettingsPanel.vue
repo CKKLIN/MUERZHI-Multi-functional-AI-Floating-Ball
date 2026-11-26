@@ -10,7 +10,7 @@ const alwaysOnTop = ref(true)
 const openAtLogin = ref(false)
 const locale = ref<AppLocale>('zh')
 const menuItems = ref<Record<BallMenuKey, boolean>>({
-  record: true, ai: true, todo: true, settings: true,
+  record: true, ai: true, todo: true, tools: true, settings: true,
 })
 const loading = ref(true)
 
@@ -19,6 +19,7 @@ const BALL_MENUS: { key: BallMenuKey; labelKey: string }[] = [
   { key: 'record', labelKey: 'ball.menu.record' },
   { key: 'ai', labelKey: 'ball.menu.ai' },
   { key: 'todo', labelKey: 'ball.menu.todo' },
+  { key: 'tools', labelKey: 'ball.menu.tools' },
   { key: 'settings', labelKey: 'ball.menu.settings' },
 ]
 

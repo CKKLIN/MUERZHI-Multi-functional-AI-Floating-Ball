@@ -158,6 +158,8 @@ pub fn open_or_focus(app: &tauri::AppHandle, label: &str, hash_route: &str) {
         "ai" => ("AI 助手", (480.0, 540.0), true, false),
         "settings" => ("设置", (420.0, 480.0), true, false),
         "todo" => ("待办便签", (420.0, 520.0), true, false),
+        "tools" => ("自定义工具箱", (540.0, 480.0), true, false),
+        "tool-runner" => ("自定义工具", (800.0, 560.0), true, false),
         "about" => ("关于", (360.0, 400.0), false, true),
         _ => ("窗口", (480.0, 480.0), true, false),
     };
@@ -220,6 +222,15 @@ pub fn open_or_focus(app: &tauri::AppHandle, label: &str, hash_route: &str) {
 /// 走与 ai/settings 相同的 Vue hash 路由路径（窗口在 tauri.conf.json 预定义）
 pub fn open_about_window(app: &tauri::AppHandle) {
     open_or_focus(app, "about", "/about");
+}
+
+pub fn open_tools_window(app: &tauri::AppHandle) {
+    open_or_focus(app, "tools", "/tools");
+}
+
+#[tauri::command]
+pub async fn show_tools_window(app: AppHandle) {
+    open_tools_window(&app);
 }
 
 #[tauri::command]

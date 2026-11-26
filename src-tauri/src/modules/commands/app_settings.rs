@@ -44,6 +44,7 @@ pub async fn set_floating_ball_settings(app: AppHandle, patch: Value) -> Value {
         let locale = Locale::from_str_lossy(&next.locale);
         I18n::global().set_locale(locale);
         let _ = app.emit("app-locale-changed", json!({ "locale": next.locale }));
+        crate::update_tray_menu(&app);
     }
     if visible_changed {
         if next.visible {

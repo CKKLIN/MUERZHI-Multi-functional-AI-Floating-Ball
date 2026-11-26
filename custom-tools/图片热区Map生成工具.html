@@ -1,0 +1,3066 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>图片热区 Map 智能识别与生成工具</title>
+  <style>
+    /* -------------------------------------------------------------
+       Apple macOS 左右分栏专业工作台设计语言
+       - 左侧：全景图像交互画布 (Image Hotspot Canvas)
+       - 右侧：热区列表管理 + Map代码自动生成 (Inspector & Code Generator)
+       - 毛玻璃材质与微光漫反射
+       - 经典苹果蓝 #0071e3 与淡灰背景 #f5f5f7
+    -------------------------------------------------------------- */
+    :root {
+      --apple-bg: #f5f5f7;
+      --apple-card: rgba(255, 255, 255, 0.88);
+      --apple-card-solid: #ffffff;
+      --apple-border: rgba(0, 0, 0, 0.08);
+      --apple-border-light: rgba(0, 0, 0, 0.04);
+      --apple-text: #1d1d1f;
+      --apple-text-secondary: #86868b;
+      --apple-text-tertiary: #a1a1a6;
+      --apple-blue: #0071e3;
+      --apple-blue-hover: #0077ed;
+      --apple-blue-active: #006edb;
+      --apple-blue-light: rgba(0, 113, 227, 0.08);
+      --apple-green: #34c759;
+      --apple-green-light: rgba(52, 199, 89, 0.12);
+      --apple-gray-btn: rgba(0, 0, 0, 0.05);
+      --apple-gray-btn-hover: rgba(0, 0, 0, 0.09);
+      --apple-sidebar-hover: rgba(0, 0, 0, 0.04);
+      --apple-sidebar-active: rgba(0, 113, 227, 0.1);
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 18px;
+      --radius-pill: 980px;
+      --shadow-ambient: 0 4px 24px -2px rgba(0, 0, 0, 0.04), 0 1px 2px 0 rgba(0, 0, 0, 0.02);
+      --shadow-hover: 0 12px 32px -4px rgba(0, 0, 0, 0.08), 0 2px 6px 0 rgba(0, 0, 0, 0.03);
+      --ease-apple: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", Arial, sans-serif;
+      background-color: var(--apple-bg);
+      background-image: radial-gradient(50% 35% at 50% 0%, rgba(0, 113, 227, 0.04) 0%, rgba(245, 245, 247, 0) 100%);
+      color: var(--apple-text);
+      min-height: 100vh;
+      line-height: 1.47059;
+      padding: 24px 28px 48px;
+      user-select: none;
+    }
+
+    .container {
+      max-width: 1560px;
+      margin: 0 auto;
+    }
+
+    /* 顶部标题栏 */
+    .top-header {
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .header-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .header-title h1 {
+      font-size: 24px;
+      font-weight: 600;
+      letter-spacing: -0.022em;
+      color: var(--apple-text);
+    }
+    .header-icon {
+      width: 26px;
+      height: 26px;
+      color: var(--apple-blue);
+      flex-shrink: 0;
+    }
+    .rule-capsules {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .rule-capsule {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--apple-card-solid);
+      border: 1px solid var(--apple-border);
+      padding: 3px 10px;
+      border-radius: var(--radius-pill);
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--apple-text);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+    }
+    .rule-capsule b {
+      color: var(--apple-blue);
+      font-weight: 600;
+    }
+
+    /* 左右分栏核心网格 (加宽左侧主区域至 560px，右侧自适应延展) */
+    .app-layout {
+      display: grid;
+      grid-template-columns: 560px 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+    .left-column {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .right-column {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    /* 顶部商品 ID 序列 与 热区列表清单 左右并列网格 */
+    .right-top-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      align-items: stretch;
+    }
+
+    @media (max-width: 960px) {
+      .right-top-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 1180px) {
+      .app-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* 卡片通用 Apple 质感 */
+    .card {
+      background: var(--apple-card);
+      backdrop-filter: blur(25px) saturate(180%);
+      -webkit-backdrop-filter: blur(25px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.85);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-ambient);
+      overflow: hidden;
+    }
+
+    .panel-block {
+      padding: 16px 18px;
+    }
+    .panel-block-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--apple-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* 苹果标准胶囊按钮 */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-size: 12.5px;
+      font-weight: 500;
+      padding: 7px 14px;
+      border-radius: var(--radius-pill);
+      border: 1px solid transparent;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.18s var(--ease-apple);
+      white-space: nowrap;
+    }
+    .btn:active {
+      transform: scale(0.975);
+    }
+    .btn-primary {
+      background: var(--apple-blue);
+      color: #ffffff;
+      box-shadow: 0 1px 3px rgba(0, 113, 227, 0.25);
+    }
+    .btn-primary:hover {
+      background: var(--apple-blue-hover);
+    }
+    .btn-secondary {
+      background: var(--apple-gray-btn);
+      color: var(--apple-text);
+    }
+    .btn-secondary:hover {
+      background: var(--apple-gray-btn-hover);
+    }
+    .btn-outline {
+      background: #ffffff;
+      border-color: rgba(0, 0, 0, 0.12);
+      color: var(--apple-text);
+    }
+    .btn-outline:hover {
+      background: #fafafa;
+      border-color: rgba(0, 0, 0, 0.2);
+    }
+    .btn-danger {
+      background: rgba(255, 59, 48, 0.1);
+      color: #ff3b30;
+    }
+    .btn-danger:hover {
+      background: rgba(255, 59, 48, 0.18);
+    }
+
+    /* -------------------------------------------------------------
+       左侧区域：图像框选画布视窗 (小巧紧凑，强化右侧主工作区)
+    -------------------------------------------------------------- */
+    .canvas-panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 420px;
+    }
+
+    .canvas-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--apple-border-light);
+      background: rgba(255, 255, 255, 0.95);
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .canvas-toolbar-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    /* 缩放分段控件 */
+    .zoom-segmented {
+      display: inline-flex;
+      background: var(--apple-gray-btn);
+      padding: 2px;
+      border-radius: var(--radius-pill);
+      gap: 2px;
+    }
+    .zoom-btn {
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--apple-text-secondary);
+      border: none;
+      background: transparent;
+      border-radius: var(--radius-pill);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .zoom-btn:hover {
+      color: var(--apple-text);
+    }
+    .zoom-btn.active {
+      background: #ffffff;
+      color: var(--apple-text);
+      font-weight: 600;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    /* 画布滚动容器 (加宽舒适视窗) */
+    .canvas-viewport {
+      flex: 1;
+      position: relative;
+      overflow: auto;
+      background: #e5e5ea;
+      background-image: 
+        linear-gradient(45deg, #dedede 25%, transparent 25%), 
+        linear-gradient(-45deg, #dedede 25%, transparent 25%), 
+        linear-gradient(45deg, transparent 75%, #dedede 75%), 
+        linear-gradient(-45deg, transparent 75%, #dedede 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+      min-height: 400px;
+      max-height: 580px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 12px;
+    }
+
+    /* 空状态上传引导 */
+    .empty-upload-view {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 42px 28px;
+      text-align: center;
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.88);
+      border: 2px dashed rgba(0, 0, 0, 0.15);
+      border-radius: var(--radius-lg);
+      max-width: 400px;
+      margin: auto;
+      transition: all 0.2s var(--ease-apple);
+      backdrop-filter: blur(10px);
+    }
+    .empty-upload-view:hover, .empty-upload-view.dragover {
+      background: #ffffff;
+      border-color: var(--apple-blue);
+      transform: scale(1.015);
+      box-shadow: var(--shadow-hover);
+    }
+    .upload-icon-bubble {
+      width: 58px;
+      height: 58px;
+      background: var(--apple-blue-light);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--apple-blue);
+      margin-bottom: 14px;
+    }
+    .empty-upload-view h3 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--apple-text);
+      margin-bottom: 6px;
+    }
+    .empty-upload-view p {
+      font-size: 13px;
+      color: var(--apple-text-secondary);
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+
+    /* 舞台包装层 */
+    .stage-wrapper {
+      position: relative;
+      display: inline-block;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.18);
+      border-radius: 4px;
+      line-height: 0;
+      transition: transform 0.15s ease-out;
+      transform-origin: top center;
+    }
+    #sourceImage {
+      display: block;
+      max-width: 100%;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    /* 框选与热区交互遮罩层 */
+    .hotspot-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      cursor: crosshair;
+      overflow: hidden;
+    }
+    .hotspot-overlay.preview-mode {
+      cursor: default;
+    }
+
+    /* 单个热区盒子 */
+    .hotspot-box {
+      position: absolute;
+      border: 1.5px solid #0071e3;
+      background: rgba(0, 113, 227, 0.22);
+      cursor: move;
+      box-sizing: border-box;
+      transition: background 0.12s ease;
+      touch-action: none;
+    }
+    .hotspot-box:hover {
+      background: rgba(0, 113, 227, 0.32);
+      border-color: #005bb5;
+    }
+    .hotspot-box.active {
+      border: 2px solid #0071e3;
+      background: rgba(0, 113, 227, 0.38);
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9), 0 4px 14px rgba(0, 113, 227, 0.4);
+      z-index: 100 !important;
+    }
+
+    .hotspot-tag {
+      position: absolute;
+      top: 4px;
+      left: 4px;
+      background: var(--apple-blue);
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 4px;
+      pointer-events: none;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+      white-space: nowrap;
+      line-height: 1.3;
+      user-select: none;
+    }
+    .hotspot-box.active .hotspot-tag {
+      background: #1d1d1f;
+    }
+
+    /* 缩放手柄 (8 个调节手柄) */
+    .handle {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      background: #ffffff;
+      border: 1.5px solid var(--apple-blue);
+      border-radius: 50%;
+      display: none;
+      box-sizing: border-box;
+    }
+    .hotspot-box.active .handle {
+      display: block;
+    }
+    .handle.nw { top: -4px; left: -4px; cursor: nwse-resize; }
+    .handle.ne { top: -4px; right: -4px; cursor: nesw-resize; }
+    .handle.sw { bottom: -4px; left: -4px; cursor: nesw-resize; }
+    .handle.se { bottom: -4px; right: -4px; cursor: nwse-resize; }
+    .handle.n { top: -4px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+    .handle.s { bottom: -4px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+    .handle.w { top: 50%; left: -4px; transform: translateY(-50%); cursor: ew-resize; }
+    .handle.e { top: 50%; right: -4px; transform: translateY(-50%); cursor: ew-resize; }
+
+    /* 正在拖拽框选的临时矩形 */
+    .drawing-box {
+      position: absolute;
+      border: 2px dashed #0071e3;
+      background: rgba(0, 113, 227, 0.25);
+      pointer-events: none;
+      display: none;
+      z-index: 200;
+    }
+
+    /* -------------------------------------------------------------
+       右侧控制栏：热区管理 + Map 代码识别生成器
+    -------------------------------------------------------------- */
+    .inspector-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      position: sticky;
+      top: 20px;
+    }
+
+    /* 图像元数据条 */
+    .image-meta-pill {
+      font-size: 12px;
+      color: var(--apple-text-secondary);
+      background: #ffffff;
+      border: 1px solid var(--apple-border);
+      border-radius: var(--radius-md);
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .image-meta-pill strong {
+      color: var(--apple-text);
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    }
+
+    /* 热区列表项 (高密度紧凑清单设计) */
+    .hotspot-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 220px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .hotspot-item {
+      background: #ffffff;
+      border: 1px solid var(--apple-border);
+      border-radius: var(--radius-sm);
+      padding: 7px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .hotspot-item:hover {
+      border-color: rgba(0, 113, 227, 0.35);
+      background: #fafcff;
+    }
+    .hotspot-item.active {
+      border-color: var(--apple-blue);
+      box-shadow: 0 0 0 1.5px rgba(0, 113, 227, 0.25);
+      background: #f4f8ff;
+    }
+    .hotspot-item-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      line-height: 1;
+    }
+    .hotspot-item-badge {
+      font-size: 10.5px;
+      font-weight: 600;
+      color: #ffffff;
+      background: var(--apple-blue);
+      padding: 1.5px 6px;
+      border-radius: var(--radius-pill);
+    }
+    .hotspot-item-coords {
+      font-size: 11px;
+      color: var(--apple-text-secondary);
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    }
+    .hotspot-item-delete {
+      background: none;
+      border: none;
+      color: #ff3b30;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 2px 4px;
+      line-height: 1;
+      opacity: 0.65;
+      transition: opacity 0.15s;
+    }
+    .hotspot-item-delete:hover {
+      opacity: 1;
+    }
+    .apple-input-sm {
+      background: #f9f9fb;
+      border: 1px solid rgba(0, 0, 0, 0.1);
+      border-radius: var(--radius-sm);
+      padding: 6px 10px;
+      font-size: 12.5px;
+      color: var(--apple-text);
+      outline: none;
+      width: 100%;
+    }
+    .apple-input-sm:focus {
+      background: #ffffff;
+      border-color: var(--apple-blue);
+    }
+
+    /* -------------------------------------------------------------
+       平台与终端多端切换网格 (爱来/美体 x 移动端/PC端)
+    -------------------------------------------------------------- */
+    .platform-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .platform-btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-radius: var(--radius-md);
+      background: #ffffff;
+      border: 1px solid var(--apple-border);
+      cursor: pointer;
+      transition: all 0.18s var(--ease-apple);
+      text-align: left;
+      user-select: none;
+    }
+    .platform-btn:hover {
+      border-color: rgba(0, 113, 227, 0.35);
+      background: #fafcff;
+    }
+    .platform-btn.active {
+      background: #ffffff;
+      border-color: var(--apple-blue);
+      box-shadow: 0 0 0 1.5px var(--apple-blue), 0 3px 10px rgba(0, 113, 227, 0.12);
+    }
+    .platform-icon {
+      font-size: 18px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .platform-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      overflow: hidden;
+    }
+    .platform-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--apple-text);
+      white-space: nowrap;
+    }
+    .platform-domain {
+      font-size: 10.5px;
+      color: var(--apple-text-secondary);
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      white-space: nowrap;
+    }
+    .platform-btn.active .platform-name {
+      color: var(--apple-blue);
+    }
+
+    /* 规则模板提示条 */
+    .url-rule-pill {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(0, 113, 227, 0.05);
+      border: 1px solid rgba(0, 113, 227, 0.15);
+      border-radius: var(--radius-sm);
+      padding: 7px 12px;
+      font-size: 11.5px;
+      margin-bottom: 12px;
+    }
+    .url-rule-label {
+      color: var(--apple-text-secondary);
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .url-rule-display {
+      color: var(--apple-blue);
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-weight: 600;
+      word-break: break-all;
+    }
+
+    /* 批量商品 ID 序列输入区域 */
+    .batch-id-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: #f9f9fb;
+      border: 1px solid var(--apple-border);
+      border-radius: var(--radius-md);
+      padding: 12px;
+    }
+    .batch-id-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .batch-id-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--apple-text);
+    }
+    .batch-id-count {
+      font-size: 11px;
+      color: var(--apple-text-secondary);
+      background: rgba(0, 0, 0, 0.05);
+      padding: 2px 7px;
+      border-radius: var(--radius-pill);
+    }
+    .batch-id-textarea {
+      width: 100%;
+      min-height: 140px;
+      max-height: 220px;
+      padding: 8px 10px;
+      background: #ffffff;
+      border: 1px solid var(--apple-border);
+      border-radius: var(--radius-sm);
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: var(--apple-text);
+      line-height: 1.5;
+      resize: vertical;
+      outline: none;
+      box-sizing: border-box;
+    }
+    .batch-id-textarea:focus {
+      border-color: var(--apple-blue);
+    }
+    .batch-id-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .btn-sm {
+      padding: 5px 12px;
+      font-size: 11.5px;
+    }
+
+    /* 紧凑字段输入组 (一体化标签胶囊，极简竖向空间占用) */
+    .compact-fields {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .compact-row {
+      display: grid;
+      grid-template-columns: 1fr 140px;
+      gap: 6px;
+    }
+    .compact-input-group {
+      display: flex;
+      align-items: center;
+      background: #f9f9fb;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      height: 26px;
+      transition: all 0.15s;
+    }
+    .compact-input-group:focus-within {
+      background: #ffffff;
+      border-color: var(--apple-blue);
+      box-shadow: 0 0 0 1px var(--apple-blue);
+    }
+    .compact-input-label {
+      font-size: 10.5px;
+      font-weight: 600;
+      color: var(--apple-text-secondary);
+      background: rgba(0, 0, 0, 0.04);
+      padding: 0 7px;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      border-right: 1px solid rgba(0, 0, 0, 0.06);
+      user-select: none;
+      flex-shrink: 0;
+    }
+    .apple-input-mini {
+      flex: 1;
+      border: none;
+      background: transparent;
+      padding: 2px 7px;
+      font-size: 11.5px;
+      color: var(--apple-text);
+      outline: none;
+      min-width: 0;
+      height: 100%;
+      box-sizing: border-box;
+    }
+    .font-mono {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace !important;
+    }
+
+    /* 代码生成高级配置面板 (含 m端/pc端 格式切换、Map 命名、线上 URL 与 Alt 文本) */
+    .code-config-panel {
+      background: #fbfbfd;
+      border: 1px solid var(--apple-border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      margin-bottom: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .code-config-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .code-config-row-sub {
+      border-top: 1px dashed rgba(0, 0, 0, 0.08);
+      padding-top: 8px;
+    }
+    .terminal-format-switch {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .code-config-label {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--apple-text);
+      white-space: nowrap;
+    }
+    .code-config-sublabel {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--apple-text-secondary);
+      margin-bottom: 3px;
+      display: block;
+      white-space: nowrap;
+    }
+    .terminal-segmented {
+      display: inline-flex;
+      background: rgba(0, 0, 0, 0.06);
+      border-radius: 6px;
+      padding: 2px;
+      gap: 2px;
+    }
+    .term-btn {
+      border: none;
+      background: transparent;
+      padding: 3px 9px;
+      border-radius: 4px;
+      font-size: 11.5px;
+      font-weight: 500;
+      color: var(--apple-text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .term-btn:hover {
+      color: var(--apple-text);
+    }
+    .term-btn.active {
+      background: #ffffff;
+      color: var(--apple-blue);
+      font-weight: 600;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .map-name-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .map-name-input {
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.14);
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--apple-blue);
+      outline: none;
+      width: 110px;
+      height: 25px;
+      box-sizing: border-box;
+    }
+    .map-name-input:focus {
+      border-color: var(--apple-blue);
+      box-shadow: 0 0 0 1px var(--apple-blue);
+    }
+    .usemap-toggle-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11.5px;
+      color: var(--apple-text-secondary);
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .usemap-toggle-label input[type="checkbox"] {
+      cursor: pointer;
+      accent-color: var(--apple-blue);
+    }
+    .code-config-field {
+      display: flex;
+      flex-direction: column;
+    }
+    .code-config-input {
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.14);
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 11.5px;
+      color: var(--apple-text);
+      outline: none;
+      height: 26px;
+      box-sizing: border-box;
+      width: 100%;
+    }
+    .code-config-input:focus {
+      border-color: var(--apple-blue);
+      box-shadow: 0 0 0 1px var(--apple-blue);
+    }
+
+    /* Map 代码选项卡与容器 */
+    .code-tabs {
+      display: flex;
+      background: var(--apple-gray-btn);
+      padding: 2px;
+      border-radius: var(--radius-md);
+      margin-bottom: 10px;
+    }
+    .code-tab-btn {
+      flex: 1;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--apple-text-secondary);
+      border: none;
+      background: transparent;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .code-tab-btn.active {
+      background: #ffffff;
+      color: var(--apple-text);
+      font-weight: 600;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    }
+
+    /* 放大代码框视野，支持大段代码舒展呈现 */
+    .apple-code-textarea {
+      width: 100%;
+      min-height: 240px;
+      height: auto;
+      max-height: 520px;
+      padding: 12px 14px;
+      border: 1px solid var(--apple-border);
+      border-radius: var(--radius-md);
+      background: #1e1e24;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 12.5px;
+      color: #4ade80;
+      line-height: 1.6;
+      resize: none;
+      outline: none;
+      box-sizing: border-box;
+      overflow-y: hidden;
+      user-select: text;
+      transition: height 0.15s ease;
+    }
+
+    /* Apple 灵动岛悬浮提示 (Dynamic Island Toast) */
+    #appleToast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(30px);
+      background: rgba(29, 29, 31, 0.92);
+      color: #ffffff;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      padding: 8px 18px;
+      border-radius: var(--radius-pill);
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.25s var(--ease-apple);
+      z-index: 9999;
+    }
+    #appleToast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  
+    /* HTML 切片导航控制条 */
+    .html-slice-bar {
+      background: #fbfbfd;
+      border: 1px solid var(--apple-border);
+      border-radius: var(--radius-sm);
+      padding: 8px 12px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .slice-file-info {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .slice-file-icon {
+      font-size: 15px;
+    }
+    .slice-file-name {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--apple-text);
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .slice-file-badge {
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 9999px;
+      background: rgba(0, 113, 227, 0.1);
+      color: var(--apple-blue);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .slice-nav-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .slice-filter-segmented {
+      display: inline-flex;
+      background: rgba(0, 0, 0, 0.05);
+      border-radius: 6px;
+      padding: 2px;
+      gap: 2px;
+    }
+    .slice-filter-btn {
+      border: none;
+      background: transparent;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--apple-text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .slice-filter-btn:hover {
+      color: var(--apple-text);
+    }
+    .slice-filter-btn.active {
+      background: #ffffff;
+      color: var(--apple-blue);
+      font-weight: 600;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+    }
+    .slice-select {
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.16);
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 11.5px;
+      font-weight: 500;
+      color: var(--apple-text);
+      outline: none;
+      max-width: 280px;
+      height: 28px;
+      cursor: pointer;
+    }
+    .slice-select:focus {
+      border-color: var(--apple-blue);
+      box-shadow: 0 0 0 1px var(--apple-blue);
+    }
+    .btn-success {
+      background: #34c759;
+      color: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    .btn-success:hover {
+      background: #30b753;
+    }
+    .btn-preset {
+      font-size: 11.5px;
+      padding: 4px 10px;
+      font-weight: 600;
+      border-radius: 6px;
+    }
+
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- 顶部极简标题栏 -->
+    <header class="top-header">
+      <div class="header-title">
+        <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+          <polyline points="21 15 16 10 5 21"></polyline>
+        </svg>
+        <h1>图片热区 Map 识别生成工具</h1>
+      </div>
+      <div class="rule-capsules">
+        <span class="rule-capsule">多端适配：<b>爱来 / 美体 · 移动端 / PC端</b></span>
+        <span class="rule-capsule">Map 命名：<b>图片标号+Map (如 11Map)</b></span>
+        <span class="rule-capsule">匹配机制：<b>商品ID列表一键替换</b></span>
+      </div>
+    </header>
+
+    <!-- 左右分栏主体布局 (严格按用户线框图划分左右两大主列) -->
+    <div class="app-layout">
+
+      <!-- ================= 左侧列 (图片区域 + 原图信息/跳转平台与终端) ================= -->
+      <div class="left-column">
+
+        <!-- 1. 图片区域 (顶部左侧) -->
+        <main class="card canvas-panel">
+          <div class="canvas-toolbar">
+            <div class="canvas-toolbar-group">
+              <input type="file" id="fileInput" accept=".html,.htm,image/*" style="display:none;">
+              <button id="uploadTriggerBtn" class="btn btn-primary" onclick="document.getElementById('fileInput').click()" title="支持上传 HTML 页面或单张图片">上传 HTML / 图片</button>
+              <button id="demoBannerBtn" class="btn btn-secondary">⚡ 载入测试海报</button>
+              <button id="clearAllBtn" class="btn btn-danger" style="display:none;">清空热区</button>
+            </div>
+            <div class="canvas-toolbar-group" id="canvasControls" style="display:none;">
+              <!-- 缩放控制组 -->
+              <div class="zoom-segmented">
+                <button class="zoom-btn active" id="zoomFitBtn" title="自适应宽度">适应</button>
+                <button class="zoom-btn" id="zoom100Btn" title="100% 原始大小">1:1</button>
+                <button class="zoom-btn" id="zoomInBtn" title="放大">+</button>
+                <button class="zoom-btn" id="zoomOutBtn" title="缩小">-</button>
+              </div>
+              <button id="modeToggleBtn" class="btn btn-secondary">预览点击效果</button>
+            </div>
+          </div>
+
+                    <!-- HTML 切片图片画热区切换控制条 (当载入 HTML 文件时显示) -->
+          <div id="htmlSliceBar" class="html-slice-bar" style="display:none;">
+            <div class="slice-file-info">
+              <span class="slice-file-icon">📄</span>
+              <span id="sliceFileName" class="slice-file-name" title="当前活动 HTML 文件">ailai-pc-index.html</span>
+              <span id="sliceFileBadge" class="slice-file-badge">PC端 · 108 张切片</span>
+            </div>
+
+            <div class="slice-nav-controls">
+              <!-- 切片状态过滤胶囊 -->
+              <div class="slice-filter-segmented">
+                <button type="button" class="slice-filter-btn active" data-filter="all" onclick="filterHtmlSlices('all')">全部 (<span id="sliceCountAll">0</span>)</button>
+                <button type="button" class="slice-filter-btn" data-filter="hasMap" onclick="filterHtmlSlices('hasMap')">已有热区 (<span id="sliceCountHasMap">0</span>)</button>
+                <button type="button" class="slice-filter-btn" data-filter="noMap" onclick="filterHtmlSlices('noMap')">未设热区 (<span id="sliceCountNoMap">0</span>)</button>
+              </div>
+
+              <!-- 快捷前后切换 -->
+              <button type="button" class="btn btn-sm btn-secondary" onclick="prevHtmlSlice()" title="上一张切片 (快捷键: [ 或 ←)">◀ 上一张</button>
+
+              <!-- 切片下拉选择器 -->
+              <select id="htmlSliceSelect" class="slice-select" onchange="switchHtmlSlice(Number(this.value))">
+                <!-- 动态注入切片项 -->
+              </select>
+
+              <button type="button" class="btn btn-sm btn-secondary" onclick="nextHtmlSlice()" title="下一张切片 (快捷键: ] 或 →)">下一张 ▶</button>
+            </div>
+          </div>
+
+          <!-- 图像交互滚动容器 -->
+          <div id="canvasViewport" class="canvas-viewport">
+            <!-- 空状态上传提示 -->
+            <div id="emptyUploadView" class="empty-upload-view" onclick="document.getElementById('fileInput').click()">
+              <div class="upload-icon-bubble">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                  <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+              </div>
+              <h3>上传活动 HTML 文件 或 海报切图</h3>
+              <p>支持拖放或选择 <b>ailai-pc-index.html</b> / <b>ailai-m-index.html</b> 等 HTML 文件，自动提取切片并画热区<br>亦可直接上传单张海报图片进行热区框选</p>
+              <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:14px;">
+                <button type="button" class="btn btn-primary" onclick="event.stopPropagation(); document.getElementById('fileInput').click();">📂 选择本地文件 (HTML 或 图片)</button>
+                <button type="button" class="btn btn-secondary" onclick="event.stopPropagation(); loadDemoBanner();">⚡ 载入测试海报</button>
+              </div>
+            </div>
+
+            <!-- 真实图像与热区覆盖容器 -->
+            <div id="stageWrapper" class="stage-wrapper" style="display:none;">
+              <img id="sourceImage" alt="活动海报原图">
+              <div id="hotspotOverlay" class="hotspot-overlay">
+                <!-- 动态创建的热区盒子 -->
+              </div>
+              <!-- 正在画框的辅助矩形 -->
+              <div id="drawingBox" class="drawing-box"></div>
+            </div>
+          </div>
+        </main>
+
+        <!-- 2. 原图信息 + 跳转平台与终端 (底部左侧，对应线框图左下整块) -->
+        <div id="imagePlatformCard" class="card panel-block" style="display:none;">
+          <!-- 原图信息小节 -->
+          <div class="panel-block-title">
+            <span>原图信息</span>
+            <span id="hotspotCountBadge" style="font-size: 11px; color: var(--apple-blue); font-weight: 600;">0 个热区</span>
+          </div>
+          <div class="image-meta-pill" style="margin-bottom: 14px;">
+            <span id="imageMetaName" style="max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">poster.jpg</span>
+            <strong id="imageMetaDims">1200 × 2400 px</strong>
+          </div>
+
+          <!-- 跳转平台与终端小节 -->
+          <div class="panel-block-title">
+            <span>跳转平台与终端</span>
+            <span style="font-size: 11px; color: var(--apple-text-tertiary);">自动适配链接格式</span>
+          </div>
+
+          <!-- 4-选项卡平台切换网格 -->
+          <div class="platform-grid">
+            <button type="button" class="platform-btn active" data-platform="ailai_m" onclick="switchPlatform('ailai_m')">
+              <span class="platform-icon">📱</span>
+              <div class="platform-info">
+                <span class="platform-name">爱来 · 移动端</span>
+                <span class="platform-domain">m.ailai.com</span>
+              </div>
+            </button>
+            <button type="button" class="platform-btn" data-platform="ailai_pc" onclick="switchPlatform('ailai_pc')">
+              <span class="platform-icon">💻</span>
+              <div class="platform-info">
+                <span class="platform-name">爱来 · PC端</span>
+                <span class="platform-domain">www.ailai.com</span>
+              </div>
+            </button>
+            <button type="button" class="platform-btn" data-platform="meiti_m" onclick="switchPlatform('meiti_m')">
+              <span class="platform-icon">📱</span>
+              <div class="platform-info">
+                <span class="platform-name">美体 · 移动端</span>
+                <span class="platform-domain">m.ilife.cn</span>
+              </div>
+            </button>
+            <button type="button" class="platform-btn" data-platform="meiti_pc" onclick="switchPlatform('meiti_pc')">
+              <span class="platform-icon">💻</span>
+              <div class="platform-info">
+                <span class="platform-name">美体 · PC端</span>
+                <span class="platform-domain">www.ilife.cn</span>
+              </div>
+            </button>
+          </div>
+
+          <!-- 链接生成模板规则指示条 -->
+          <div class="url-rule-pill" style="margin-bottom: 0;">
+            <span class="url-rule-label">当前链接规则：</span>
+            <code id="currentRuleDisplay" class="url-rule-display">https://m.ailai.com/product/{商品ID}.html</code>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ================= 右侧列 (商品id序列 与 热区列表清单 左右并列；底部 MAP代码) ================= -->
+      <div class="right-column">
+
+        <!-- 顶部左右布局：左为商品 ID 序列，右为热区列表清单 -->
+        <div class="right-top-grid">
+
+          <!-- 1. 商品 ID 序列 (左) -->
+          <div id="batchIdCard" class="card panel-block" style="display:none; height:100%; box-sizing:border-box;">
+            <div class="panel-block-title">
+              <span>商品 ID 序列（从表格提取或输入）</span>
+              <span id="batchIdCountBadge" class="batch-id-count">0 个待匹配 ID</span>
+            </div>
+            <div class="batch-id-section" style="background:transparent; border:none; padding:0; display:flex; flex-direction:column; height:calc(100% - 24px);">
+              <textarea id="batchIdInput" class="batch-id-textarea" placeholder="在此粘贴商品ID列表（支持换行、空格或逗号分隔）&#10;例如：&#10;130893&#10;135421&#10;141447" spellcheck="false" style="flex:1; min-height:140px; max-height:220px;"></textarea>
+              <div class="batch-id-actions" style="margin-top: 8px;">
+                <button type="button" id="applyBatchIdsBtn" class="btn btn-primary btn-sm" onclick="applyBatchIds()">⚡ 自动依次替换热区 ID</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="fillSampleIds()">填入示例 ID</button>
+                <button type="button" class="btn btn-outline btn-sm" onclick="clearBatchIds()">清空</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. 热区列表清单 (右) -->
+          <div id="hotspotsCard" class="card panel-block" style="display:none; height:100%; box-sizing:border-box;">
+            <div class="panel-block-title">
+              <span>热区列表清单</span>
+              <span style="font-size: 11px; color: var(--apple-text-tertiary);">点击编辑属性</span>
+            </div>
+            <div id="hotspotList" class="hotspot-list">
+              <!-- 动态注入热区项 -->
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 3. 识别生成的 MAP 代码 (底部右侧全宽) -->
+        <div id="codeCard" class="card panel-block" style="display:none;">
+          <div class="panel-block-title">
+            <span>识别生成的 MAP 代码</span>
+            <span style="font-size: 11px; color: var(--apple-text-tertiary); font-weight: normal;">用于粘贴至店铺或网页</span>
+          </div>
+
+          <!-- 代码生成配置面板 (含 m端/pc端 格式切换、Map 命名、线上 URL 与 Alt 文本) -->
+          <div class="code-config-panel">
+            <div class="code-config-row">
+              <div class="terminal-format-switch">
+                <span class="code-config-label">Img 终端格式：</span>
+                <div class="terminal-segmented">
+                  <button type="button" id="termBtnM" class="term-btn active" onclick="setTerminalFormat('m')">📱 m端 (lazyload)</button>
+                  <button type="button" id="termBtnPC" class="term-btn" onclick="setTerminalFormat('pc')">💻 pc端 (lazy layb)</button>
+                </div>
+              </div>
+
+              <div class="map-name-group">
+                <label for="mapNameInput" class="code-config-label">Map 命名：</label>
+                <input type="text" id="mapNameInput" class="map-name-input font-mono" value="15Map" placeholder="如 15Map" oninput="onMapNameChange(this.value)">
+              </div>
+
+              <div class="map-name-group">
+                <label for="activityPathInput" class="code-config-label">活动路径：</label>
+                <input type="text" id="activityPathInput" class="map-name-input font-mono" value="261029" placeholder="如 261029" oninput="onActivityPathChange(this.value)" style="width:100px;">
+              </div>
+            </div>
+
+            <div class="code-config-row code-config-row-sub">
+              <div class="code-config-field" style="flex: 2; min-width: 260px;">
+                <label class="code-config-sublabel">图片线上 URL (m端 data-src / pc端 data-original)：</label>
+                <input type="text" id="imgOnlineUrlInput" class="code-config-input font-mono" placeholder="可自定义图片在 OSS 上的完整链接" oninput="onImgUrlChange(this.value)">
+              </div>
+              <div class="code-config-field" style="flex: 1; min-width: 160px;">
+                <label class="code-config-sublabel">图片 alt 文本：</label>
+                <input type="text" id="imgAltInput" class="code-config-input" value="夏日狂欢，放价到底" placeholder="如 夏日狂欢，放价到底" oninput="onImgAltChange(this.value)">
+              </div>
+            </div>
+          </div>
+
+          <!-- 代码格式选项卡 -->
+          <div class="code-tabs">
+            <button class="code-tab-btn active" data-format="html-map">HTML &lt;map&gt; 标签</button>
+            <button class="code-tab-btn" data-format="responsive-css">响应式百分比 CSS</button>
+            <button class="code-tab-btn" data-format="json-coords">JSON 坐标</button>
+          </div>
+
+          <!-- 自适应高度只读代码文本框 -->
+          <textarea id="codeOutput" class="apple-code-textarea" readonly spellcheck="false"></textarea>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px;">
+            <button id="copyCodeBtn" class="btn btn-primary">复制当前切图代码</button>
+            <button id="downloadHtmlBtn" class="btn btn-outline">下载单图示例网页</button>
+          </div>
+          <div id="exportUpdatedHtmlWrap" style="display:none; margin-top: 8px;">
+            <button id="exportUpdatedHtmlBtn" class="btn btn-success" style="width:100%;" onclick="exportUpdatedHtml()">📥 导出更新后的完整 HTML 文件 (含全部切片与热区)</button>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 灵动岛 Floating Toast -->
+  <div id="appleToast">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34c759" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+    <span id="toastMsg">已完成</span>
+  </div>
+
+  <script>
+    // 全局数据状态
+    let currentImage = {
+      name: '',
+      naturalWidth: 0,
+      naturalHeight: 0,
+      src: ''
+    };
+    let hotspots = []; // 每个热区: { id, name, productId, href, alt, x1, y1, x2, y2 } (原图绝对像素坐标)
+    let activeHotspotId = null;
+    let nextId = 1;
+    let currentCodeFormat = 'html-map';
+    let isPreviewMode = false;
+    let currentZoomScale = 1.0;
+    let isFitMode = true;
+
+    // 终端与代码格式状态 (m端: lazyload / data-src; pc端: lazy layb / grey.gif / data-original)
+    let currentTerminal = 'm'; // 'm' | 'pc'
+    let customImgUrl = '';
+    let customImgAlt = '';
+    let customActivityPath = '261029'; // 活动路径编号，如 261029
+
+    // -------------------------------------------------------------
+    // 多平台与终端跳转规则映射配置
+    // -------------------------------------------------------------
+    const PLATFORM_CONFIGS = {
+      'ailai_m': {
+        name: '爱来 · 移动端',
+        terminal: 'm',
+        domain: 'm.ailai.com',
+        prefix: 'https://m.ailai.com/product/',
+        suffix: '.html',
+        greyGif: 'https://static.ailai.com/osssync/grey.gif',
+        ossDir: 'https://static.ailai.com/osssync/Wap/Promotion/2022/261029/'
+      },
+      'ailai_pc': {
+        name: '爱来 · PC端',
+        terminal: 'pc',
+        domain: 'www.ailai.com',
+        prefix: 'https://www.ailai.com/product/',
+        suffix: '.html',
+        greyGif: 'https://static.ailai.com/osssync/grey.gif',
+        ossDir: 'https://static.ailai.com/osssync/Promotion/2022/261029/'
+      },
+      'meiti_m': {
+        name: '美体 · 移动端',
+        terminal: 'm',
+        domain: 'm.ilife.cn',
+        prefix: 'https://m.ilife.cn/product/',
+        suffix: '.html',
+        greyGif: 'https://static.ilife.cn/osssync/grey.gif',
+        ossDir: 'https://static.ilife.cn/osssync/Wap/Promotion/2022/261029/'
+      },
+      'meiti_pc': {
+        name: '美体 · PC端',
+        terminal: 'pc',
+        domain: 'www.ilife.cn',
+        prefix: 'https://www.ilife.cn/product/',
+        suffix: '.html',
+        greyGif: 'https://static.ilife.cn/osssync/grey.gif',
+        ossDir: 'https://static.ilife.cn/osssync/Promotion/2022/261029/'
+      }
+    };
+    let currentPlatform = 'ailai_m';
+
+    // 交互拖拽状态
+    let isDrawing = false;
+    let drawStartX = 0;
+    let drawStartY = 0;
+
+    let isMoving = false;
+    let moveTarget = null;
+    let moveStartX = 0;
+    let moveStartY = 0;
+    let origBox = null;
+    let activeMoveElement = null;
+
+    let isResizing = false;
+    let resizeHandle = '';
+    let resizeTarget = null;
+    let origResizeBox = null;
+    let activeResizeElement = null;
+
+    // DOM 引用
+    const fileInput = document.getElementById('fileInput');
+    const demoBannerBtn = document.getElementById('demoBannerBtn');
+    const emptyUploadView = document.getElementById('emptyUploadView');
+    const stageWrapper = document.getElementById('stageWrapper');
+    const sourceImage = document.getElementById('sourceImage');
+    const hotspotOverlay = document.getElementById('hotspotOverlay');
+    const drawingBox = document.getElementById('drawingBox');
+    const canvasViewport = document.getElementById('canvasViewport');
+
+    const canvasControls = document.getElementById('canvasControls');
+    const clearAllBtn = document.getElementById('clearAllBtn');
+    const modeToggleBtn = document.getElementById('modeToggleBtn');
+
+    const zoomFitBtn = document.getElementById('zoomFitBtn');
+    const zoom100Btn = document.getElementById('zoom100Btn');
+    const zoomInBtn = document.getElementById('zoomInBtn');
+    const zoomOutBtn = document.getElementById('zoomOutBtn');
+
+    const imagePlatformCard = document.getElementById('imagePlatformCard');
+    const imageMetaCard = imagePlatformCard;
+    const platformCard = imagePlatformCard;
+    const imageMetaName = document.getElementById('imageMetaName');
+    const imageMetaDims = document.getElementById('imageMetaDims');
+    const hotspotCountBadge = document.getElementById('hotspotCountBadge');
+
+    const batchIdCard = document.getElementById('batchIdCard');
+    const batchIdInput = document.getElementById('batchIdInput');
+    const batchIdCountBadge = document.getElementById('batchIdCountBadge');
+    const currentRuleDisplay = document.getElementById('currentRuleDisplay');
+
+    const hotspotsCard = document.getElementById('hotspotsCard');
+    const hotspotList = document.getElementById('hotspotList');
+
+    const codeCard = document.getElementById('codeCard');
+    const codeOutput = document.getElementById('codeOutput');
+    const mapNameInput = document.getElementById('mapNameInput');
+    const copyCodeBtn = document.getElementById('copyCodeBtn');
+    const downloadHtmlBtn = document.getElementById('downloadHtmlBtn');
+    const codeTabBtns = document.querySelectorAll('.code-tab-btn');
+
+    // -------------------------------------------------------------
+    // 图片标号与 Map 命名智能提取引擎 (例如 11.jpg -> 11Map)
+    // -------------------------------------------------------------
+    function extractImageTag(filename) {
+      if (!filename) return '11';
+      // 优先从文件名中提取数字编号/标号 (如 11.jpg -> 11, 11_海报.png -> 11, banner-02 -> 02)
+      const match = filename.match(/\d+/);
+      if (match) return match[0];
+      // 若无数字，取除扩展名外的纯文本
+      const base = filename.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_\u4e00-\u9fa5]/g, '').trim();
+      return base || '11';
+    }
+
+    function updateMapNameFromImage(filename) {
+      const tag = extractImageTag(filename);
+      const mapName = `${tag}Map`;
+      if (mapNameInput) {
+        mapNameInput.value = mapName;
+      }
+      return mapName;
+    }
+
+    window.onMapNameChange = function(val) {
+      generateMapCode();
+      if (typeof saveCurrentSliceHotspots === 'function') saveCurrentSliceHotspots();
+    };
+
+    // -------------------------------------------------------------
+    // 图片线上 URL 与多端 img 标签生成引擎 (严格区分 m端 与 pc端 格式)
+    // -------------------------------------------------------------
+    function getEffectiveImgUrl(terminal) {
+      if (customImgUrl && customImgUrl.trim()) {
+        return customImgUrl.trim();
+      }
+      const isMeiti = currentPlatform.startsWith('meiti');
+      const domain = isMeiti ? 'https://static.ilife.cn/osssync/' : 'https://static.ailai.com/osssync/';
+      const actInput = document.getElementById('activityPathInput');
+      const actPath = customActivityPath || ((actInput && actInput.value.trim()) ? actInput.value.trim().replace(/^\/+|\/+$/g, '') : '261029');
+      const filename = currentImage.name || (terminal === 'pc' ? 'huodong_50.jpg' : 'huodong_15.jpg');
+      if (terminal === 'm') {
+        return `${domain}Wap/Promotion/2022/${actPath}/${filename}`;
+      } else {
+        return `${domain}Promotion/2022/${actPath}/${filename}`;
+      }
+    }
+
+    function getEffectiveAlt(terminal) {
+      if (customImgAlt && customImgAlt.trim()) {
+        return customImgAlt.trim();
+      }
+      return terminal === 'pc' ? '夏季狂欢放价到底' : '夏日狂欢，放价到底';
+    }
+
+    function buildImgTag(terminal, imgSrc, imgAlt, mapName) {
+      if (terminal === 'm') {
+        // m端标准格式: <img class="lazyload" data-src="..." alt="..." width="100%" usemap="#xxMap" />
+        return `<img class="lazyload" data-src="${imgSrc}"\n          alt="${imgAlt}" width="100%" usemap="#${mapName}" />`;
+      } else {
+        // pc端标准格式: <img class="lazy layb" src="grey.gif" data-original="..." alt="..." usemap="#...Map" />
+        const isMeiti = currentPlatform.startsWith('meiti');
+        const greyGif = isMeiti ? 'https://static.ilife.cn/osssync/grey.gif' : 'https://static.ailai.com/osssync/grey.gif';
+        return `<img class="lazy layb" src="${greyGif}"\n            data-original="${imgSrc}" alt="${imgAlt}"\n            usemap="#${mapName}" />`;
+      }
+    }
+
+    function syncImgConfigInputs() {
+      const urlInput = document.getElementById('imgOnlineUrlInput');
+      const altInput = document.getElementById('imgAltInput');
+      const actInput = document.getElementById('activityPathInput');
+      const termBtnM = document.getElementById('termBtnM');
+      const termBtnPC = document.getElementById('termBtnPC');
+      if (termBtnM) termBtnM.classList.toggle('active', currentTerminal === 'm');
+      if (termBtnPC) termBtnPC.classList.toggle('active', currentTerminal === 'pc');
+      if (actInput && !actInput.value && customActivityPath) {
+        actInput.value = customActivityPath;
+      }
+      if (urlInput) {
+        urlInput.placeholder = getEffectiveImgUrl(currentTerminal);
+        if (!customImgUrl) urlInput.value = '';
+      }
+      if (altInput && !customImgAlt) {
+        altInput.value = getEffectiveAlt(currentTerminal);
+      }
+    }
+
+    window.setTerminalFormat = function(terminal) {
+      currentTerminal = terminal;
+      syncImgConfigInputs();
+      generateMapCode();
+      showAppleToast(`已切换至【${terminal === 'm' ? 'm端 (lazyload)' : 'pc端 (lazy layb)'}】图片格式`);
+    };
+
+    window.onActivityPathChange = function(val) {
+      customActivityPath = (val || '').trim().replace(/^\/+|\/+$/g, '');
+      const actInput = document.getElementById('activityPathInput');
+      if (actInput && actInput.value !== val) {
+        actInput.value = val;
+      }
+      // 若曾填写过自定义完整 URL，同步替换其中的活动路径节
+      if (customImgUrl) {
+        customImgUrl = customImgUrl.replace(/(\/Promotion\/|\/Wap\/Promotion\/)(\d{4}\/)[^\/]+(\/)/i, `$1$2${customActivityPath || '261029'}$3`);
+        const urlInput = document.getElementById('imgOnlineUrlInput');
+        if (urlInput && urlInput.value) {
+          urlInput.value = customImgUrl;
+        }
+      }
+      syncImgConfigInputs();
+      generateMapCode();
+    };
+
+    window.onImgUrlChange = function(val) {
+      customImgUrl = val;
+      generateMapCode();
+    };
+
+    window.onImgAltChange = function(val) {
+      customImgAlt = val;
+      generateMapCode();
+    };
+
+    // -------------------------------------------------------------
+    // URL 构造与平台多端联动引擎
+    // -------------------------------------------------------------
+    function buildProductUrl(platformKey, productId) {
+      const conf = PLATFORM_CONFIGS[platformKey] || PLATFORM_CONFIGS['ailai_m'];
+      const pid = String(productId || '').trim();
+      if (!pid) return 'https://';
+      return `${conf.prefix}${pid}${conf.suffix}`;
+    }
+
+    window.switchPlatform = function(platformKey) {
+      if (!PLATFORM_CONFIGS[platformKey]) return;
+      currentPlatform = platformKey;
+      const conf = PLATFORM_CONFIGS[platformKey];
+
+      // 联动终端格式 (m端 vs pc端)
+      currentTerminal = conf.terminal;
+
+      document.querySelectorAll('.platform-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.platform === platformKey);
+      });
+      if (currentRuleDisplay) {
+        currentRuleDisplay.innerText = `${conf.prefix}{商品ID}${conf.suffix}`;
+      }
+
+      let updatedCount = 0;
+      hotspots.forEach(h => {
+        // 若热区未绑定 productId 但 href 匹配标准路径，则智能提取
+        if (!h.productId && h.href) {
+          const m = h.href.match(/\/product\/(\d+)\.html/i);
+          if (m && m[1]) h.productId = m[1];
+        }
+        if (h.productId) {
+          h.href = buildProductUrl(currentPlatform, h.productId);
+          updatedCount++;
+        }
+      });
+
+      syncImgConfigInputs();
+      renderAll();
+      showAppleToast(`已切换至【${conf.name}】，${updatedCount} 个热区链接已自动同步`);
+    };
+
+    function parseBatchIds() {
+      if (!batchIdInput) return [];
+      return batchIdInput.value.split(/[\r\n,\s\t]+/).map(s => s.trim()).filter(Boolean);
+    }
+
+    function updateBatchIdCountBadge() {
+      const ids = parseBatchIds();
+      if (batchIdCountBadge) {
+        batchIdCountBadge.innerText = `${ids.length} 个待匹配 ID (当前热区 ${hotspots.length})`;
+      }
+    }
+
+    if (batchIdInput) {
+      batchIdInput.addEventListener('input', updateBatchIdCountBadge);
+    }
+
+    window.applyBatchIds = function() {
+      const ids = parseBatchIds();
+      if (ids.length === 0) {
+        showAppleToast('请先输入或粘贴商品 ID 列表');
+        return;
+      }
+      if (hotspots.length === 0) {
+        showAppleToast('尚未创建任何热区，请先在左侧图片框选区域');
+        return;
+      }
+      let count = 0;
+      hotspots.forEach((h, index) => {
+        if (index < ids.length) {
+          const pid = ids[index];
+          h.productId = pid;
+          h.href = buildProductUrl(currentPlatform, pid);
+          if (h.name.startsWith('热区 #') || h.name.startsWith('商品 #') || !h.name) {
+            h.name = `商品 ${pid}`;
+          }
+          count++;
+        }
+      });
+      renderAll();
+      updateBatchIdCountBadge();
+      showAppleToast(`已成功依次替换 ${count} 个热区的商品 ID 与跳转链接`);
+    };
+
+    window.fillSampleIds = function() {
+      if (batchIdInput) {
+        batchIdInput.value = "130893\n135421\n141447";
+        updateBatchIdCountBadge();
+        showAppleToast('已填入示例商品 ID (130893, 135421, 141447)');
+      }
+    };
+
+    window.clearBatchIds = function() {
+      if (batchIdInput) {
+        batchIdInput.value = '';
+        updateBatchIdCountBadge();
+        showAppleToast('已清空商品 ID 输入框');
+      }
+    };
+
+    // 灵动岛 Toast 提示
+    function showAppleToast(msg) {
+      const toast = document.getElementById('appleToast');
+      const toastMsg = document.getElementById('toastMsg');
+      toastMsg.innerText = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2000);
+    }
+
+    // 代码框自适应高度 (放大自适应范围：240px - 520px)
+    function autoResizeCodeTextarea() {
+      if (!codeOutput) return;
+      codeOutput.style.height = 'auto';
+      const scrollHeight = codeOutput.scrollHeight;
+      if (scrollHeight > 520) {
+        codeOutput.style.height = '520px';
+        codeOutput.style.overflowY = 'auto';
+      } else {
+        codeOutput.style.height = Math.max(240, scrollHeight + 4) + 'px';
+        codeOutput.style.overflowY = 'hidden';
+      }
+    }
+
+    // -------------------------------------------------------------
+    // 文件载入逻辑：支持点击选择、拖拽上传、预设载入
+    // -------------------------------------------------------------
+    fileInput.addEventListener('click', () => {
+      fileInput.value = ''; // 保证选同一文件也能触发 change
+    });
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        const file = e.target.files[0];
+        if (file.name.endsWith('.html') || file.name.endsWith('.htm')) {
+          loadHtmlFile(file);
+        } else {
+          loadImageFromFile(file);
+        }
+      }
+    });
+    demoBannerBtn.addEventListener('click', loadDemoBanner);
+
+    ['dragenter', 'dragover'].forEach(name => {
+      emptyUploadView.addEventListener(name, (e) => {
+        e.preventDefault();
+        emptyUploadView.classList.add('dragover');
+      });
+      canvasViewport.addEventListener(name, (e) => e.preventDefault());
+    });
+
+    ['dragleave', 'drop'].forEach(name => {
+      emptyUploadView.addEventListener(name, (e) => {
+        e.preventDefault();
+        emptyUploadView.classList.remove('dragover');
+      });
+    });
+
+    canvasViewport.addEventListener('drop', (e) => {
+      e.preventDefault();
+      emptyUploadView.classList.remove('dragover');
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        const file = e.dataTransfer.files[0];
+        if (file.name.endsWith('.html') || file.name.endsWith('.htm')) {
+          loadHtmlFile(file);
+        } else if (file.type.startsWith('image/')) {
+          loadImageFromFile(file);
+        }
+      }
+    });
+
+    function loadImageFromFile(file, customName) {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        initImageStage(e.target.result, customName || file.name);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function initImageStage(srcUrl, name) {
+      const img = new Image();
+      img.onload = function() {
+        currentImage = {
+          name: name,
+          naturalWidth: img.naturalWidth,
+          naturalHeight: img.naturalHeight,
+          src: srcUrl
+        };
+
+        // 清空旧热区
+        hotspots = [];
+        activeHotspotId = null;
+        nextId = 1;
+
+        // 更新 DOM
+        sourceImage.src = currentImage.src;
+        imageMetaName.innerText = currentImage.name;
+        imageMetaDims.innerText = `${currentImage.naturalWidth} × ${currentImage.naturalHeight} px`;
+
+        // 自动提取图片标号并设置 Map 命名，例如 11.jpg -> 11Map
+        updateMapNameFromImage(currentImage.name);
+        syncImgConfigInputs();
+
+        emptyUploadView.style.display = 'none';
+        stageWrapper.style.display = 'inline-block';
+        canvasControls.style.display = 'flex';
+        clearAllBtn.style.display = 'inline-flex';
+
+        if (imagePlatformCard) imagePlatformCard.style.display = 'block';
+        if (batchIdCard) batchIdCard.style.display = 'block';
+        hotspotsCard.style.display = 'block';
+        codeCard.style.display = 'block';
+
+        applyZoomFit();
+        renderAll();
+        updateBatchIdCountBadge();
+        showAppleToast('图片加载成功，请在图上框选区域');
+      };
+      img.src = srcUrl;
+    }
+
+    // 动态生成一张逼真的电商活动示例海报图 (供无需本地图片时极速测试)
+    function loadDemoBanner() {
+      const c = document.createElement('canvas');
+      c.width = 750;
+      c.height = 1350;
+      const ctx = c.getContext('2d');
+
+      // 背景渐变
+      const grad = ctx.createLinearGradient(0, 0, 750, 1350);
+      grad.addColorStop(0, '#1e3a8a');
+      grad.addColorStop(0.35, '#2563eb');
+      grad.addColorStop(0.7, '#0ea5e9');
+      grad.addColorStop(1, '#0284c7');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 750, 1350);
+
+      // 标题文字
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 54px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('感恩节 & 黑五狂欢季', 375, 140);
+
+      ctx.font = '30px -apple-system, sans-serif';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.fillText('全场爆款套组 震撼2折起 · 领券立减', 375, 200);
+
+      // 优惠券模块 (可框选热区 1)
+      ctx.fillStyle = '#fef08a';
+      ctx.beginPath();
+      ctx.roundRect(60, 260, 630, 150, 20);
+      ctx.fill();
+      ctx.fillStyle = '#854d0e';
+      ctx.font = 'bold 36px -apple-system, sans-serif';
+      ctx.fillText('￥200 大额专属优惠券 【立即领取】', 375, 350);
+
+      // 推荐商品 1 (可框选热区 2)
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.roundRect(60, 460, 300, 380, 16);
+      ctx.fill();
+      ctx.fillStyle = '#1e293b';
+      ctx.font = 'bold 24px -apple-system, sans-serif';
+      ctx.fillText('温莎之谜APM 2件套', 210, 700);
+      ctx.fillStyle = '#e11d48';
+      ctx.font = 'bold 28px -apple-system, sans-serif';
+      ctx.fillText('大促价 ￥1680', 210, 750);
+      ctx.fillStyle = '#2563eb';
+      ctx.beginPath();
+      ctx.roundRect(100, 775, 220, 44, 22);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 18px -apple-system, sans-serif';
+      ctx.fillText('立即抢购', 210, 804);
+
+      // 推荐商品 2 (可框选热区 3)
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.roundRect(390, 460, 300, 380, 16);
+      ctx.fill();
+      ctx.fillStyle = '#1e293b';
+      ctx.font = 'bold 24px -apple-system, sans-serif';
+      ctx.fillText('维萃美天然水蛭素', 540, 700);
+      ctx.fillStyle = '#e11d48';
+      ctx.font = 'bold 28px -apple-system, sans-serif';
+      ctx.fillText('大促价 ￥890', 540, 750);
+      ctx.fillStyle = '#2563eb';
+      ctx.beginPath();
+      ctx.roundRect(430, 775, 220, 44, 22);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 18px -apple-system, sans-serif';
+      ctx.fillText('立即抢购', 540, 804);
+
+      // 底部活动主会场横幅 (可框选热区 4)
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.roundRect(60, 900, 630, 360, 16);
+      ctx.fill();
+      ctx.fillStyle = '#0f172a';
+      ctx.font = 'bold 36px -apple-system, sans-serif';
+      ctx.fillText('黑五超级秒杀专区 TOP30', 375, 1040);
+      ctx.fillStyle = '#64748b';
+      ctx.font = '22px -apple-system, sans-serif';
+      ctx.fillText('每天 10:00 / 14:00 / 20:00 准时开抢', 375, 1100);
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.roundRect(245, 1140, 260, 60, 30);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 24px -apple-system, sans-serif';
+      ctx.fillText('进入秒杀主会场 ➔', 375, 1178);
+
+      const bannerUrl = c.toDataURL('image/png');
+      const img = new Image();
+      img.onload = function() {
+        const demoImgName = currentTerminal === 'pc' ? 'huodong_50.jpg' : 'huodong_15.jpg';
+        currentImage = {
+          name: demoImgName,
+          naturalWidth: img.naturalWidth,
+          naturalHeight: img.naturalHeight,
+          src: bannerUrl
+        };
+
+        sourceImage.src = currentImage.src;
+        imageMetaName.innerText = currentImage.name;
+        imageMetaDims.innerText = `${currentImage.naturalWidth} × ${currentImage.naturalHeight} px`;
+
+        // 自动提取图片标号设置 Map 命名: 15Map 或 50Map
+        updateMapNameFromImage(currentImage.name);
+        syncImgConfigInputs();
+
+        emptyUploadView.style.display = 'none';
+        stageWrapper.style.display = 'inline-block';
+        canvasControls.style.display = 'flex';
+        clearAllBtn.style.display = 'inline-flex';
+
+        if (imagePlatformCard) imagePlatformCard.style.display = 'block';
+        if (batchIdCard) batchIdCard.style.display = 'block';
+        hotspotsCard.style.display = 'block';
+        codeCard.style.display = 'block';
+
+        // 预设用户提供的示例商品 ID 列表
+        if (batchIdInput) {
+          batchIdInput.value = "130893\n135421\n141447";
+        }
+
+        // 初始化 4 个逼真测试热区 (含用户提及的 3 个典型商品 ID)
+        hotspots = [
+          {
+            id: 1,
+            name: '￥200大额券',
+            productId: '',
+            href: 'https://m.ailai.com/coupon/claim',
+            alt: '￥200大额券',
+            x1: 60, y1: 260, x2: 690, y2: 410
+          },
+          {
+            id: 2,
+            name: '商品 130893',
+            productId: '130893',
+            href: buildProductUrl(currentPlatform, '130893'),
+            alt: '温莎之谜APM 2件套',
+            x1: 60, y1: 460, x2: 360, y2: 840
+          },
+          {
+            id: 3,
+            name: '商品 135421',
+            productId: '135421',
+            href: buildProductUrl(currentPlatform, '135421'),
+            alt: '维萃美天然水蛭素',
+            x1: 390, y1: 460, x2: 690, y2: 840
+          },
+          {
+            id: 4,
+            name: '商品 141447',
+            productId: '141447',
+            href: buildProductUrl(currentPlatform, '141447'),
+            alt: '黑五超级秒杀专区',
+            x1: 60, y1: 900, x2: 690, y2: 1260
+          }
+        ];
+        activeHotspotId = 2;
+        nextId = 5;
+
+        applyZoomFit();
+        renderAll();
+        updateBatchIdCountBadge();
+        showAppleToast('已载入测试海报并预设 3 个商品 ID');
+      };
+      img.src = bannerUrl;
+    }
+
+    // -------------------------------------------------------------
+    // 画布缩放体系
+    // -------------------------------------------------------------
+    function applyZoomFit() {
+      isFitMode = true;
+      currentZoomScale = 1.0;
+      stageWrapper.style.transform = 'none';
+      sourceImage.style.maxWidth = '100%';
+      sourceImage.style.width = 'auto';
+      updateZoomButtons();
+    }
+
+    function applyZoomScale(scale) {
+      isFitMode = false;
+      currentZoomScale = Math.max(0.2, Math.min(3.0, scale));
+      sourceImage.style.maxWidth = 'none';
+      sourceImage.style.width = `${Math.round(currentImage.naturalWidth * currentZoomScale)}px`;
+      updateZoomButtons();
+    }
+
+    function updateZoomButtons() {
+      zoomFitBtn.classList.toggle('active', isFitMode);
+      zoom100Btn.classList.toggle('active', !isFitMode && Math.abs(currentZoomScale - 1.0) < 0.05);
+    }
+
+    zoomFitBtn.addEventListener('click', applyZoomFit);
+    zoom100Btn.addEventListener('click', () => applyZoomScale(1.0));
+    zoomInBtn.addEventListener('click', () => applyZoomScale((currentZoomScale || 1.0) + 0.15));
+    zoomOutBtn.addEventListener('click', () => applyZoomScale((currentZoomScale || 1.0) - 0.15));
+
+    // -------------------------------------------------------------
+    // 坐标换算：屏幕像素 <-> 原图真实高精度绝对像素
+    // -------------------------------------------------------------
+    function screenToNatural(screenX, screenY) {
+      const rect = sourceImage.getBoundingClientRect();
+      const scaleX = currentImage.naturalWidth / rect.width;
+      const scaleY = currentImage.naturalHeight / rect.height;
+
+      let natX = Math.round((screenX - rect.left) * scaleX);
+      let natY = Math.round((screenY - rect.top) * scaleY);
+
+      natX = Math.max(0, Math.min(currentImage.naturalWidth, natX));
+      natY = Math.max(0, Math.min(currentImage.naturalHeight, natY));
+
+      return { x: natX, y: natY };
+    }
+
+    function naturalToOverlayPercent(natX, natY) {
+      const leftPct = (natX / currentImage.naturalWidth) * 100;
+      const topPct = (natY / currentImage.naturalHeight) * 100;
+      return { leftPct, topPct };
+    }
+
+    // -------------------------------------------------------------
+    // 鼠标拖拽框选绘制逻辑 (优化：平滑拖拽，避免DOM频繁重构)
+    // -------------------------------------------------------------
+    hotspotOverlay.addEventListener('mousedown', (e) => {
+      if (isPreviewMode) return;
+      // 点击在热区盒子或调节手柄上时不触发新建
+      if (e.target.closest('.hotspot-box') || e.target.classList.contains('handle')) return;
+
+      isDrawing = true;
+      const pt = screenToNatural(e.clientX, e.clientY);
+      drawStartX = pt.x;
+      drawStartY = pt.y;
+
+      updateDrawingBox(drawStartX, drawStartY, drawStartX, drawStartY);
+      drawingBox.style.display = 'block';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isDrawing) {
+        const pt = screenToNatural(e.clientX, e.clientY);
+        updateDrawingBox(drawStartX, drawStartY, pt.x, pt.y);
+      } else if (isMoving && moveTarget && activeMoveElement) {
+        // 平移热区中：直接更新当前 DOM 样式，实现 60fps 丝滑跟随，不摧毁重构 DOM
+        const pt = screenToNatural(e.clientX, e.clientY);
+        const dx = pt.x - moveStartX;
+        const dy = pt.y - moveStartY;
+
+        let w = origBox.x2 - origBox.x1;
+        let h = origBox.y2 - origBox.y1;
+
+        let newX1 = Math.max(0, Math.min(currentImage.naturalWidth - w, origBox.x1 + dx));
+        let newY1 = Math.max(0, Math.min(currentImage.naturalHeight - h, origBox.y1 + dy));
+
+        moveTarget.x1 = newX1;
+        moveTarget.y1 = newY1;
+        moveTarget.x2 = newX1 + w;
+        moveTarget.y2 = newY1 + h;
+
+        applyBoxStyle(activeMoveElement, moveTarget);
+        updateItemCoordsText(moveTarget.id);
+      } else if (isResizing && resizeTarget && activeResizeElement) {
+        // 调节尺寸中：直接更新当前 DOM 样式，手柄不脱离鼠标
+        const pt = screenToNatural(e.clientX, e.clientY);
+        handleResizeMove(pt.x, pt.y);
+        applyBoxStyle(activeResizeElement, resizeTarget);
+        updateItemCoordsText(resizeTarget.id);
+      }
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      if (isDrawing) {
+        isDrawing = false;
+        drawingBox.style.display = 'none';
+        const pt = screenToNatural(e.clientX, e.clientY);
+
+        const x1 = Math.min(drawStartX, pt.x);
+        const y1 = Math.min(drawStartY, pt.y);
+        const x2 = Math.max(drawStartX, pt.x);
+        const y2 = Math.max(drawStartY, pt.y);
+
+        // 最小过滤：宽度和高度均大于 6px 方视为有效热区
+        if ((x2 - x1) >= 6 && (y2 - y1) >= 6) {
+          const id = nextId++;
+          const ids = parseBatchIds();
+          let assignedProductId = '';
+          if (hotspots.length < ids.length) {
+            assignedProductId = ids[hotspots.length];
+          }
+          const href = assignedProductId ? buildProductUrl(currentPlatform, assignedProductId) : 'https://';
+          const name = assignedProductId ? `商品 ${assignedProductId}` : `热区 #${id}`;
+
+          hotspots.push({
+            id,
+            name,
+            productId: assignedProductId,
+            href,
+            alt: name,
+            x1, y1, x2, y2
+          });
+          activeHotspotId = id;
+          renderAll();
+          updateBatchIdCountBadge();
+          showAppleToast(assignedProductId ? `已创建【热区 #${id}】并绑定商品 ${assignedProductId}` : `已创建【热区 #${id}】`);
+        } else {
+          // 点击了空白处，取消选中当前热区
+          if (activeHotspotId !== null) {
+            activeHotspotId = null;
+            renderAll();
+          }
+        }
+      }
+
+      if (isMoving) {
+        isMoving = false;
+        activeMoveElement = null;
+        renderAll();
+      }
+
+      if (isResizing) {
+        isResizing = false;
+        activeResizeElement = null;
+        // 规范化坐标：确保 x1 <= x2, y1 <= y2
+        if (resizeTarget) {
+          if (resizeTarget.x1 > resizeTarget.x2) {
+            const t = resizeTarget.x1; resizeTarget.x1 = resizeTarget.x2; resizeTarget.x2 = t;
+          }
+          if (resizeTarget.y1 > resizeTarget.y2) {
+            const t = resizeTarget.y1; resizeTarget.y1 = resizeTarget.y2; resizeTarget.y2 = t;
+          }
+        }
+        renderAll();
+      }
+    });
+
+    function updateDrawingBox(x1, y1, x2, y2) {
+      const minX = Math.min(x1, x2);
+      const minY = Math.min(y1, y2);
+      const maxX = Math.max(x1, x2);
+      const maxY = Math.max(y1, y2);
+
+      const p1 = naturalToOverlayPercent(minX, minY);
+      const p2 = naturalToOverlayPercent(maxX, maxY);
+
+      drawingBox.style.left = `${p1.leftPct}%`;
+      drawingBox.style.top = `${p1.topPct}%`;
+      drawingBox.style.width = `${p2.leftPct - p1.leftPct}%`;
+      drawingBox.style.height = `${p2.topPct - p1.topPct}%`;
+    }
+
+    function applyBoxStyle(boxEl, item) {
+      const minX = Math.min(item.x1, item.x2);
+      const minY = Math.min(item.y1, item.y2);
+      const maxX = Math.max(item.x1, item.x2);
+      const maxY = Math.max(item.y1, item.y2);
+
+      const p1 = naturalToOverlayPercent(minX, minY);
+      const p2 = naturalToOverlayPercent(maxX, maxY);
+
+      boxEl.style.left = `${p1.leftPct}%`;
+      boxEl.style.top = `${p1.topPct}%`;
+      boxEl.style.width = `${p2.leftPct - p1.leftPct}%`;
+      boxEl.style.height = `${p2.topPct - p1.topPct}%`;
+    }
+
+    function updateItemCoordsText(id) {
+      const h = hotspots.find(item => item.id === id);
+      if (!h) return;
+      const el = document.getElementById(`coords_${id}`);
+      if (el) {
+        const w = Math.abs(h.x2 - h.x1);
+        const h_dim = Math.abs(h.y2 - h.y1);
+        el.innerText = `X:${Math.min(h.x1, h.x2)} Y:${Math.min(h.y1, h.y2)} [${w}×${h_dim}]`;
+      }
+    }
+
+    function handleResizeMove(curX, curY) {
+      let { x1, y1, x2, y2 } = origResizeBox;
+
+      if (resizeHandle.includes('e')) x2 = Math.min(currentImage.naturalWidth, curX);
+      if (resizeHandle.includes('s')) y2 = Math.min(currentImage.naturalHeight, curY);
+      if (resizeHandle.includes('w')) x1 = Math.max(0, curX);
+      if (resizeHandle.includes('n')) y1 = Math.max(0, curY);
+
+      resizeTarget.x1 = x1;
+      resizeTarget.y1 = y1;
+      resizeTarget.x2 = x2;
+      resizeTarget.y2 = y2;
+    }
+
+    // -------------------------------------------------------------
+    // 热区渲染与 DOM 生成
+    // -------------------------------------------------------------
+    function renderHotspotBoxes() {
+      hotspotOverlay.innerHTML = '';
+
+      hotspots.forEach(item => {
+        const box = document.createElement('div');
+        box.className = `hotspot-box ${item.id === activeHotspotId ? 'active' : ''}`;
+        box.dataset.id = item.id;
+
+        applyBoxStyle(box, item);
+
+        // 标签名称
+        const tag = document.createElement('div');
+        tag.className = 'hotspot-tag';
+        tag.innerText = item.name;
+        box.appendChild(tag);
+
+        if (isPreviewMode) {
+          box.style.cursor = 'pointer';
+          box.title = `点击打开：${item.name} (${item.href})`;
+          box.onclick = (e) => {
+            e.stopPropagation();
+            if (item.href && item.href !== '#' && item.href !== 'https://') {
+              window.open(item.href, '_blank');
+            } else {
+              showAppleToast(`[测试触发] 点击了 ${item.name}`);
+            }
+          };
+          hotspotOverlay.appendChild(box);
+          return;
+        }
+
+        // 8 个拉伸调节手柄
+        ['nw', 'ne', 'sw', 'se', 'n', 's', 'w', 'e'].forEach(dir => {
+          const h = document.createElement('div');
+          h.className = `handle ${dir}`;
+          h.onmousedown = (e) => {
+            e.stopPropagation();
+            isResizing = true;
+            resizeHandle = dir;
+            resizeTarget = item;
+            activeResizeElement = box;
+            origResizeBox = { ...item };
+          };
+          box.appendChild(h);
+        });
+
+        // 点击选中与平移拖拽 (安全做法：只切换 class，不摧毁自身 DOM)
+        box.onmousedown = (e) => {
+          if (e.target.classList.contains('handle')) return;
+          e.stopPropagation();
+
+          activeHotspotId = item.id;
+          document.querySelectorAll('.hotspot-box').forEach(b => {
+            b.classList.toggle('active', parseInt(b.dataset.id) === item.id);
+          });
+          document.querySelectorAll('.hotspot-item').forEach(it => {
+            it.classList.toggle('active', parseInt(it.dataset.id) === item.id);
+          });
+
+          isMoving = true;
+          moveTarget = item;
+          activeMoveElement = box;
+          const pt = screenToNatural(e.clientX, e.clientY);
+          moveStartX = pt.x;
+          moveStartY = pt.y;
+          origBox = { ...item };
+        };
+
+        hotspotOverlay.appendChild(box);
+      });
+    }
+
+    // 渲染右侧热区清单 (紧凑高密度清单布局)
+    function renderHotspotList() {
+      hotspotCountBadge.innerText = `${hotspots.length} 个热区`;
+      updateBatchIdCountBadge();
+      if (hotspots.length === 0) {
+        hotspotList.innerHTML = `<div style="text-align:center; padding: 20px 10px; color: var(--apple-text-secondary); font-size: 12px;">暂无热区，请在左侧图上框选</div>`;
+        return;
+      }
+
+      let html = '';
+      hotspots.forEach(item => {
+        const isActive = (item.id === activeHotspotId);
+        const minX = Math.min(item.x1, item.x2);
+        const minY = Math.min(item.y1, item.y2);
+        const w = Math.abs(item.x2 - item.x1);
+        const h = Math.abs(item.y2 - item.y1);
+
+        html += `
+          <div class="hotspot-item ${isActive ? 'active' : ''}" data-id="${item.id}" onclick="selectHotspot(${item.id})">
+            <div class="hotspot-item-header">
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span class="hotspot-item-badge">#${item.id}</span>
+                <span class="hotspot-item-coords" id="coords_${item.id}">X:${minX} Y:${minY} [${w}×${h}]</span>
+              </div>
+              <button class="hotspot-item-delete" title="删除此热区" onclick="deleteHotspot(event, ${item.id})">✕</button>
+            </div>
+            <div class="compact-fields">
+              <div class="compact-row">
+                <div class="compact-input-group">
+                  <span class="compact-input-label">名称</span>
+                  <input type="text" id="name_${item.id}" class="apple-input-mini" value="${escapeHtml(item.name)}" placeholder="名称" oninput="updateHotspotName(${item.id}, this.value)" onclick="event.stopPropagation()">
+                </div>
+                <div class="compact-input-group">
+                  <span class="compact-input-label">ID</span>
+                  <input type="text" id="pid_${item.id}" class="apple-input-mini font-mono" value="${escapeHtml(item.productId || '')}" placeholder="商品ID" oninput="updateHotspotProductId(${item.id}, this.value)" onclick="event.stopPropagation()">
+                </div>
+              </div>
+              <div class="compact-input-group">
+                <span class="compact-input-label">链接</span>
+                <input type="text" id="href_${item.id}" class="apple-input-mini font-mono" value="${escapeHtml(item.href)}" placeholder="跳转目标链接 (href)" oninput="updateHotspotHref(${item.id}, this.value)" onclick="event.stopPropagation()">
+              </div>
+            </div>
+          </div>
+        `;
+      });
+      hotspotList.innerHTML = html;
+    }
+
+    // 选中某热区
+    window.selectHotspot = function(id) {
+      activeHotspotId = id;
+      renderAll();
+    };
+
+    // 删除某热区
+    window.deleteHotspot = function(e, id) {
+      e.stopPropagation();
+      hotspots = hotspots.filter(h => h.id !== id);
+      if (activeHotspotId === id) activeHotspotId = null;
+      renderAll();
+      updateBatchIdCountBadge();
+      showAppleToast('已删除热区');
+    };
+
+    // 更新热区属性
+    window.updateHotspotName = function(id, val) {
+      const h = hotspots.find(item => item.id === id);
+      if (h) {
+        h.name = val.trim() || `热区 #${id}`;
+        renderHotspotBoxes();
+        generateMapCode();
+      }
+    };
+
+    window.updateHotspotProductId = function(id, val) {
+      const h = hotspots.find(item => item.id === id);
+      if (h) {
+        h.productId = val.trim();
+        if (h.productId) {
+          h.href = buildProductUrl(currentPlatform, h.productId);
+          if (h.name.startsWith('热区 #') || h.name.startsWith('商品 #')) {
+            h.name = `商品 ${h.productId}`;
+            const nameInput = document.getElementById(`name_${id}`);
+            if (nameInput) nameInput.value = h.name;
+          }
+        }
+        const hrefInput = document.getElementById(`href_${id}`);
+        if (hrefInput) hrefInput.value = h.href;
+        renderHotspotBoxes();
+        generateMapCode();
+      }
+    };
+
+    window.updateHotspotHref = function(id, val) {
+      const h = hotspots.find(item => item.id === id);
+      if (h) {
+        h.href = val.trim();
+        const m = h.href.match(/\/product\/(\d+)\.html/i);
+        if (m && m[1]) {
+          h.productId = m[1];
+          const pidInput = document.getElementById(`pid_${id}`);
+          if (pidInput) pidInput.value = m[1];
+        }
+        renderHotspotBoxes();
+        generateMapCode();
+      }
+    };
+
+    // 兼容历史调用
+    window.updateHotspotProps = function(id, key, val) {
+      const h = hotspots.find(item => item.id === id);
+      if (h) {
+        h[key] = val;
+        renderHotspotBoxes();
+        generateMapCode();
+      }
+    };
+
+    // -------------------------------------------------------------
+    // Map 代码生成器引擎：HTML <map> | 响应式百分比 CSS | JSON
+    // 严格区分 m端 与 pc端 图片格式
+    // -------------------------------------------------------------
+    function generateMapCode() {
+      if (!currentImage.src || hotspots.length === 0) {
+        codeOutput.value = '<!-- 请在左侧图片上框选区域，系统将自动识别生成 Map 代码 -->';
+        autoResizeCodeTextarea();
+        return;
+      }
+
+      const imgName = currentImage.name || (currentTerminal === 'pc' ? 'huodong_50.jpg' : 'huodong_15.jpg');
+      let mapName = (mapNameInput && mapNameInput.value.trim()) ? mapNameInput.value.trim() : `${extractImageTag(imgName)}Map`;
+      const effectiveImgSrc = getEffectiveImgUrl(currentTerminal);
+      const effectiveAlt = getEffectiveAlt(currentTerminal);
+      const imgTag = buildImgTag(currentTerminal, effectiveImgSrc, effectiveAlt, mapName);
+
+      if (currentCodeFormat === 'html-map') {
+        // 格式 1：标准 HTML <map> 与 <area> 代码 (严格按照原图天然绝对像素，使用图片标号+Map命名)
+        let areas = hotspots.map(h => {
+          const minX = Math.min(h.x1, h.x2);
+          const minY = Math.min(h.y1, h.y2);
+          const maxX = Math.max(h.x1, h.x2);
+          const maxY = Math.max(h.y1, h.y2);
+          return `    <area shape="rect" coords="${minX},${minY},${maxX},${maxY}" href="${h.href}" alt="${h.name}" title="${h.name}" target="_blank">`;
+        }).join('\n');
+
+        const terminalDesc = currentTerminal === 'm' ? '移动端 m 格式 (lazyload)' : 'PC端 pc 格式 (lazy layb)';
+        codeOutput.value = 
+`<!-- ${terminalDesc} 图像地图代码 (${mapName} 基于 ${currentImage.naturalWidth}×${currentImage.naturalHeight}px 原图像素) -->
+${imgTag}
+
+<map name="${mapName}">
+${areas}
+</map>`;
+      } 
+      else if (currentCodeFormat === 'responsive-css') {
+        // 格式 2：移动端/响应式电商页面自适应百分比热区代码 (绝对定位百分比)
+        let links = hotspots.map(h => {
+          const minX = Math.min(h.x1, h.x2);
+          const minY = Math.min(h.y1, h.y2);
+          const w = Math.abs(h.x2 - h.x1);
+          const h_dim = Math.abs(h.y2 - h.y1);
+
+          const leftPct = ((minX / currentImage.naturalWidth) * 100).toFixed(2);
+          const topPct = ((minY / currentImage.naturalHeight) * 100).toFixed(2);
+          const widthPct = ((w / currentImage.naturalWidth) * 100).toFixed(2);
+          const heightPct = ((h_dim / currentImage.naturalHeight) * 100).toFixed(2);
+
+          return `    <a href="${h.href}" target="_blank" title="${h.name}" style="position:absolute; left:${leftPct}%; top:${topPct}%; width:${widthPct}%; height:${heightPct}%; z-index:10;" aria-label="${h.name}"></a>`;
+        }).join('\n');
+
+        const terminalDesc = currentTerminal === 'm' ? '移动端 m 格式 (lazyload)' : 'PC端 pc 格式 (lazy layb)';
+        codeOutput.value = 
+`<!-- ${terminalDesc} 大促自适应百分比热区 (${mapName} 手机/PC端任意缩放均精准对齐) -->
+<div style="position:relative; display:inline-block; width:100%;">
+${imgTag}
+${links}
+</div>`;
+      } 
+      else if (currentCodeFormat === 'json-coords') {
+        // 格式 3：结构化 JSON 数据
+        const jsonData = {
+          terminal: currentTerminal,
+          terminalName: currentTerminal === 'm' ? '移动端 m (lazyload)' : 'PC端 pc (lazy layb)',
+          platform: (PLATFORM_CONFIGS[currentPlatform] ? PLATFORM_CONFIGS[currentPlatform].name : currentPlatform),
+          mapName: mapName,
+          imageTag: imgTag,
+          imageMeta: {
+            name: currentImage.name,
+            naturalWidth: currentImage.naturalWidth,
+            naturalHeight: currentImage.naturalHeight,
+            onlineUrl: effectiveImgSrc,
+            alt: effectiveAlt
+          },
+          hotspots: hotspots.map(h => {
+            const minX = Math.min(h.x1, h.x2);
+            const minY = Math.min(h.y1, h.y2);
+            const w = Math.abs(h.x2 - h.x1);
+            const h_dim = Math.abs(h.y2 - h.y1);
+
+            return {
+              id: h.id,
+              name: h.name,
+              productId: h.productId || '',
+              href: h.href,
+              originalCoordinates: {
+                x1: minX,
+                y1: minY,
+                x2: Math.max(h.x1, h.x2),
+                y2: Math.max(h.y1, h.y2),
+                width: w,
+                height: h_dim
+              },
+              percentage: {
+                left: `${((minX / currentImage.naturalWidth) * 100).toFixed(2)}%`,
+                top: `${((minY / currentImage.naturalHeight) * 100).toFixed(2)}%`,
+                width: `${((w / currentImage.naturalWidth) * 100).toFixed(2)}%`,
+                height: `${((h_dim / currentImage.naturalHeight) * 100).toFixed(2)}%`
+              }
+            };
+          })
+        };
+        codeOutput.value = JSON.stringify(jsonData, null, 2);
+      }
+
+      autoResizeCodeTextarea();
+    }
+
+    // 格式切换 Tab
+    codeTabBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        codeTabBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentCodeFormat = btn.dataset.format;
+        generateMapCode();
+      });
+    });
+
+    // 一键复制代码
+    copyCodeBtn.addEventListener('click', () => {
+      if (!codeOutput.value) return;
+      copyToClipboard(codeOutput.value);
+      showAppleToast('已复制代码到剪贴板！');
+    });
+
+    // 下载示例 HTML 文件 (安全拼接，避免内部闭合标签被 Live Server / 浏览器解析器截断)
+    downloadHtmlBtn.addEventListener('click', () => {
+      if (!currentImage.src) return showAppleToast('请先上传图片并框选');
+
+      const titleStr = escapeHtml(currentImage.name || 'Banner');
+      const lines = [
+        '<!DOCTYPE html>',
+        '<html lang="zh-CN">',
+        '<head>',
+        '  <meta charset="UTF-8">',
+        '  <meta name="viewport" content="width=device-width, initial-scale=1.0">',
+        '  <title>热区页面预览 - ' + titleStr + '<' + '/title>',
+        '  <style>',
+        '    body { margin: 0; padding: 24px; background: #f5f5f7; display: flex; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }',
+        '    .banner-container { max-width: 100%; box-shadow: 0 10px 30px rgba(0,0,0,0.12); border-radius: 8px; overflow: hidden; background: #fff; }',
+        '  <' + '/style>',
+        '<' + '/head>',
+        '<body>',
+        '  <div class="banner-container">',
+        codeOutput.value,
+        '  <' + '/div>',
+        '<' + '/body>',
+        '<' + '/html>'
+      ];
+      const htmlContent = lines.join('\n');
+
+      const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+      const a = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      const mapNameInputEl = document.getElementById('mapNameInput');
+      const mapName = (mapNameInputEl && mapNameInputEl.value.trim()) || `${extractImageTag(currentImage.name)}Map`;
+      a.href = url;
+      a.download = `${mapName}.html`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      showAppleToast('已导出完整 HTML 演示文件');
+    });
+
+    // 清空全部热区
+    clearAllBtn.addEventListener('click', () => {
+      if (hotspots.length === 0) return;
+      if (confirm('确认清空当前图片上的所有热区吗？')) {
+        hotspots = [];
+        activeHotspotId = null;
+        renderAll();
+        updateBatchIdCountBadge();
+        showAppleToast('已清空全部热区');
+      }
+    });
+
+    // 预览/编辑模式切换
+    modeToggleBtn.addEventListener('click', () => {
+      isPreviewMode = !isPreviewMode;
+      if (isPreviewMode) {
+        modeToggleBtn.innerText = '返回编辑模式';
+        modeToggleBtn.classList.remove('btn-secondary');
+        modeToggleBtn.classList.add('btn-primary');
+        hotspotOverlay.classList.add('preview-mode');
+        showAppleToast('已切换至预览模式，热区可直接点击测试');
+      } else {
+        modeToggleBtn.innerText = '预览点击效果';
+        modeToggleBtn.classList.remove('btn-primary');
+        modeToggleBtn.classList.add('btn-secondary');
+        hotspotOverlay.classList.remove('preview-mode');
+        showAppleToast('已返回编辑模式');
+      }
+      renderHotspotBoxes();
+    });
+
+    // 键盘快捷键：Delete / Backspace 删除选中热区，Esc 取消选中
+    window.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (activeHtmlData && (e.key === '[' || e.key === 'ArrowLeft')) {
+        prevHtmlSlice();
+        return;
+      }
+      if (activeHtmlData && (e.key === ']' || e.key === 'ArrowRight')) {
+        nextHtmlSlice();
+        return;
+      }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (activeHotspotId) {
+          hotspots = hotspots.filter(h => h.id !== activeHotspotId);
+          activeHotspotId = null;
+          renderAll();
+          updateBatchIdCountBadge();
+          showAppleToast('已删除选中热区');
+        }
+      } else if (e.key === 'Escape') {
+        activeHotspotId = null;
+        renderAll();
+      }
+    });
+
+    function renderAll() {
+      renderHotspotBoxes();
+      renderHotspotList();
+      generateMapCode();
+    }
+
+    function copyToClipboard(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+  
+    // =============================================================
+    // HTML 文件切片解析与多切片热区编辑扩展引擎
+    // =============================================================
+    let activeHtmlData = null; // { fileName, terminal, platform, activityPath, images: [], rawHtml }
+    let currentSliceIndex = -1;
+    let currentSliceFilter = 'all'; // 'all' | 'hasMap' | 'noMap'
+
+    // 核心解析器：解析上传或载入的 HTML 页面，自动抽取切片、现有 Map 与热区
+    function parseActivityHtml(htmlContent, fileName = 'activity.html') {
+      let isMobile = false;
+      if (/m-index/i.test(fileName)) {
+        isMobile = true;
+      } else if (/pc-index/i.test(fileName)) {
+        isMobile = false;
+      } else {
+        isMobile = /\/Wap\/Promotion\//i.test(htmlContent);
+      }
+
+      const ailaiCount = (htmlContent.match(/static\.ailai\.com/g) || []).length;
+      const meitiCount = (htmlContent.match(/static\.ilife\.cn/g) || []).length;
+      const isMeiti = meitiCount > ailaiCount;
+
+      const terminal = isMobile ? 'm' : 'pc';
+      const platform = isMeiti ? (isMobile ? 'meiti_m' : 'meiti_pc') : (isMobile ? 'ailai_m' : 'ailai_pc');
+
+      // 提取活动路径
+      const huodongMatch = htmlContent.match(/(?:Promotion|Wap\/Promotion)\/(?:\d{4})\/([^\/\"\'\s]+)\/huodong_/i);
+      const pathMatch = htmlContent.match(/(?:Promotion|Wap\/Promotion)\/(?:\d{4})\/([^\/\"\'\s]+)\//i);
+      const activityPath = huodongMatch ? huodongMatch[1] : (pathMatch ? pathMatch[1] : (customActivityPath || '261029'));
+
+      // 解析所有 <map> 与 <area>
+      const mapsByName = {};
+      const mapRegex = /<map\b[^>]*name=["']([^"']+)["'][^>]*>([\s\S]*?)<\/map>/gi;
+      let mMatch;
+      while ((mMatch = mapRegex.exec(htmlContent)) !== null) {
+        const rawTag = mMatch[0];
+        const mapName = mMatch[1];
+        const areaBody = mMatch[2];
+        const areas = [];
+        const areaRegex = /<area\b[^>]+>/gi;
+        let aMatch;
+        while ((aMatch = areaRegex.exec(areaBody)) !== null) {
+          const aTag = aMatch[0];
+          const coordsStr = (aTag.match(/coords=["']([^"']+)["']/i) || [])[1] || '';
+          const href = (aTag.match(/href=["']([^"']+)["']/i) || [])[1] || '';
+          const alt = (aTag.match(/alt=["']([^"']+)["']/i) || [])[1] || '';
+          const title = (aTag.match(/title=["']([^"']+)["']/i) || [])[1] || '';
+          const shape = (aTag.match(/shape=["']([^"']+)["']/i) || [])[1] || 'rect';
+
+          const pidMatch = href.match(/\/product\/(\d+)\.html/i);
+          const productId = pidMatch ? pidMatch[1] : '';
+
+          const coords = coordsStr.split(/[\s,]+/).map(Number);
+          if (coords.length >= 4 && !coords.some(isNaN)) {
+            areas.push({
+              shape,
+              coords: [coords[0], coords[1], coords[2], coords[3]],
+              href,
+              alt: alt || title || (productId ? '商品 ' + productId : '热区链接'),
+              title: title || alt,
+              productId
+            });
+          }
+        }
+        mapsByName[mapName.toLowerCase()] = {
+          name: mapName,
+          rawTag,
+          areas
+        };
+      }
+
+      // 解析所有 <img> 标签
+      const images = [];
+      const imgRegex = /<img\b([^>]+)>/gi;
+      let iMatch;
+      let imgIndex = 0;
+      while ((iMatch = imgRegex.exec(htmlContent)) !== null) {
+        imgIndex++;
+        const rawTag = iMatch[0];
+        const attrs = iMatch[1];
+        const src = (attrs.match(/src=["']([^"']+)["']/i) || [])[1] || '';
+        const dataSrc = (attrs.match(/data-src=["']([^"']+)["']/i) || [])[1] || '';
+        const dataOriginal = (attrs.match(/data-original=["']([^"']+)["']/i) || [])[1] || '';
+        const usemapRaw = (attrs.match(/usemap=["']#?([^"']+)["']/i) || [])[1] || '';
+        const alt = (attrs.match(/alt=["']([^"']+)["']/i) || [])[1] || '';
+
+        let realUrl = '';
+        if (dataOriginal && !dataOriginal.includes('grey.gif') && !dataOriginal.startsWith('data:image')) {
+          realUrl = dataOriginal;
+        } else if (dataSrc && !dataSrc.includes('grey.gif') && !dataSrc.startsWith('data:image')) {
+          realUrl = dataSrc;
+        } else if (src && !src.includes('grey.gif') && !src.startsWith('data:image')) {
+          realUrl = src;
+        }
+
+        if (!realUrl) continue;
+
+        const filename = realUrl.split('/').pop().split('?')[0] || ('image_' + imgIndex + '.jpg');
+        const usemap = usemapRaw ? usemapRaw.replace(/^#/, '') : '';
+        const matchedMap = usemap ? mapsByName[usemap.toLowerCase()] : null;
+
+        // 提取原图已有的热区
+        const hotspots = [];
+        if (matchedMap && matchedMap.areas) {
+          matchedMap.areas.forEach((a, idx) => {
+            hotspots.push({
+              id: idx + 1,
+              name: a.alt || (a.productId ? '商品 ' + a.productId : '热区 ' + (idx + 1)),
+              productId: a.productId || '',
+              href: a.href,
+              alt: a.alt || '',
+              x1: a.coords[0],
+              y1: a.coords[1],
+              x2: a.coords[2],
+              y2: a.coords[3]
+            });
+          });
+        }
+
+        const numMatch = filename.match(/\d+/);
+        const tagNum = numMatch ? numMatch[0] : String(imgIndex);
+        const suggestedMapName = tagNum + 'Map';
+
+        images.push({
+          id: imgIndex,
+          rawTag,
+          realUrl,
+          filename,
+          tagNum,
+          usemap: usemap || (hotspots.length > 0 ? suggestedMapName : ''),
+          suggestedMapName,
+          alt,
+          hasMap: hotspots.length > 0,
+          hotspots: hotspots,
+          isActivitySlice: /huodong|banner|pic|section/i.test(filename)
+        });
+      }
+
+      return {
+        fileName,
+        terminal,
+        platform,
+        activityPath,
+        images,
+        mapsByName,
+        rawHtml: htmlContent
+      };
+    }
+
+    // 处理用户选择或拖拽的本地 HTML 文件
+    function loadHtmlFile(file) {
+      showAppleToast('正在读取 ' + file.name + ' ...');
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const content = e.target.result;
+        const data = parseActivityHtml(content, file.name);
+        applyParsedHtmlData(data);
+        showAppleToast('已成功解析 ' + file.name + ' (共 ' + data.images.length + ' 张切片)');
+      };
+      reader.readAsText(file, 'utf-8');
+    }
+
+    // 应用解析出的 HTML 数据集
+    function applyParsedHtmlData(data) {
+      activeHtmlData = data;
+      window.activeHtmlData = data;
+      if (!data.images || data.images.length === 0) {
+        showAppleToast('该 HTML 文件中未检测到可用活动切片图片');
+        return;
+      }
+
+      // 显示切片导航条与导出按钮
+      const htmlSliceBar = document.getElementById('htmlSliceBar');
+      const exportUpdatedHtmlWrap = document.getElementById('exportUpdatedHtmlWrap');
+      if (htmlSliceBar) htmlSliceBar.style.display = 'flex';
+      if (exportUpdatedHtmlWrap) exportUpdatedHtmlWrap.style.display = 'block';
+
+      // 更新文件标签
+      const sliceFileName = document.getElementById('sliceFileName');
+      const sliceFileBadge = document.getElementById('sliceFileBadge');
+      if (sliceFileName) sliceFileName.innerText = data.fileName;
+      if (sliceFileBadge) {
+        sliceFileBadge.innerText = (data.terminal === 'pc' ? 'PC端' : '移动端') + ' · ' + data.images.length + ' 张切片';
+      }
+
+      // 联动平台与终端设置
+      if (data.platform && typeof switchPlatform === 'function') {
+        switchPlatform(data.platform);
+      }
+      if (data.activityPath) {
+        customActivityPath = data.activityPath;
+        const actInput = document.getElementById('activityPathInput');
+        if (actInput) actInput.value = data.activityPath;
+      }
+
+      // 渲染切片下拉菜单
+      renderSliceNav();
+
+      // 智能选取初始切片：优先定位到第一张已有热区的切片，若无则定位第 1 张
+      let initialIdx = data.images.findIndex(x => x.hasMap);
+      if (initialIdx < 0) initialIdx = 0;
+
+      switchHtmlSlice(initialIdx, true);
+    }
+
+    // 渲染切片下拉选项与计数
+    function renderSliceNav() {
+      if (!activeHtmlData) return;
+      const select = document.getElementById('htmlSliceSelect');
+      const countAll = document.getElementById('sliceCountAll');
+      const countHasMap = document.getElementById('sliceCountHasMap');
+      const countNoMap = document.getElementById('sliceCountNoMap');
+
+      const all = activeHtmlData.images;
+      const hasMapCount = all.filter(x => x.hasMap).length;
+      const noMapCount = all.length - hasMapCount;
+
+      if (countAll) countAll.innerText = all.length;
+      if (countHasMap) countHasMap.innerText = hasMapCount;
+      if (countNoMap) countNoMap.innerText = noMapCount;
+
+      if (!select) return;
+      select.innerHTML = '';
+
+      all.forEach((img, idx) => {
+        // 根据当前过滤条件筛选
+        if (currentSliceFilter === 'hasMap' && !img.hasMap) return;
+        if (currentSliceFilter === 'noMap' && img.hasMap) return;
+
+        const opt = document.createElement('option');
+        opt.value = idx;
+        const mapDesc = img.hasMap ? ('★ ' + img.suggestedMapName + ' (' + img.hotspots.length + '个热区)') : (img.suggestedMapName + ' (无热区)');
+        opt.text = '[' + img.tagNum + '] ' + img.filename + ' — ' + mapDesc;
+        select.appendChild(opt);
+      });
+
+      if (currentSliceIndex >= 0) {
+        select.value = currentSliceIndex;
+      }
+    }
+
+    // 过滤切片下拉列表
+    function filterHtmlSlices(filterType) {
+      currentSliceFilter = filterType;
+      document.querySelectorAll('.slice-filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.filter === filterType);
+      });
+      renderSliceNav();
+    }
+
+    // 保存当前切片在画布上的热区修改
+    function saveCurrentSliceHotspots() {
+      if (!activeHtmlData || currentSliceIndex < 0) return;
+      const currentSlice = activeHtmlData.images[currentSliceIndex];
+      if (!currentSlice) return;
+
+      currentSlice.hotspots = JSON.parse(JSON.stringify(hotspots || []));
+      currentSlice.hasMap = currentSlice.hotspots.length > 0;
+      if (currentSlice.hasMap && !currentSlice.usemap) {
+        currentSlice.usemap = currentSlice.suggestedMapName;
+      }
+
+      // 实时刷新切片下拉标签上的数量标注
+      const select = document.getElementById('htmlSliceSelect');
+      if (select) {
+        const opt = select.querySelector('option[value="' + currentSliceIndex + '"]');
+        if (opt) {
+          const mapDesc = currentSlice.hasMap ? ('★ ' + currentSlice.suggestedMapName + ' (' + currentSlice.hotspots.length + '个热区)') : (currentSlice.suggestedMapName + ' (无热区)');
+          opt.text = '[' + currentSlice.tagNum + '] ' + currentSlice.filename + ' — ' + mapDesc;
+        }
+      }
+    }
+
+    // 切换当前画热区的切片图片
+    function switchHtmlSlice(targetIndex, isInitial = false) {
+      if (!activeHtmlData || !activeHtmlData.images[targetIndex]) return;
+
+      // 保存旧切片热区
+      if (!isInitial && currentSliceIndex >= 0) {
+        saveCurrentSliceHotspots();
+      }
+
+      currentSliceIndex = targetIndex;
+      const slice = activeHtmlData.images[targetIndex];
+
+      const select = document.getElementById('htmlSliceSelect');
+      if (select) select.value = targetIndex;
+
+      // 载入真实切片图片并恢复已有热区
+      initImageStageFromSlice(slice);
+    }
+
+    function prevHtmlSlice() {
+      if (!activeHtmlData) return;
+      const newIdx = currentSliceIndex > 0 ? currentSliceIndex - 1 : activeHtmlData.images.length - 1;
+      switchHtmlSlice(newIdx);
+    }
+
+    function nextHtmlSlice() {
+      if (!activeHtmlData) return;
+      const newIdx = currentSliceIndex < activeHtmlData.images.length - 1 ? currentSliceIndex + 1 : 0;
+      switchHtmlSlice(newIdx);
+    }
+
+    // 从切片数据初始化画布与热区
+    function initImageStageFromSlice(slice) {
+      const img = new Image();
+      img.onload = function() {
+        currentImage = {
+          name: slice.filename,
+          naturalWidth: img.naturalWidth,
+          naturalHeight: img.naturalHeight,
+          src: slice.realUrl
+        };
+
+        // 恢复该切片的已有热区
+        hotspots = JSON.parse(JSON.stringify(slice.hotspots || []));
+        window.hotspots = hotspots;
+        activeHotspotId = hotspots.length > 0 ? hotspots[0].id : null;
+        nextId = hotspots.length > 0 ? (Math.max(...hotspots.map(h => h.id)) + 1) : 1;
+
+        // 更新 DOM
+        sourceImage.src = currentImage.src;
+        imageMetaName.innerText = currentImage.name;
+        imageMetaDims.innerText = currentImage.naturalWidth + ' × ' + currentImage.naturalHeight + ' px';
+
+        // 设置 Map 命名 (如 20Map)
+        if (mapNameInput) {
+          mapNameInput.value = slice.suggestedMapName || (slice.tagNum + 'Map');
+        }
+
+        emptyUploadView.style.display = 'none';
+        stageWrapper.style.display = 'inline-block';
+        canvasControls.style.display = 'flex';
+        clearAllBtn.style.display = 'inline-flex';
+
+        if (imagePlatformCard) imagePlatformCard.style.display = 'block';
+        if (batchIdCard) batchIdCard.style.display = 'block';
+        hotspotsCard.style.display = 'block';
+        codeCard.style.display = 'block';
+
+        syncImgConfigInputs();
+        applyZoomFit();
+        renderAll();
+        updateBatchIdCountBadge();
+
+        const toastDesc = hotspots.length > 0 ? ('已恢复 ' + hotspots.length + ' 个已有热区') : '无热区，可在图上直接画框';
+        showAppleToast('切片 [' + slice.tagNum + '] ' + slice.filename + ' (' + toastDesc + ')');
+      };
+
+      img.onerror = function() {
+        showAppleToast('切片图片载入失败，请检查网络连接：' + slice.filename);
+      };
+
+      img.src = slice.realUrl;
+    }
+
+    // 将用户修改的热区写回整个原始 HTML 文件并一键导出
+    function exportUpdatedHtml() {
+      if (!activeHtmlData) return showAppleToast('请先载入 HTML 页面');
+      saveCurrentSliceHotspots();
+
+      let updatedHtml = activeHtmlData.rawHtml;
+      let modifiedMapCount = 0;
+
+      activeHtmlData.images.forEach(imgItem => {
+        const mapName = imgItem.suggestedMapName || (imgItem.tagNum + 'Map');
+        const hList = imgItem.hotspots || [];
+
+        // 构建 <area> 集合
+        let areas = hList.map(h => {
+          const minX = Math.min(h.x1, h.x2);
+          const minY = Math.min(h.y1, h.y2);
+          const maxX = Math.max(h.x1, h.x2);
+          const maxY = Math.max(h.y1, h.y2);
+          const altStr = h.alt || h.name || '';
+          return '    <area shape="rect" coords="' + minX + ',' + minY + ',' + maxX + ',' + maxY + '" href="' + h.href + '" alt="' + altStr + '" title="' + altStr + '" target="_blank">';
+        }).join('\n');
+
+        const newMapTag = '<map name="' + mapName + '">\n' + areas + '\n</map>';
+
+        // 1. 若原始 HTML 中已存在该 map，替换之
+        const existingMapRegex = new RegExp('<map\\b[^>]*name=["\']' + mapName + '["\'][^>]*>[\\s\\S]*?<\\/map>', 'i');
+        if (existingMapRegex.test(updatedHtml)) {
+          if (hList.length > 0) {
+            updatedHtml = updatedHtml.replace(existingMapRegex, newMapTag);
+            modifiedMapCount++;
+          }
+        } else if (hList.length > 0) {
+          // 2. 原始 HTML 中无此 map，在对应 <img> 后插入 <map> 并补齐 usemap
+          const escapedFn = imgItem.filename.replace('.', '\\.');
+          const imgRegex = new RegExp('<img\\b([^>]*' + escapedFn + '[^>]*)>', 'i');
+          const imgMatch = updatedHtml.match(imgRegex);
+          if (imgMatch) {
+            let oldImgTag = imgMatch[0];
+            let newImgTag = oldImgTag;
+            if (!/usemap=/i.test(newImgTag)) {
+              newImgTag = newImgTag.replace(/\/?>$/, ' usemap="#' + mapName + '" />');
+            }
+            updatedHtml = updatedHtml.replace(oldImgTag, newImgTag + '\n          ' + newMapTag);
+            modifiedMapCount++;
+          }
+        }
+      });
+
+      // 触发下载
+      const blob = new Blob([updatedHtml], { type: 'text/html;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = activeHtmlData.fileName || 'updated_activity.html';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+
+      showAppleToast('已成功导出完整 HTML 文件（已同步 ' + modifiedMapCount + ' 个切片 Map 代码）');
+    }
+
+    window.parseActivityHtml = parseActivityHtml;
+        window.loadHtmlFile = loadHtmlFile;
+    window.switchHtmlSlice = switchHtmlSlice;
+    window.prevHtmlSlice = prevHtmlSlice;
+    window.nextHtmlSlice = nextHtmlSlice;
+    window.filterHtmlSlices = filterHtmlSlices;
+    window.exportUpdatedHtml = exportUpdatedHtml;
+
+  </script>
+</body>
+</html>
