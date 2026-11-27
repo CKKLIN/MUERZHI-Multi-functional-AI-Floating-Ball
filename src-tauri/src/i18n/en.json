@@ -21,6 +21,8 @@
   "tray.menu.ai": "AI Assistant",
   "tray.menu.todo": "Todo Notes",
   "tray.menu.tools": "Toolbox",
+  "tray.menu.openTools": "Open Toolbox",
+  "tray.menu.noTools": "No Custom Tools",
   "tray.menu.cooling": "Cooling",
   "tray.menu.ballGroup": "Floating Ball",
   "tray.menu.showBall": "Show Floating Ball",

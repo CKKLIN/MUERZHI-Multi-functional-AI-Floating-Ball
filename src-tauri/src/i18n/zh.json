@@ -21,6 +21,8 @@
   "tray.menu.ai": "AI 助手",
   "tray.menu.todo": "待办便签",
   "tray.menu.tools": "工具箱",
+  "tray.menu.openTools": "打开工具箱",
+  "tray.menu.noTools": "暂无自定义工具",
   "tray.menu.cooling": "一键散热",
   "tray.menu.ballGroup": "悬浮球",
   "tray.menu.showBall": "显示悬浮球",

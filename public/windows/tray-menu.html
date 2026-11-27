@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<!-- 现代化自定义托盘悬浮菜单：高密度、零空白、莫兰迪质感与丝滑二级菜单 -->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  user-select: none;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Microsoft YaHei", sans-serif;
+  font-size: 11.5px;
+  color: #2b2b30;
+}
+
+/* 主画布容器：主菜单停靠在右下角，二级子菜单向左展开 */
+.tray-canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 8px;
+}
+
+/* 菜单通用面板容器（高透拟态毛玻璃 + 莫兰迪微阴影） */
+.menu-panel {
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16), 0 2px 6px rgba(0, 0, 0, 0.04);
+  padding: 4px;
+  animation: popIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* 主菜单面板 */
+.main-menu {
+  width: 136px;
+  position: relative;
+  z-index: 10;
+}
+
+/* 菜单项 */
+.menu-item {
+  height: 25px;
+  padding: 0 7px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  color: #2e2e34;
+  position: relative;
+}
+
+.menu-item:hover {
+  background: rgba(162, 123, 92, 0.12);
+  color: #8b5e3c;
+}
+
+.menu-item:active {
+  background: rgba(162, 123, 92, 0.2);
+}
+
+.item-icon {
+  width: 13px;
+  height: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #7a7a84;
+  transition: color 0.12s ease;
+}
+
+.menu-item:hover .item-icon {
+  color: #8b5e3c;
+}
+
+.item-text {
+  flex: 1;
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-arrow {
+  font-size: 8px;
+  color: #a0a0aa;
+  margin-left: auto;
+  transition: transform 0.15s ease;
+}
+
+.menu-item:hover .item-arrow {
+  color: #8b5e3c;
+  transform: translateX(-1px);
+}
+
+/* 分割线 */
+.menu-sep {
+  height: 1px;
+  background: rgba(0, 0, 0, 0.06);
+  margin: 3px 3px;
+}
+
+/* 二级子菜单向左侧展开：与当前父菜单项严格齐平 */
+.sub-menu {
+  position: absolute;
+  right: calc(100% + 7px);
+  top: -4px;
+  min-width: 148px;
+  max-width: 185px;
+  max-height: 240px;
+  overflow-y: auto;
+  display: none;
+  z-index: 20;
+  transform-origin: right top;
+}
+
+.sub-menu::-webkit-scrollbar {
+  width: 3px;
+}
+.sub-menu::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 999px;
+}
+
+/* 鼠标搭桥：在父菜单项与二级菜单之间的空隙建立透明感应区，防止鼠标横向平移时断开 hover */
+.menu-parent::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  right: 100%;
+  width: 14px;
+  background: transparent;
+  z-index: 15;
+}
+
+/* 激活或悬停展开二级菜单，并保持父菜单项高亮 */
+.menu-parent:hover .sub-menu,
+.sub-menu:hover {
+  display: block;
+}
+
+.menu-parent:hover,
+.menu-parent:has(.sub-menu:hover) {
+  background: rgba(162, 123, 92, 0.12);
+  color: #8b5e3c;
+}
+.menu-parent:hover .item-icon,
+.menu-parent:has(.sub-menu:hover) .item-icon,
+.menu-parent:hover .item-arrow,
+.menu-parent:has(.sub-menu:hover) .item-arrow {
+  color: #8b5e3c;
+}
+
+/* 开关对勾标志 */
+.check-indicator {
+  width: 12px;
+  height: 12px;
+  margin-left: auto;
+  color: #a27b5c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 危险操作（退出） */
+.menu-item.danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+}
+.menu-item.danger:hover .item-icon {
+  color: #dc2626;
+}
+
+.empty-tip {
+  padding: 6px 8px;
+  color: #92929a;
+  font-size: 11px;
+  text-align: center;
+}
+</style>
+</head>
+<body>
+
+<div class="tray-canvas" id="trayCanvas">
+  <!-- 主菜单面板 -->
+  <div class="menu-panel main-menu">
+    <!-- 核心功能入口 -->
+    <div class="menu-item" onclick="triggerAction('record')">
+      <span class="item-icon">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>
+      </span>
+      <span class="item-text">录屏</span>
+    </div>
+
+    <div class="menu-item" onclick="triggerAction('ai')">
+      <span class="item-icon">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+      </span>
+      <span class="item-text">AI 助手</span>
+    </div>
+
+    <div class="menu-item" onclick="triggerAction('todo')">
+      <span class="item-icon">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      </span>
+      <span class="item-text">待办便签</span>
+    </div>
+
+    <div class="menu-item" onclick="triggerAction('cooling')">
+      <span class="item-icon">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      </span>
+      <span class="item-text">一键散热</span>
+    </div>
+
+    <div class="menu-sep"></div>
+
+    <!-- 工具箱 二级菜单 -->
+    <div class="menu-item menu-parent" id="menuTools">
+      <span class="item-icon">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      </span>
+      <span class="item-text">工具箱</span>
+      <span class="item-arrow">◀</span>
+
+      <!-- 悬浮向左展开的工具列表 -->
+      <div class="menu-panel sub-menu" id="toolsSubMenu">
+        <div class="menu-item" onclick="triggerAction('tools')">
+          <span class="item-icon">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          </span>
+          <span class="item-text" style="font-weight: 600;">打开工具箱</span>
+        </div>
+        <div class="menu-sep"></div>
+        <div id="toolsListContainer"></div>
+      </div>
+    </div>
+
+    <!-- 悬浮球 控制二级菜单 -->
+    <div class="menu-item menu-parent" id="menuBall">
+      <span class="item-icon">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/></svg>
+      </span>
+      <span class="item-text">悬浮球</span>
+      <span class="item-arrow">◀</span>
+
+      <div class="menu-panel sub-menu" id="ballSubMenu" style="min-width: 126px;">
+        <div class="menu-item" onclick="triggerAction('toggle-ball')">
+          <span class="item-text">显示悬浮球</span>
+          <span class="check-indicator" id="ballCheckIcon">✓</span>
+        </div>
+        <div class="menu-item" onclick="triggerAction('reset-ball')">
+          <span class="item-text">重置位置</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="menu-sep"></div>
+
+    <div class="menu-item" onclick="triggerAction('settings')">
+      <span class="item-icon">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </span>
+      <span class="item-text">设置</span>
+    </div>
+
+    <div class="menu-item" onclick="triggerAction('about')">
+      <span class="item-icon">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      </span>
+      <span class="item-text">关于</span>
+    </div>
+
+    <div class="menu-sep"></div>
+
+    <div class="menu-item danger" onclick="triggerAction('quit')">
+      <span class="item-icon">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </span>
+      <span class="item-text">退出</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const invoke = window.__TAURI__ ? window.__TAURI__.core.invoke : function(){};
+
+// 执行操作
+function triggerAction(action, payload) {
+  invoke('tray_menu_action', { action: action, payload: payload || null });
+}
+
+// 渲染数据
+window.renderTrayMenu = async function() {
+  try {
+    const data = await invoke('get_tray_menu_data');
+    if (!data) return;
+
+    // 1. 悬浮球状态
+    const checkEl = document.getElementById('ballCheckIcon');
+    if (checkEl) {
+      checkEl.style.visibility = data.ballVisible ? 'visible' : 'hidden';
+    }
+
+    // 2. 工具列表渲染
+    const container = document.getElementById('toolsListContainer');
+    if (container) {
+      container.innerHTML = '';
+      if (Array.isArray(data.tools) && data.tools.length > 0) {
+        data.tools.forEach(function(tool) {
+          const item = document.createElement('div');
+          item.className = 'menu-item';
+          item.onclick = function() {
+            triggerAction('run-tool', tool.relativePath);
+          };
+
+          const iconSpan = document.createElement('span');
+          iconSpan.className = 'item-icon';
+          if (tool.icon) {
+            iconSpan.textContent = tool.icon;
+          } else {
+            iconSpan.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>';
+          }
+
+          const textSpan = document.createElement('span');
+          textSpan.className = 'item-text';
+          textSpan.textContent = tool.name;
+          textSpan.title = tool.name;
+
+          item.appendChild(iconSpan);
+          item.appendChild(textSpan);
+          container.appendChild(item);
+        });
+      } else {
+        const emptyDiv = document.createElement('div');
+        emptyDiv.className = 'empty-tip';
+        emptyDiv.textContent = '暂无自定义工具';
+        container.appendChild(emptyDiv);
+      }
+    }
+  } catch (e) {
+    console.error('renderTrayMenu failed:', e);
+  }
+};
+
+// 智能二级菜单定位与防溢出
+function setupSubMenuAlignment() {
+  document.querySelectorAll('.menu-parent').forEach(function(parent) {
+    parent.addEventListener('mouseenter', function() {
+      const sub = parent.querySelector('.sub-menu');
+      if (!sub) return;
+
+      // 默认按顶部严格对齐（-4px 抵消面板内边距，使第一项与父菜单项文本水平平齐）
+      sub.style.top = '-4px';
+
+      const subRect = sub.getBoundingClientRect();
+      const canvas = document.getElementById('trayCanvas');
+      if (!canvas) return;
+
+      const canvasRect = canvas.getBoundingClientRect();
+      const maxBottom = canvasRect.bottom - 8;
+      const minTop = canvasRect.top + 8;
+
+      // 底部防溢出自适应向上平移
+      if (subRect.bottom > maxBottom) {
+        const overflow = subRect.bottom - maxBottom;
+        const newTop = -4 - overflow;
+        sub.style.top = newTop + 'px';
+      }
+
+      // 顶部防溢出保护
+      const adjustedRect = sub.getBoundingClientRect();
+      if (adjustedRect.top < minTop) {
+        const topOverflow = minTop - adjustedRect.top;
+        const currentTop = parseFloat(sub.style.top) || -4;
+        sub.style.top = (currentTop + topOverflow) + 'px';
+      }
+    });
+  });
+}
+
+// 窗口失焦时自动隐藏
+window.addEventListener('blur', function() {
+  invoke('hide_tray_menu');
+});
+
+// 初始化绑定与渲染
+setupSubMenuAlignment();
+window.renderTrayMenu();
+</script>
+</body>
+</html>

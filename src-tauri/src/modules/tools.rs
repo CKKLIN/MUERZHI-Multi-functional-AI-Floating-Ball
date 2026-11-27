@@ -190,53 +190,65 @@ fn build_tool_item(file_path: &Path, rel_path: &str) -> Option<CustomToolItem> {
     })
 }
 
-/// 扫描工具目录，返回所有工具列表
-#[tauri::command]
-pub async fn list_custom_tools(app: AppHandle) -> Result<Vec<CustomToolItem>, String> {
-    tokio::task::spawn_blocking(move || {
-        let dir = ensure_tools_dir(&app).map_err(|e| e.to_string())?;
-        let mut tools = Vec::new();
+/// 扫描工具目录，返回所有工具列表（同步版本，供托盘菜单与内部快速调用）
+pub fn list_custom_tools_sync(app: &AppHandle) -> Vec<CustomToolItem> {
+    let dir = match ensure_tools_dir(app) {
+        Ok(d) => d,
+        Err(_) => return Vec::new(),
+    };
+    let mut tools = Vec::new();
 
-        let entries = match fs::read_dir(&dir) {
-            Ok(e) => e,
-            Err(e) => return Err(e.to_string()),
-        };
+    let entries = match fs::read_dir(&dir) {
+        Ok(e) => e,
+        Err(_) => return Vec::new(),
+    };
 
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file() {
-                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                    let ext_lower = ext.to_lowercase();
-                    if ext_lower == "html" || ext_lower == "htm" {
-                        if let Some(rel) = path.strip_prefix(&dir).ok().and_then(|p| p.to_str()) {
-                            if let Some(tool) = build_tool_item(&path, rel) {
-                                tools.push(tool);
-                            }
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_file() {
+            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                let ext_lower = ext.to_lowercase();
+                if ext_lower == "html" || ext_lower == "htm" {
+                    if let Some(rel) = path.strip_prefix(&dir).ok().and_then(|p| p.to_str()) {
+                        if let Some(tool) = build_tool_item(&path, rel) {
+                            tools.push(tool);
                         }
-                    }
-                }
-            } else if path.is_dir() {
-                // 扫描一层子目录内的 index.html / index.htm
-                for index_name in &["index.html", "index.htm"] {
-                    let index_file = path.join(index_name);
-                    if index_file.is_file() {
-                        if let Some(rel) = index_file.strip_prefix(&dir).ok().and_then(|p| p.to_str()) {
-                            if let Some(tool) = build_tool_item(&index_file, rel) {
-                                tools.push(tool);
-                            }
-                        }
-                        break;
                     }
                 }
             }
+        } else if path.is_dir() {
+            // 扫描一层子目录内的 index.html / index.htm
+            for index_name in &["index.html", "index.htm"] {
+                let index_file = path.join(index_name);
+                if index_file.is_file() {
+                    if let Some(rel) = index_file.strip_prefix(&dir).ok().and_then(|p| p.to_str()) {
+                        if let Some(tool) = build_tool_item(&index_file, rel) {
+                            tools.push(tool);
+                        }
+                    }
+                    break;
+                }
+            }
         }
+    }
 
-        // 按修改时间倒序排列（最近更新的排前面）
-        tools.sort_by(|a, b| b.modified_time.cmp(&a.modified_time));
-        Ok(tools)
+    // 按修改时间倒序排列（最近更新的排前面）
+    tools.sort_by(|a, b| b.modified_time.cmp(&a.modified_time));
+    tools
+}
+
+/// 扫描工具目录，返回所有工具列表
+#[tauri::command]
+pub async fn list_custom_tools(app: AppHandle) -> Result<Vec<CustomToolItem>, String> {
+    let app_clone = app.clone();
+    let tools = tokio::task::spawn_blocking(move || {
+        list_custom_tools_sync(&app_clone)
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+
+    crate::update_tray_menu(&app);
+    Ok(tools)
 }
 
 /// 打开自定义工具存放目录（系统资源管理器）
@@ -279,8 +291,9 @@ pub async fn open_custom_tool_in_browser(app: AppHandle, relative_path: String) 
 /// 删除指定工具
 #[tauri::command]
 pub async fn delete_custom_tool(app: AppHandle, relative_path: String) -> Result<(), String> {
+    let app_clone = app.clone();
     tokio::task::spawn_blocking(move || {
-        let dir = tools_dir(&app);
+        let dir = tools_dir(&app_clone);
         let target = dir.join(&relative_path);
         
         // 安全检查：目标必须在 tools_dir 内
@@ -298,14 +311,18 @@ pub async fn delete_custom_tool(app: AppHandle, relative_path: String) -> Result
         }
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())??;
+
+    crate::update_tray_menu(&app);
+    Ok(())
 }
 
 /// 快速创建一个示例小工具（若已存在同名工具则自动递增序号）
 #[tauri::command]
 pub async fn create_demo_custom_tool(app: AppHandle) -> Result<CustomToolItem, String> {
-    tokio::task::spawn_blocking(move || {
-        let dir = ensure_tools_dir(&app).map_err(|e| e.to_string())?;
+    let app_clone = app.clone();
+    let tool = tokio::task::spawn_blocking(move || {
+        let dir = ensure_tools_dir(&app_clone).map_err(|e| e.to_string())?;
         let mut idx = 1;
         let mut file_name = "clock_timer.html".to_string();
         while dir.join(&file_name).exists() {
@@ -319,7 +336,10 @@ pub async fn create_demo_custom_tool(app: AppHandle) -> Result<CustomToolItem, S
         build_tool_item(&full_path, &file_name).ok_or_else(|| "生成工具元信息失败".to_string())
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())??;
+
+    crate::update_tray_menu(&app);
+    Ok(tool)
 }
 
 static LAST_OPENED_TOOL: std::sync::OnceLock<std::sync::Mutex<Option<CustomToolItem>>> =
@@ -881,6 +901,26 @@ mod tests {
         assert_eq!(tool_mime_of(Path::new("app.js")), "text/javascript; charset=utf-8");
         assert_eq!(tool_mime_of(Path::new("icon.png")), "image/png");
         assert_eq!(tool_mime_of(Path::new("logo.svg")), "image/svg+xml");
+    }
+
+    #[test]
+    fn test_tool_menu_display_name_truncation() {
+        let short_name = "计算器";
+        let display_short = if short_name.chars().count() > 28 {
+            format!("{}...", short_name.chars().take(27).collect::<String>())
+        } else {
+            short_name.to_string()
+        };
+        assert_eq!(display_short, "计算器");
+
+        let long_name = "这是一个名字超级超级超级超级超级长长长长长长长长长的工具名称";
+        let display_long = if long_name.chars().count() > 28 {
+            format!("{}...", long_name.chars().take(27).collect::<String>())
+        } else {
+            long_name.to_string()
+        };
+        assert_eq!(display_long.chars().count(), 30);
+        assert!(display_long.ends_with("..."));
     }
 }
 

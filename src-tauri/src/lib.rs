@@ -183,6 +183,10 @@ pub fn run() {
             // 悬浮球（P2 实装）
             modules::windows::floating_ball::show_floating_ball,
             modules::windows::floating_ball::hide_floating_ball,
+            // 现代化自定义托盘悬浮菜单
+            modules::windows::tray_menu::get_tray_menu_data,
+            modules::windows::tray_menu::hide_tray_menu,
+            modules::windows::tray_menu::tray_menu_action,
             modules::windows::floating_ball::toggle_floating_ball,
             modules::windows::floating_ball::ball_expand,
             modules::windows::floating_ball::ball_collapse,
@@ -218,6 +222,13 @@ pub fn run() {
             agent_dismiss_question,
             agent_submit_question,
         ])
+        .on_window_event(|window, event| {
+            if window.label() == "tray-menu" {
+                if let tauri::WindowEvent::Focused(false) = event {
+                    let _ = window.hide();
+                }
+            }
+        })
         .setup(|app| {
             log::info!(
                 "MUERZHI v{} (Tauri) starting... pid={}",
@@ -303,7 +314,49 @@ pub fn build_tray_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>
     let record = MenuItem::with_id(app, "record", i18n.t("tray.menu.record"), true, None::<&str>)?;
     let ai = MenuItem::with_id(app, "ai", i18n.t("tray.menu.ai"), true, None::<&str>)?;
     let todo = MenuItem::with_id(app, "todo", i18n.t("tray.menu.todo"), true, None::<&str>)?;
-    let tools = MenuItem::with_id(app, "tools", i18n.t("tray.menu.tools"), true, None::<&str>)?;
+
+    // 工具箱二级子菜单：展示所有工具，首项为“打开工具箱”
+    let tools_submenu = Submenu::new(app, i18n.t("tray.menu.tools"), true)?;
+    let open_tools = MenuItem::with_id(
+        app,
+        "tools",
+        i18n.t("tray.menu.openTools"),
+        true,
+        None::<&str>,
+    )?;
+    tools_submenu.append(&open_tools)?;
+
+    let custom_tools = modules::tools::list_custom_tools_sync(app);
+    let tools_sep = PredefinedMenuItem::separator(app)?;
+    tools_submenu.append(&tools_sep)?;
+    if !custom_tools.is_empty() {
+        for tool in &custom_tools {
+            let tool_item_id = format!("tool:{}", tool.relative_path);
+            let display_name = if tool.name.chars().count() > 28 {
+                format!("{}...", tool.name.chars().take(27).collect::<String>())
+            } else {
+                tool.name.clone()
+            };
+            let tool_item = MenuItem::with_id(
+                app,
+                &tool_item_id,
+                &display_name,
+                true,
+                None::<&str>,
+            )?;
+            tools_submenu.append(&tool_item)?;
+        }
+    } else {
+        let no_tools = MenuItem::with_id(
+            app,
+            "no-tools",
+            i18n.t("tray.menu.noTools"),
+            false,
+            None::<&str>,
+        )?;
+        tools_submenu.append(&no_tools)?;
+    }
+
     let cooling = MenuItem::with_id(app, "cooling", i18n.t("tray.menu.cooling"), true, None::<&str>)?;
 
     let sep1 = PredefinedMenuItem::separator(app)?;
@@ -347,7 +400,7 @@ pub fn build_tray_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>
             &record,
             &ai,
             &todo,
-            &tools,
+            &tools_submenu,
             &cooling,
             &sep1,
             &ball_submenu,
@@ -372,124 +425,9 @@ pub fn update_tray_menu(app: &tauri::AppHandle) {
 }
 
 fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
-    use tauri::Emitter;
-
-    let menu = build_tray_menu(app)?;
-
     let mut tray = TrayIconBuilder::with_id("main-tray")
-        .menu(&menu)
         .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "record" => {
-                log::info!("Tray menu: record");
-                modules::windows::show_main_window(app);
-                let _ = app.emit("on-floating-ball-action", "record");
-            }
-            "ai" => {
-                log::info!("Tray menu: ai");
-                let handle = app.clone();
-                tauri::async_runtime::spawn(async move {
-                    modules::windows::open_or_focus(&handle, "ai", "/ai");
-                });
-            }
-            "todo" => {
-                log::info!("Tray menu: todo");
-                modules::windows::todo_windows::set_badge_flash(app, false);
-                let handle = app.clone();
-                tauri::async_runtime::spawn(async move {
-                    modules::windows::open_or_focus(&handle, "todo", "/todo");
-                });
-            }
-            "tools" => {
-                log::info!("Tray menu: tools");
-                let handle = app.clone();
-                tauri::async_runtime::spawn(async move {
-                    modules::windows::open_or_focus(&handle, "tools", "/tools");
-                });
-            }
-            "cooling" => {
-                log::info!("Tray menu: cooling");
-                modules::cooling::trigger_from_ball(app);
-            }
-            "toggle-ball" => {
-                log::info!("Tray menu: toggle-ball");
-                let mut settings = BallSettings::load(app);
-                settings.visible = !settings.visible;
-                if settings.visible {
-                    modules::windows::floating_ball::show_ball(app);
-                } else {
-                    modules::windows::floating_ball::hide_ball(app);
-                }
-                if let Err(e) = settings.save(app) {
-                    log::error!("save ball settings failed: {e}");
-                }
-                let _ = app.emit(
-                    "floating-ball-settings-changed",
-                    serde_json::to_value(&settings).unwrap_or_default(),
-                );
-                update_tray_menu(app);
-            }
-            "show-ball" => {
-                log::info!("Tray menu: show-ball");
-                modules::windows::floating_ball::show_ball(app);
-                let mut settings = BallSettings::load(app);
-                if !settings.visible {
-                    settings.visible = true;
-                    if let Err(e) = settings.save(app) {
-                        log::error!("save ball settings failed: {e}");
-                    }
-                    let _ = app.emit("floating-ball-settings-changed", serde_json::to_value(&settings).unwrap_or_default());
-                }
-            }
-            "hide-ball" => {
-                log::info!("Tray menu: hide-ball");
-                modules::windows::floating_ball::hide_ball(app);
-                let mut settings = BallSettings::load(app);
-                if settings.visible {
-                    settings.visible = false;
-                    if let Err(e) = settings.save(app) {
-                        log::error!("save ball settings failed: {e}");
-                    }
-                    let _ = app.emit("floating-ball-settings-changed", serde_json::to_value(&settings).unwrap_or_default());
-                }
-            }
-            "reset-ball" => {
-                log::info!("Tray menu: reset-ball");
-                modules::windows::floating_ball::reset_floating_ball_position(app.clone());
-                modules::windows::floating_ball::show_ball(app);
-            }
-            "show-settings" => {
-                log::info!("Tray menu: show-settings");
-                let handle = app.clone();
-                tauri::async_runtime::spawn(async move {
-                    modules::windows::open_or_focus(&handle, "settings", "/settings");
-                });
-            }
-            "about" => {
-                log::info!("Tray menu: about");
-                let handle = app.clone();
-                tauri::async_runtime::spawn(async move {
-                    modules::windows::open_or_focus(&handle, "about", "/about");
-                });
-            }
-            "restart" => {
-                log::info!("Restart from tray");
-                // 同样先跑收尾再退：录制中被硬杀会丢成品（见 graceful_quit 注释）。
-                // 与「退出」的区别只是收尾后重启进程而非退出。
-                let handle = app.clone();
-                tauri::async_runtime::spawn(graceful_restart(handle));
-            }
-            "quit" => {
-                log::info!("Quit from tray");
-                // before-quit 等价清理（对齐 index.ts before-quit 的子系统收尾）：
-                // 先广播给渲染层做录制收尾，等会话真正结束再退（见 graceful_quit）
-                let handle = app.clone();
-                tauri::async_runtime::spawn(graceful_quit(handle));
-            }
-            _ => {}
-        })
         .on_tray_icon_event(|tray, event| {
-            // 左键单击托盘 → 拉起设置窗口（对齐 tray.ts click 行为）
             if matches!(
                 event,
                 TrayIconEvent::Click {
@@ -498,9 +436,20 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
                     ..
                 }
             ) {
-                log::info!("Tray icon clicked → settings window");
+                log::info!("Tray icon left-clicked → settings window");
                 let app = tray.app_handle();
                 modules::windows::open_or_focus(app, "settings", "/settings");
+            } else if matches!(
+                event,
+                TrayIconEvent::Click {
+                    button: MouseButton::Right,
+                    button_state: MouseButtonState::Up,
+                    ..
+                }
+            ) {
+                log::info!("Tray icon right-clicked → toggle custom compact tray menu");
+                let app = tray.app_handle();
+                modules::windows::tray_menu::toggle_tray_menu(app);
             }
         });
 
