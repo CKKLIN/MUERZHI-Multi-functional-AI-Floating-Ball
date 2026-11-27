@@ -4,7 +4,7 @@
 ### MUERZHI Multi-functional AI Floating Ball
 
 **A geek-grade Windows desktop productivity hub centered around an intuitive floating ball**  
-**Screen Recording · AI Assistant Floating Island · Todo Notes · One-Click Rapid Cooling**
+**Screen Recording · AI Assistant Floating Island · Todo Notes · One-Click Rapid Cooling · Custom Toolbox**
 
 [简体中文](README.md) · [English](README.en.md)
 
@@ -35,6 +35,8 @@ Breaking away from bulky, memory-intensive desktop widgets, MUERZHI is powered b
 - 🤖 **AI Assistant Floating Island**: Deep integration with **Claude Code**, **Google Antigravity**, and **ZCode (Zhipu AI)** CLI agents, delivering live status visualization, in-place permission approvals, question answering, and selective auto-allow rules.
 - 📝 **Todo Notes & Sticky Notes**: Apple-inspired minimalist design, Quill rich-text formatting, due reminders, and edge-pinned sticky memos with ball badge synchronization.
 - 🌬️ **One-Click Rapid Cooling**: Right-click the floating ball to launch a 20-second cooling burst, leveraging ECRAM / WMI direct fan control and powercfg power-capping fallback with real-time hardware telemetry and crash self-healing.
+- 🧰 **Custom HTML Toolbox**: Effortlessly expand your desktop toolset with zero-config hot-loading of single-file or folder-based HTML utilities, multi-window concurrent execution, and sandboxed isolation.
+- 🖥️ **Modern Compact Tray Menu**: High-density Morandi acrylic glass flyout with dynamic multi-level submenus for quick-launching custom tools and toggling ball state—free from bulky margins or dismiss glitches.
 
 ---
 
@@ -46,6 +48,8 @@ Breaking away from bulky, memory-intensive desktop widgets, MUERZHI is powered b
 | **🤖 AI Assistant Island** | Live sync with Claude Code / Antigravity / ZCode; in-place tool approvals & Q&A | Automatic lifecycle hooks; capsule vs. flat strip mode; fixed transparent click-through canvas |
 | **📝 Todo & Sticky Notes** | Todos / memos / due alerts / edge-docked sticky notes, floating ball badge sync | Apple-inspired UI; Quill rich-text formatting; LRU plaintext caching; multi-level priorities |
 | **🌬️ One-Click Cooling** | Right-click the ball for a 20s cooling session; turbine animation; live hardware panel | Uniwill ECRAM direct write / Legion WMI control / powercfg capping; crash-safe recovery |
+| **🧰 Custom Toolbox** | Load standalone HTML tools & multi-file web apps, independent multi-instance windows | Isolated WebView2 sandboxes; safe titlebar dragging; staggered cascading positioning |
+| **🖥️ Modern Tray Menu** | High-density compact menu with dynamic submenus (toolbox quick-launch & ball controls) | Native micro transparent window; pixel-perfect vertical alignment; anti-overflow clamping; hover bridge |
 | **⚙️ The Floating Ball** | Edge water-drop snapping, Morandi radial petal menu, customizable items, hot bilingual switch | Native transparent top-level windows; auto-collapse on blur; global hotkeys & launch at startup |
 
 ---
@@ -140,6 +144,39 @@ A sleek desktop companion for capturing fleeting thoughts and managing high-prio
 
 ---
 
+### 🧰 Custom HTML Toolbox
+
+Bypasses the limitations of closed-source desktop widgets by letting you transform any Web/HTML micro-app into an integrated desktop utility:
+
+- **Limitless Extensibility**:
+  - Simply drop any standalone `.html` file or web folder containing `index.html` into your user data directory (`%APPDATA%/com.muerzhi.aiball/tools`).
+  - **Zero-Config Hot Loading**: Automatically scanned and surfaced in the toolbox board and tray flyout menu in real time without recompilation or app restarts.
+- **Independent Multi-Instance Windowing**:
+  - Each tool runs in its own native WebView2 window. Open and run multiple custom tools concurrently side-by-side with independent lifecycles.
+  - **Smart Staggered Positioning**: Automatically applies a cascading offset when opening consecutive tool windows, preventing frustrating overlapping.
+- **Unified Frameless Aesthetic & Safe Dragging**:
+  - Matches the system-wide Morandi frosted-glass visual standard, with an intuitive titlebar safe-zone that allows smooth click-and-drag movement.
+  - One-click generation of starter demo tools (e.g., an animated CSS analog clock) for immediate use.
+
+---
+
+### 🖥️ Modern Compact Tray Menu
+
+Replaces sluggish, clunky Win32 native menus with an ultra-responsive, pixel-perfect floating panel:
+
+- **High-Density Acrylic Frosted-Glass UI**:
+  - Engineered as a lightweight, borderless transparent window with 24px backdrop blur, tailored for compact layout and zero wasted space.
+- **Dynamic Multi-Level Submenus**:
+  - **Toolbox Quick-Launch**: Live-synced custom tool listing with direct links to both the main toolbox hub and specific tools.
+  - **Ball Management**: Instant visibility toggling and one-click coordinate recalibration.
+- **Pixel-Perfect Alignment & Anti-Overflow Protection**:
+  - Submenus strictly align horizontally with their parent rows for clean visual continuity.
+  - Automatically detects screen/taskbar boundaries and dynamically clamps upwards with lightweight scrolling when the list reaches display limits.
+- **Seamless Hover Bridge**:
+  - Features an invisible hit-test corridor spanning across the gap between menus, ensuring smooth mouse transitions without accidental closures or focus drops.
+
+---
+
 ### ⚙️ The Floating Ball & User Experience
 
 The central axis of your desktop interactions:
@@ -171,21 +208,24 @@ The central axis of your desktop interactions:
 │  - WASAPI Audio │  - Claude / Antigravity / │  - powercfg   │
 │  - Trimmed FFmpeg  ZCode Lifecycle Hooks    │    Fallback   │
 ├─────────────────┴───────────────────────────┴───────────────┤
+│  🧰 Custom Toolbox Runtime (modules::tools) & Sandboxing     │
+├─────────────────────────────────────────────────────────────┤
 │  🪟 Native HTML Windows (public/windows/*.html)             │
-│  - Ball · AI Island · Recording Toolbar · Camera PiP · Todo │
+│  - Ball · Tray Menu · AI Island · Toolbar · Camera PiP · Todo│
 └─────────────────────────────────────────────────────────────┘
 ```
 
 | Layer | Technology | Role |
 |---|---|---|
 | **Desktop Framework** | **Tauri 2 (Rust)** | High-performance OS bindings, multi-window orchestration, ultra-low resource usage |
-| **Main UI Frontend** | **Vue 3.5 + Pinia + TypeScript** | Modular control center (recording panel, AI settings, todo board, general preferences) |
-| **Native Windows** | **HTML5 + CSS3 + Pure JS** | Zero-bundler static pages communicating directly with Rust via `window.__TAURI__` |
+| **Main UI Frontend** | **Vue 3.5 + Pinia + TypeScript** | Modular control center (recording panel, AI settings, todo board, toolbox manager, preferences) |
+| **Native Windows** | **HTML5 + CSS3 + Pure JS** | Zero-bundler static pages (floating ball, tray menu, AI island, toolbars) communicating via `window.__TAURI__` |
 | **Screen Ingestion** | **Windows Graphics Capture (WGC)** | Direct3D surface hardware capture coupled with a dedicated pacing thread |
 | **Video Encoding** | **MediaFoundation** | Direct-to-disk hardware-accelerated MP4 encoding (NVENC / Intel QSV / AMD AMF) |
 | **Audio Capture** | **WASAPI (Audio Client)** | Dual-stream lossless capture for microphone and loopback audio |
 | **Media Toolkit** | **Trimmed FFmpeg (~8 MB)** | Bundled in-house binary for lossless concatenation, audio mixing, PiP overlay, and GIF generation |
 | **Agent Server** | **Axum Web Framework** | Local `127.0.0.1` HTTP service driving multi-session state machines and in-place approvals |
+| **Toolbox Ecosystem**| **Multi-Instance WebView2 Sandbox** | Isolated execution environment for custom HTML tools with frameless dragging and cascading windows |
 | **Build & Packaging** | **Vite 8 + Tauri Bundler** | Rapid builds producing standard Windows NSIS x64 setup executables |
 
 ---
